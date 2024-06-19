@@ -21,7 +21,7 @@ spec:
       containers:
         - name: softhsm-v2
           image: {{ .Values.image }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}: Always
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "Always" | quote }}
           ports:
             - containerPort: 5657
           env:
