@@ -71,6 +71,18 @@ data:
                         - name: backend
                           domains: ["*"]
                           routes:
+                            - match:
+                                prefix: "/api/va/"
+                              route:
+                                prefix_rewrite: "/"
+                                cluster: va_cluster
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
+                                envoy.filters.http.jwt_authn:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig
+                                  disabled: true
                             - match: { prefix: "/" }
                               redirect:
                                 path_redirect: "/"
