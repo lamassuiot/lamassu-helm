@@ -12,24 +12,23 @@ tls:
     # -- CertManager Issuer to use to sign the certificate for the API Gateway. Ignored if `clusterIssuer` is set. If left empty, a self signed certificate will be used.
     issuer: ""
     # -- Duration for the certificate to be valid
-    duration: "2160h" # 2160h == 90days
+    certSpec:
+      commonName: "dev.lamassu.io"
+      hostnames:
+      - "dev.lamassu.io"
+      addresses:
+      duration: "2160h"  # 2160h == 90days
   externalOptions:
     # -- Secret name for the TLS certificate to be used for the API Gateway (the secret at least must have `tls.crt` and `tls.key` keys)
     secretName: ""
-ingress:
-  enabled: true
-  # -- Hostname to be used for the Ingress resource to route all incoming traffic to the API Gateway
-  hostname: dev.lamassu.io
-  # -- Annotations to be added to the Ingress resource
-  annotations: ""
-service:
-  # Type of service to use for Lamassu's API Gateway component. Allowed values are: `ClusterIP`, `NodePort`, `LoadBalancer`
-  type: ClusterIP
-  nodePorts:
-    # -- (int) Node port for the HTTP port from the API Gateway service
-    apiGatewayTls:
-    # -- (int) Node port for the HTTP port from the API Gateway service
-    apiGateway:
+
+gateway:
+  extraRouting:
+  addresses:
+  ports:
+    http: 80
+    https: 443
+
 postgres:
   # -- Hostname for the PostgreSQL server
   hostname: ""
@@ -79,21 +78,7 @@ auth:
     roles:
       # -- Role association to be used to authorize the user as LAMASSU's admin
       admin: pki-admin
-      # -- Role association to be used to authorize the user as LAMASSU's operator
-      operator: operator
 services:
-  apiGateway:
-    debugMode: false
-    # -- Additional reverse proxy routing rules to be added to the API Gateway component
-    extraReverseProxyRouting:
-    # - path: /auth/
-    #   name: auth
-    #   prefixRewrite: false
-    #   target:
-    #     host: my-keycloak
-    #     port: 80
-    #     healthCheck:
-    #       path: /auth/health
   ui:
     # -- Docker image for the UI component
     image: ghcr.io/lamassuiot/lamassu-ui:3.2.1
@@ -102,7 +87,8 @@ services:
     image: ghcr.io/lamassuiot/lamassu-va:3.2.2
   ca:
     # -- Domain to be used while signing/generating new CAs and certificates
-    domain: dev.lamassu.io
+    domains:
+    - dev.lamassu.io
     # -- Docker image for the CA component
     image: ghcr.io/lamassuiot/lamassu-ca:3.2.2
     monitoring:
@@ -124,12 +110,6 @@ services:
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.2.2
-  openPolicyAgent:
-    # -- Docker image for the Open Policy Agent component
-    image: openpolicyagent/opa:0.37.1-envoy
-    remLogger:
-      # -- Docker image for the Remote Logger component
-      image: ghcr.io/lamassuiot/opa-rem-logger:2.1.0
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.2.2

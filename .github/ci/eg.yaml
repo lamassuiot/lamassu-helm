@@ -1,0 +1,4 @@
+config:
+  envoyGateway:
+    extensionApis:
+      enableEnvoyPatchPolicy: true

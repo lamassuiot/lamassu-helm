@@ -9,7 +9,7 @@ amqp:
   port: 5672
   username: "admin"
   password: "admin"
-  tls: false
+
 services:
   services:
     ca:
@@ -19,22 +19,20 @@ services:
           - id: fs-1
             type: filesystem
             storage_directory: /crypto/fs
-  apiGateway:
-    extraReverseProxyRouting:
-      - path: /auth
-        name: auth
-        prefixRewrite: false
-        target:
-          host: auth-keycloak
-          port: 80  # If no sidecar is used
-          healthCheck:
-            path: /auth/health
+
 auth:
   oidc:
     frontend:
       authority: https://ci.lamassu.io/auth/realms/lamassu
-ingress:
-  enabled: true
-  domain: ci.lamassu.io
-  annotations: |
-    kubernetes.io/ingress.class: "public"
+
+gateway:
+  extraRouting:
+    - path: /auth
+      name: auth
+      target:
+        host: auth-keycloak
+        port: 80  # If no sidecar is used
+  ports:
+    http: 80
+    https: 443
+  addresses:

@@ -11,7 +11,8 @@ NAMESPACE=lamassu-dev
 NAMESPACE_OVERRIDE=false
 OFFLINE=false
 NON_INTERACTIVE=false
-MAIN_PORT=443
+HTTPS_PORT=443
+HTTP_PORT=80
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 
@@ -45,12 +46,6 @@ function main() {
     init
 
     process_flags "$@"
-
-    if [ "$MAIN_PORT" -eq 443 ]; then
-        echo -e "${ORANGE}Deploying Lamassu with Ingress (and standard https port on 443)${NOCOLOR}" 
-    else
-        echo -e "${ORANGE}Deploying Lamassu with Ingress disabled and using NodePort on port $MAIN_PORT ${NOCOLOR}" 
-    fi
 
     detect_distribution
     if [ $dist == "microk8s" ]; then
@@ -96,37 +91,27 @@ function main() {
     echo -e "\n${BLUE}7) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
     install_lamassu
 
-    if [ "$MAIN_PORT" -eq 443 ]; then
-        echo -e "\n${BLUE}8) Patch ingress for Lamassu IoT${NOCOLOR}"
-        
-        if [ $dist == "microk8s" ]; then
-            microk8s_patch_lamassu
-        fi
-
-        if [ $dist == "k3s" ]; then
-            k3s_patch_lamassu
-        fi
-    fi
-
     final_instructions
 }
 
 function usage() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
-    echo " -h, --help              Display this help message"
-    echo " -n, --non-interactive   Enable non-interactive mode. Credentials for Keycloak, Postgres and RabbitMQ will be auto generated"
-    echo " -ns, --namespace        Kubernetes Namespace where LAMASSU will be deployed"
-    echo " -d, --domain            Domain to be set while deploying LAMASSU"
-    echo " -v, --version           Version of the Lamassu Helm Chart to be installed. Default is latest"
-    echo " --offline               Offline mode enabled. Use local helm charts (--helm-chart-rabbitmq, --helm-chart-postgres and --helm-chart-lamassu flags will be required)"
-    echo " --tls-crt               Path to the PEM encoded certificate used for downstream communications"
-    echo " --tls-key               Path to the PEM encoded key used for downstream communications"
-    echo " --helm-chart-lamassu    (Only needed while using --offline) Path to the Lamassu helm chart (.tgz format)"
-    echo " --helm-chart-postgres   (Only needed while using --offline) Path to the Posgtres helm chart (.tgz format)"
-    echo " --helm-chart-keycloak   (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
-    echo " --helm-chart-rabbitmq   (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
-    echo " -l, --local-chart-path  Path to the local chart folder"
+    echo " -h, --help                   Display this help message"
+    echo " -n, --non-interactive        Enable non-interactive mode. Credentials for Keycloak, Postgres and RabbitMQ will be auto generated"
+    echo " -ns, --namespace             Kubernetes Namespace where LAMASSU will be deployed"
+    echo " -d, --domain                 Domain to be set while deploying LAMASSU"
+    echo " -v, --version                Version of the Lamassu Helm Chart to be installed. Default is latest"
+    echo " --https-port                 HTTPS port to be used for Lamassu IoT. Default is 443"
+    echo " --http-port                  HTTP port to be used for Lamassu IoT. Default is 80"
+    echo " --offline                    Offline mode enabled. Use local helm charts (--helm-chart-rabbitmq, --helm-chart-postgres and --helm-chart-lamassu flags will be required)"
+    echo " --tls-crt                    Path to the PEM encoded certificate used for downstream communications"
+    echo " --tls-key                    Path to the PEM encoded key used for downstream communications"
+    echo " --helm-chart-lamassu         (Only needed while using --offline) Path to the Lamassu helm chart (.tgz format)"
+    echo " --helm-chart-postgres        (Only needed while using --offline) Path to the Posgtres helm chart (.tgz format)"
+    echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
+    echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
+    echo " -l, --local-chart-path       Path to the local chart folder"
 }
 
 function has_argument() {
@@ -222,13 +207,24 @@ function process_flags() {
             shift
             ;;
             
-        -p | --port)
+        --https-port)
             if ! has_argument $@; then
-                  echo -e "\n${RED}Port not specified.${NOCOLOR}" >&2
+                  echo -e "\n${RED}HTTPS port not specified.${NOCOLOR}" >&2
                 usage
                 exit 1
             fi
-            MAIN_PORT=$(extract_argument $@)
+            HTTPS_PORT=$(extract_argument $@)
+
+            shift
+            ;;
+            
+        --http-port)
+            if ! has_argument $@; then
+                  echo -e "\n${RED}HTTP port not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            HTTP_PORT=$(extract_argument $@)
 
             shift
             ;;
@@ -278,79 +274,41 @@ function process_flags() {
 
 function final_instructions() {
     echo -e "${GREEN}=== Lamassu IoT has been installed in your Kubernetes instance ===${NOCOLOR}"
-    echo -e "${BLUE}Please connect to https://${DOMAIN_PORT} using default user lamassu/lamassu ${NOCOLOR}"
+    echo -e "${BLUE}Please connect to https://${DOMAIN} using default user lamassu/lamassu ${NOCOLOR}"
     echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
-    echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN_PORT}/auth/admin${NOCOLOR}"
+    echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
     echo -e "${BLUE}Use the provided Keycloak credentials ${KEYCLOAK_USER}/${KEYCLOAK_PWD}${NOCOLOR}"
 }
 
-function k3s_patch_lamassu() {
-    $kube $kubectl patch ing/api-gateway-https --namespace $NAMESPACE --type=json -p='[{"op": "add", "path": "/spec/ingressClassName", "value": "nginx" }]'
-    if [ $? -eq 0 ]; then
-        echo -e "\n${GREEN}Lamassu IoT successfully patched${NOCOLOR}"
-    else
-        echo -e "\n${RED}Error applying patch on Lamassu IoT${NOCOLOR}"
-        exit 1
-    fi
-}
-
-function microk8s_patch_lamassu() {
-    $kube $helm upgrade -n $NAMESPACE lamassu lamassuiot/lamassu -f lamassu.yaml
-    cat >ing.yaml <<"EOF"
-ingress:
-  annotations: |
-    kubernetes.io/ingress.class: "public"
-EOF
-
-    yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml ing.yaml -i
-    rm ing.yaml
-
-    if [ $? -eq 0 ]; then
-        echo -e "\n${GREEN}Lamassu IoT successfully patched${NOCOLOR}"
-    else
-        echo -e "\n${RED}Error applying patch on Lamassu IoT${NOCOLOR}"
-        exit 1
-    fi
-}
 
 function install_lamassu() {
-DOMAIN_PORT=$DOMAIN
-if [ "$MAIN_PORT" -ne 443 ]; then
-    DOMAIN_PORT="$DOMAIN:$MAIN_PORT"
+if [ "$HTTPS_PORT" -ne 443 ]; then
+    DOMAIN="$DOMAIN:$HTTPS_PORT"
 fi
 
     cat >lamassu.yaml <<"EOF"
 postgres:
   hostname: "postgresql"
   port: 5432
-  username: "env.postgres.user"
-  password: "env.postgres.password"
+  username: ""
+  password: ""
 
 amqp:
   hostname: "rabbitmq"
   port: 5672
-  username: "env.rabbitmq.user"
-  password: "env.rabbitmq.password"
+  username: ""
+  password: ""
   tls: false
+
 services:
   ca:
-    domain: $DOMAIN_PORT
     cryptoEngines:
       defaultEngineID: fs-1
       engines:
       - id: fs-1
         type: filesystem
         storage_directory: /crypto/fs
-  apiGateway:
-    extraReverseProxyRouting:
-      - path: /auth
-        name: auth
-        prefixRewrite: false
-        target:
-          host: auth-keycloak
-          port: 80 # If no sidecar is used
-          healthCheck:
-            path: /auth/health
+
 auth:
   oidc:
     apiGateway:
@@ -359,27 +317,25 @@ auth:
         host: auth-keycloak
         port: 80
 
-ingress:
-  hostname: $DOMAIN
+gateway:
+  extraRouting:
+  - path: /auth
+    name: auth
+    target:
+      host: auth-keycloak
+      port: 80 # If no sidecar is used
 EOF
 
-sed 's/$DOMAIN_PORT/'"$DOMAIN_PORT"'/' -i lamassu.yaml
-sed 's/$DOMAIN/'"$DOMAIN"'/' -i lamassu.yaml
+export DOMAIN=$DOMAIN
+yq -i '.services.ca.domain = (env(DOMAIN))' lamassu.yaml
 
-if [ "$MAIN_PORT" -ne 443 ]; then
-    cat >service.yaml <<"EOF"
-ingress:
-  enabled: false
-service: 
-  type: NodePort
-  nodePorts:
-    apiGatewayTls: $MAIN_PORT
-EOF
+export IP_LIST="$(hostname -I)"
+export HTTPS_PORT=$HTTPS_PORT
+export HTTP_PORT=$HTTP_PORT
 
-    sed 's/$MAIN_PORT/'"$MAIN_PORT"'/' -i service.yaml
-    yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml service.yaml -i
-    rm service.yaml
-fi
+yq -i '.gateway.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
+yq -i '.gateway.ports.https = env(HTTPS_PORT)' lamassu.yaml
+yq -i '.gateway.ports.http = env(HTTP_PORT)' lamassu.yaml
 
 # Check if TLS_CRT and TLS_KEY are not empty
 if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
@@ -397,12 +353,24 @@ EOF
     yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml tls.yaml -i
     rm tls.yaml
 else
-    echo -e "${ORANGE}Deploying Lamassu with SelfSigned TLS Certificates${NOCOLOR}" 
+    echo -e "${ORANGE}Deploying Lamassu with SelfSigned TLS Certificates${NOCOLOR}"
+    yq -i '.tls.type = "certManager"' lamassu.yaml
+    yq -i '.tls.certManagerOptions.issuer = "downstream-ca-selfsigned-issuer"' lamassu.yaml
+    yq -i '.tls.certManagerOptions.certSpec.commonName = (env(DOMAIN))' lamassu.yaml
+    yq -i '.tls.certManagerOptions.certSpec.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
 fi
 
-    sed 's/env.lamassu.domain/'"$DOMAIN"'/' -i lamassu.yaml
-    sed 's/env.postgres.user/'"$POSTGRES_USER"'/;s/env.postgres.password/'"$POSTGRES_PWD"'/' -i lamassu.yaml
-    sed 's/env.rabbitmq.user/'"$RABBIT_USER"'/;s/env.rabbitmq.password/'"$RABBIT_PWD"'/' -i lamassu.yaml
+
+    export POSTGRES_USER=$POSTGRES_USER
+    export POSTGRES_PWD=$POSTGRES_PWD
+    export RABBIT_USER=$RABBIT_USER
+    export RABBIT_PWD=$RABBIT_PWD
+
+    yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
+    yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
+    yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
+    yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
+  
 
     helm_path=$LAMASSU_CHART_PATH
     if [ "$OFFLINE" = false ]; then
@@ -457,8 +425,8 @@ function install_rabbitmq() {
 function install_keycloak() {
     cat >keycloak.yaml <<"EOF"
 auth: 
-  adminUser: "env.keycloak.user"
-  adminPassword: "env.keycloak.password"
+  adminUser: ""
+  adminPassword: ""
 
 postgresql:
   enabled: false
@@ -466,8 +434,8 @@ postgresql:
 externalDatabase:
   host: "postgresql"
   port: 5432
-  user: "env.postgres.user"
-  password: "env.postgres.password"
+  user: ""
+  password: ""
   database: auth
 
 logging:
@@ -543,8 +511,16 @@ EOF
     fi
 
 
-    sed 's/env.postgres.user/'"$POSTGRES_USER"'/;s/env.postgres.password/'"$POSTGRES_PWD"'/' -i keycloak.yaml
-    sed 's/env.keycloak.user/'"$KEYCLOAK_USER"'/;s/env.keycloak.password/'"$KEYCLOAK_PWD"'/' -i keycloak.yaml
+    export POSTGRES_USER=$POSTGRES_USER
+    export POSTGRES_PWD=$POSTGRES_PWD
+    yq -i '.externalDatabase.user = env(POSTGRES_USER)' keycloak.yaml
+    yq -i '.externalDatabase.password = env(POSTGRES_PWD)' keycloak.yaml
+
+    export KEYCLOAK_USER=$KEYCLOAK_USER
+    export KEYCLOAK_PWD=$KEYCLOAK_PWD
+    yq -i '.auth.adminUser = env(KEYCLOAK_USER)' keycloak.yaml
+    yq -i '.auth.adminPassword = env(KEYCLOAK_PWD)' keycloak.yaml
+
 
     helm_path=bitnami/keycloak
     if [ "$OFFLINE" = false ]; then
@@ -569,8 +545,8 @@ fullnameOverride: "postgresql"
 global:
   postgresql:
     auth:
-      username: "env.user"
-      password: "env.password"
+      username: ""
+      password: ""
 primary:
   initdb:
     scripts:
@@ -583,7 +559,10 @@ primary:
         CREATE DATABASE dmsmanager;
 EOF
 
-    sed 's/env.user/'"$POSTGRES_USER"'/;s/env.password/'"$POSTGRES_PWD"'/' -i postgres.yaml
+    export POSTGRES_USER=$POSTGRES_USER
+    export POSTGRES_PWD=$POSTGRES_PWD
+    yq -i '.global.postgresql.auth.username = env(POSTGRES_USER)' postgres.yaml
+    yq -i '.global.postgresql.auth.password = env(POSTGRES_PWD)' postgres.yaml
 
     helm_path=bitnami/postgresql
     if [ "$OFFLINE" = false ]; then
@@ -746,7 +725,6 @@ function check_microk8s_minimum_requirements() {
     is_microk8s_addon_enabled helm
     is_microk8s_addon_enabled hostpath-storage
     is_microk8s_addon_enabled dns
-    is_microk8s_addon_enabled ingress
     is_microk8s_addon_enabled cert-manager
 }
 

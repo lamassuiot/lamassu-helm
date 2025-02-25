@@ -1,0 +1,36 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: jwt-authn
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetSelectors:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    matchLabels:
+      auth: "private"
+  cors:
+    allowOrigins:
+    - "*"
+    allowHeaders:
+    - "*"	
+    allowMethods:
+    - "*"
+    allowCredentials: true
+  jwt:
+    providers:
+    - name: oidc-authn
+      remoteJWKS:
+        uri: "{{ .Values.auth.oidc.apiGateway.jwks.protocol }}://{{ .Values.auth.oidc.apiGateway.jwks.host }}.{{ .Release.Namespace }}:{{ .Values.auth.oidc.apiGateway.jwks.port }}{{ .Values.auth.oidc.apiGateway.jwks.path }}"
+  authorization:
+    defaultAction: Deny
+    rules:
+    - name: "allow"
+      action: Allow
+      principal:
+        jwt:
+          provider: oidc-authn
+          claims:
+          - name: {{ .Values.auth.authorization.rolesClaim }}
+            valueType: StringArray
+            values: ["{{ .Values.auth.authorization.roles.admin }}"]
