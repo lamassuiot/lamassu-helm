@@ -1,3 +1,4 @@
+{{- if eq .Values.tls.type "certManager" }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -5,10 +6,16 @@ metadata:
   namespace: {{.Release.Namespace}}
 spec:
   isCA: false
-  commonName: {{.Values.ingress.hostname}}
-  duration: {{.Values.tls.certManagerOptions.duration}}
-  dnsNames:
-    - {{.Values.ingress.hostname}}
+  commonName: {{.Values.tls.certManagerOptions.certSpec.commonName}}
+  duration: {{.Values.tls.certManagerOptions.certSpec.duration}}
+  dnsNames: 
+    {{- range .Values.tls.certManagerOptions.certSpec.hostnames }}
+    - {{ . }}
+    {{- end }}
+  ipAddresses:
+    {{- range .Values.tls.certManagerOptions.certSpec.addresses }}
+    - {{ . }}
+    {{- end }}
   secretName: downstream-cert
   privateKey:
     algorithm: ECDSA
@@ -23,3 +30,4 @@ spec:
     name:  {{ ternary .Values.tls.certManagerOptions.issuer "downstream-ca-selfsigned-issuer" (ne .Values.tls.certManagerOptions.issuer "") }}
     {{ end }}
     group: cert-manager.io
+{{- end }}

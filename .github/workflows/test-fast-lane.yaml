@@ -12,7 +12,8 @@ jobs:
           fetch-depth: 0
       - name: Add hosts to /etc/hosts
         run: |
-          sudo echo "127.0.0.1 ci.lamassu.io" | sudo tee -a /etc/hosts
+          VM_IP=$(hostname -I | awk '{print $1}')
+          sudo echo "$VM_IP ci.lamassu.io" | sudo tee -a /etc/hosts
       - uses: azure/setup-kubectl@v4.0.0
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
@@ -24,21 +25,28 @@ jobs:
           config: .github/ci/kind.yaml
       - name: Prepare kind cluster
         run: |
+          helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait
+          cat <<EOF | kubectl apply -f -
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: GatewayClass
+            metadata:
+              name: eg
+            spec:
+              controllerName: gateway.envoyproxy.io/gatewayclass-controller
+          EOF
           kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.3/cert-manager.yaml
-          kubectl apply --filename https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/static/provider/kind/deploy.yaml
-          kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=180s
       - name: run fast lane
         run: |
           ./scripts/lamassu-fast-lane.sh -n -ns lamassu-ci -d ci.lamassu.io -l ./charts/lamassu
       - name: show info
         run: |
-          kubectl get pods -n lamassu-ci
-          kubectl get svc -n lamassu-ci
-          kubectl get ingress -n lamassu-ci
+          kubectl get pods -A
+          kubectl get svc -A
+          kubectl get gtw -A
       - name: Check if the app is running
         run: |
-          curl -s -o /dev/null -w "%{http_code}" -k https://ci.lamassu.io:10443
-          curl -s -o /dev/null -w "%{http_code}" -k https://ci.lamassu.io:10443/auth/
+          curl -s -o /dev/null -w "%{http_code}" -k https://ci.lamassu.io
+          curl -s -o /dev/null -w "%{http_code}" -k https://ci.lamassu.io/auth/
       - name: Run helm tests
         run: |
           helm test -n lamassu-ci lamassu

@@ -1,0 +1,26 @@
+{{ range $index, $svc := .Values.gateway.extraRouting }}
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  parentRefs:
+    - name: eg
+      sectionName: https  # The specific listener
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: {{ $svc.path }}
+      filters:
+      - type: RequestHeaderModifier
+        requestHeaderModifier:
+          set:
+            - name: X-Forwarded-Port
+              value: "{{ $.Values.gateway.ports.https }}"
+      backendRefs:
+        - name: {{ $svc.target.host }}
+          port: {{ $svc.target.port }}
+---
+{{ end }}

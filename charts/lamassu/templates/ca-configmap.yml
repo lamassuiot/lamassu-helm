@@ -47,4 +47,6 @@ data:
       automatic_ca_rotation:
         enabled: false
         renewal_delta: "1d"
-    va_server_domain: {{ .Values.services.ca.domain }}
+        
+    va_server_domains:
+      - "{{ .Values.services.ca.domain }}/api/va"

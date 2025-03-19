@@ -71,6 +71,3 @@ data:
 
     #UI Health Check
     curl_and_analyze_ui http://ui:8080
-
-    #API-GW Health Check (try getting the UI for instance)
-    curl_and_analyze_ui https://api-gateway:443

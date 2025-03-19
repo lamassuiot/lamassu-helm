@@ -1,0 +1,23 @@
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: api-dms-manager-est
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: eg
+      sectionName: https  # The specific listener
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /api/dmsmanager/.well-known/est/
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: "/.well-known/est"
+      backendRefs:
+        - name: dms-manager
+          port: 8085

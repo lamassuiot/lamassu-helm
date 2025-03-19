@@ -51,6 +51,16 @@ jobs:
           kubectl create namespace lamassu-test
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
+          helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait
+          cat <<EOF | kubectl apply -f -
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: GatewayClass
+            metadata:
+              name: eg
+            spec:
+              controllerName: gateway.envoyproxy.io/gatewayclass-controller
+          EOF
+
           helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test --set fullnameOverride=rabbitmq --set auth.username=admin --set auth.password=admin
           helm install postgres bitnami/postgresql --version 15.5.11 -n lamassu-test -f .github/ci/postgres.yaml --wait
           helm install auth bitnami/keycloak --version 22.1.1 -n lamassu-test -f .github/ci/keycloak.yaml --wait

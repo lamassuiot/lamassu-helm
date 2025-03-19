@@ -1,0 +1,91 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: proxy
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        allocateLoadBalancerNodePorts: false
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: eg
+  namespace: {{ .Release.Namespace }}
+spec:
+  gatewayClassName: eg
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: proxy
+  addresses:
+  {{ range $ip := $.Values.gateway.addresses }}
+  - type: IPAddress
+    value: {{ $ip }}
+  {{ end }}
+  listeners:
+    - name: http 
+      protocol: HTTP
+      port: {{ .Values.gateway.ports.http }}
+    - name: https # Do not change. The EnvoyPatchPolicy is looking for this name to apply the patch.
+      protocol: HTTPS
+      port:  {{ .Values.gateway.ports.https }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+        - kind: Secret
+          group: ""
+          name:  {{ ternary .Values.tls.externalOptions.secretName  "downstream-cert" (eq .Values.tls.type "external") }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: enable-mtls
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: eg
+  tls:
+    maxVersion: "1.2"
+    # we are not adding clientValidation for the following reasons:
+    # 1. it is required defining a set of trusted CA certificates to be used for client certificate validation
+    # 2. in the TLS handshake, the server sends a CertificateRequest message setting the CA's Distinguished Names field, limiting to some HTTPS clients what certs can be sent
+    # 3. an EnvoyPatchPolicy is added to fully customize the TLS configuration with Request (but not enforce) client certificate as well as accept untrusted certificates
+  headers:
+    xForwardedClientCert:
+      mode: AppendForward
+      certDetailsToAdd: 
+      - Chain
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyPatchPolicy
+metadata:
+  name: mtls-accept-untrusted
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: eg
+  type: JSONPatch
+  jsonPatches:
+    - name: {{ .Release.Namespace }}/eg/https
+      type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      operation:
+        op: add
+        jsonPath: "filter_chains[0].transport_socket.typed_config"
+        path: "require_client_certificate"
+        value: true
+    - name: {{ .Release.Namespace }}/eg/https
+      type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      operation:
+        op: add
+        jsonPath: "filter_chains[0].transport_socket.typed_config.common_tls_context"
+        path: "validation_context"
+        value:
+          trust_chain_verification: ACCEPT_UNTRUSTED
