@@ -83,6 +83,14 @@ services:
   va:
     # -- Docker image for the VA component
     image: ghcr.io/lamassuiot/lamassu-va:3.3.0
+    fileStore:
+      id: "local-1"
+      type: "local"
+      storageDirectory: "/data/crl"
+    job:
+      crl:
+        # -- Frequency to launch the CRL computation job
+        frequency: "* * * * *"
   ca:
     # -- Domain to be used while signing/generating new CAs and certificates
     domains:

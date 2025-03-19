@@ -14,6 +14,47 @@ data:
       port: 8085
       protocol: "http" #http | https
 
+    subscriber_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+    
+    publisher_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+
+    storage:
+      log_level: "info"
+      provider: "postgres" 
+      hostname: {{ $.Values.postgres.hostname }}
+      port: {{ $.Values.postgres.port }}
+      username: "{{ $.Values.postgres.username }}"
+      password: "{{ $.Values.postgres.password }}"
+
+    filesystem_storage:
+      id: "{{ .Values.services.va.fileStore.id }}"
+      type: "{{ .Values.services.va.fileStore.type }}"
+      storage_directory: "{{ .Values.services.va.fileStore.storageDirectory }}"
+    
+    crl_monitoring_job:
+      enabled: true
+      frequency: "{{ .Values.services.va.job.crl.frequency }}"
+
     ca_client:
       log_level: debug
       auth_mode: "noauth"
