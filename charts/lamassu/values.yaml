@@ -15,20 +15,18 @@ tls:
     certSpec:
       commonName: "dev.lamassu.io"
       hostnames:
-      - "dev.lamassu.io"
+        - "dev.lamassu.io"
       addresses:
-      duration: "2160h"  # 2160h == 90days
+      duration: "2160h" # 2160h == 90days
   externalOptions:
     # -- Secret name for the TLS certificate to be used for the API Gateway (the secret at least must have `tls.crt` and `tls.key` keys)
     secretName: ""
-
 gateway:
   extraRouting:
   addresses:
   ports:
     http: 80
     https: 443
-
 postgres:
   # -- Hostname for the PostgreSQL server
   hostname: ""
@@ -81,16 +79,16 @@ auth:
 services:
   ui:
     # -- Docker image for the UI component
-    image: ghcr.io/lamassuiot/lamassu-ui:3.2.1
+    image: ghcr.io/lamassuiot/lamassu-ui:3.3.0
   va:
     # -- Docker image for the VA component
-    image: ghcr.io/lamassuiot/lamassu-va:3.2.2
+    image: ghcr.io/lamassuiot/lamassu-va:3.3.0
   ca:
     # -- Domain to be used while signing/generating new CAs and certificates
     domains:
-    - dev.lamassu.io
+      - dev.lamassu.io
     # -- Docker image for the CA component
-    image: ghcr.io/lamassuiot/lamassu-ca:3.2.2
+    image: ghcr.io/lamassuiot/lamassu-ca:3.3.0
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
@@ -106,13 +104,13 @@ services:
           storage_directory: "/crypto/fs"
   deviceManager:
     # -- Docker image for the Device Manager component
-    image: ghcr.io/lamassuiot/lamassu-devmanager:3.2.2
+    image: ghcr.io/lamassuiot/lamassu-devmanager:3.3.0
   dmsManager:
     # -- Docker image for the DMS Manager component
-    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.2.2
+    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.3.0
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:3.2.2
+    image: ghcr.io/lamassuiot/lamassu-alerts:3.3.0
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""
