@@ -61,6 +61,48 @@ data:
       protocol: "http"
       hostname: "ca"
       port: 8085
+    
+    filesystem_storage: 
+      type: local
+      storage_directory: "/crypto/va"
+
+    crl_monitoring_job:
+      enabled: true
+      frequency: "2m"
+
+    subscriber_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ $.Values.amqp.hostname }}
+      port: {{ $.Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: {{ $.Values.amqp.username }}
+        password: {{ $.Values.amqp.password }}
+
+    publisher_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ $.Values.amqp.hostname }}
+      port: {{ $.Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: {{ $.Values.amqp.username }}
+        password: {{ $.Values.amqp.password }}
+
+    storage:
+      log_level: "info"
+      provider: "postgres" #couch_db | postgres | dynamo_db
+      hostname: {{ $.Values.postgres.hostname }}
+      port: {{ $.Values.postgres.port }}
+      username: "{{ $.Values.postgres.username }}"
+      password: "{{ $.Values.postgres.password }}"
 
     va_domains:
-      - "{{ .Values.services.ca.domain }}/api/va"
+    {{ range $.Values.services.ca.domains }}
+      - "{{ . }}/api/va"
+    {{ end }}
