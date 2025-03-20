@@ -35,10 +35,10 @@ jobs:
               controllerName: gateway.envoyproxy.io/gatewayclass-controller
           EOF
           kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.3/cert-manager.yaml
-      - name: run fast lane
+      - name: Run fast lane
         run: |
           ./scripts/lamassu-fast-lane.sh -n -ns lamassu-ci -d ci.lamassu.io -l ./charts/lamassu
-      - name: show info
+      - name: Show info
         run: |
           kubectl get pods -A
           kubectl get svc -A

@@ -49,4 +49,6 @@ data:
         renewal_delta: "1d"
         
     va_server_domains:
-      - "{{ .Values.services.ca.domain }}/api/va"
+    {{ range $.Values.services.ca.domains }}
+      - "{{ . }}/api/va"
+    {{ end }}

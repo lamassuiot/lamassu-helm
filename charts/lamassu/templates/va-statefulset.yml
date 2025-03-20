@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:  
   name: va
   namespace: {{.Release.Namespace}}
@@ -32,6 +32,8 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+            - name: local-crl-file-storage
+              mountPath: /data/crl
           ports:
             - containerPort: 8085
       restartPolicy: Always
@@ -39,4 +41,13 @@ spec:
         - name: api-config
           configMap:  
             name: va-config
-
+  volumeClaimTemplates:
+  # If no FileSystem engine is defined, the PVC wont be used
+  - metadata:
+      name: local-crl-file-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: null
+      resources:
+        requests:
+          storage: 1Gi

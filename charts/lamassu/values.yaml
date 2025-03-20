@@ -17,7 +17,7 @@ tls:
       hostnames:
         - "dev.lamassu.io"
       addresses:
-      duration: "2160h" # 2160h == 90days
+      duration: "2160h"  # 2160h == 90days
   externalOptions:
     # -- Secret name for the TLS certificate to be used for the API Gateway (the secret at least must have `tls.crt` and `tls.key` keys)
     secretName: ""
@@ -83,6 +83,14 @@ services:
   va:
     # -- Docker image for the VA component
     image: ghcr.io/lamassuiot/lamassu-va:3.3.0
+    fileStore:
+      id: "local-1"
+      type: "local"
+      storageDirectory: "/data/crl"
+    job:
+      crl:
+        # -- Frequency to launch the CRL computation job
+        frequency: "* * * * *"
   ca:
     # -- Domain to be used while signing/generating new CAs and certificates
     domains:
