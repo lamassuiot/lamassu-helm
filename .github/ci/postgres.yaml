@@ -11,6 +11,7 @@ primary:
         CREATE DATABASE auth;
         CREATE DATABASE alerts;
         CREATE DATABASE ca;
+        CREATE DATABASE va;
         CREATE DATABASE cloudproxy;
         CREATE DATABASE devicemanager;
         CREATE DATABASE dmsmanager;
