@@ -19,18 +19,24 @@ spec:
     allowCredentials: true
   jwt:
     providers:
-    - name: oidc-authn
-      remoteJWKS:
-        uri: "{{ .Values.auth.oidc.apiGateway.jwks.protocol }}://{{ .Values.auth.oidc.apiGateway.jwks.host }}.{{ .Release.Namespace }}:{{ .Values.auth.oidc.apiGateway.jwks.port }}{{ .Values.auth.oidc.apiGateway.jwks.path }}"
+    {{- range $.Values.auth.oidc.apiGateway.jwks }}
+      - name: {{ .name }}
+        remoteJWKS:
+          uri: "{{ .protocol }}://{{ .host }}.{{ $.Release.Namespace }}:{{ .port }}{{ .path }}"
+    {{- end }}
+    
   authorization:
     defaultAction: Deny
     rules:
-    - name: "allow"
-      action: Allow
-      principal:
+    {{- range $.Values.auth.oidc.apiGateway.jwks }}
+     - name: "allow"
+       action: Allow
+       principal:
         jwt:
-          provider: oidc-authn
+          provider: {{ .name }}
           claims:
-          - name: {{ .Values.auth.authorization.rolesClaim }}
+          - name: {{ $.Values.auth.authorization.rolesClaim }}
             valueType: StringArray
-            values: ["{{ .Values.auth.authorization.roles.admin }}"]
+            values: ["{{ $.Values.auth.authorization.roles.admin }}"]
+    {{- end }}
+    
