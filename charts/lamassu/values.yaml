@@ -17,7 +17,8 @@ tls:
       hostnames:
         - "dev.lamassu.io"
       addresses:
-      duration: "2160h" # 2160h == 90days
+      # -- 2160h == 90days
+      duration: "2160h"
   externalOptions:
     # -- Secret name for the TLS certificate to be used for the API Gateway (the secret at least must have `tls.crt` and `tls.key` keys)
     secretName: ""
