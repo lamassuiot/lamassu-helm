@@ -43,10 +43,6 @@ jobs:
           kubectl get pods -A
           kubectl get svc -A
           kubectl get gtw -A
-      - name: Check if the app is running
-        run: |
-          curl -s -o /dev/null -w "%{http_code}" -k https://ci.lamassu.io
-          curl -s -o /dev/null -w "%{http_code}" -k https://ci.lamassu.io/auth/
       - name: Run helm tests
         run: |
           helm test -n lamassu-ci lamassu
