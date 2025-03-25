@@ -49,6 +49,15 @@ spec:
                     echo "  >> initial version record INSERTED in $db DB."
                     echo "  >> DB $db is now READY!!"
                   fi
-
                     echo ""
                 done
+                
+                echo "Checking if DB 'va' exists"
+                DB_EXISTENCE=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='va'" | tr -d ' ')
+                if [ "$DB_EXISTENCE" == "1" ]; then
+                  echo "  >> Database 'va' already exists. Skipping creation."
+                else
+                  echo "  >> Database 'va' does not exist. Creating..."
+                  # PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -c "CREATE DATABASE va;"
+                  echo "  >> Database 'va' created successfully."
+                fi
