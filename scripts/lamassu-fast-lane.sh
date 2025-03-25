@@ -313,9 +313,10 @@ auth:
   oidc:
     apiGateway:
       jwks:
-        protocol: http
-        host: auth-keycloak
-        port: 80
+        - name: oidc-authn
+          protocol: http
+          host: auth-keycloak
+          port: 80
 
 gateway:
   extraRouting:
