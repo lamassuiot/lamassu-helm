@@ -317,6 +317,7 @@ auth:
           protocol: http
           host: auth-keycloak
           port: 80
+          path: /auth/realms/lamassu/protocol/openid-connect/certs
 
 gateway:
   extraRouting:
