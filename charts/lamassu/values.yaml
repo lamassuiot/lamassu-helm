@@ -64,14 +64,8 @@ auth:
       # -- URL pointing to the issuer's public key set to validate the JWT tokens.
       jwks:
         - name: oidc-authn
-          # -- Protocol to use to fetch the public key set. Allowed values are: `http`, `https`
-          protocol: http
-          # -- Hostname to use to fetch the public key set
-          host: keycloak
-          # -- Port to use to fetch the public key set
-          port: 80
-          # -- Path to use to fetch the public key set
-          path: /auth/realms/lamassu/protocol/openid-connect/certs
+          # -- URI to use to fetch the public key set
+          uri: http://keycloak/auth/realms/lamassu/protocol/openid-connect/certs
   authorization:
     # -- Claim to use to find and filter the user's roles
     rolesClaim: realm_access.roles

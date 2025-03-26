@@ -22,7 +22,7 @@ spec:
     {{- range $.Values.auth.oidc.apiGateway.jwks }}
       - name: {{ .name }}
         remoteJWKS:
-          uri: "{{ .protocol }}://{{ .host }}.{{ $.Release.Namespace }}:{{ .port }}{{ .path }}"
+          uri: "{{ .uri }}"
     {{- end }}
     
   authorization:
