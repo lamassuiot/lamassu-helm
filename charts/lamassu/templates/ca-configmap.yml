@@ -41,7 +41,7 @@ data:
       engines:      
         {{ .Values.services.ca.cryptoEngines.engines | toYaml | indent 4 | nindent 4 | trim  }}
         
-    crypto_monitoring:
+    certificate_monitoring_job:
       enabled: true
       frequency: "{{ .Values.services.ca.monitoring.frequency }}"
       automatic_ca_rotation:
