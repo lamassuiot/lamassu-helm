@@ -36,6 +36,7 @@ data:
       password: "{{ $.Values.postgres.password }}"
 
     crypto_engines:
+      migrate_keys_format: false
       log_level: "trace"
       default_id: {{ .Values.services.ca.cryptoEngines.defaultEngineID }}
       engines:      
@@ -47,6 +48,7 @@ data:
       automatic_ca_rotation:
         enabled: false
         renewal_delta: "1d"
+    
         
     va_server_domains:
     {{ range $.Values.services.ca.domains }}
