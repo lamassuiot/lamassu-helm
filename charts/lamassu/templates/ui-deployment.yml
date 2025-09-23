@@ -24,7 +24,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: 80
             initialDelaySeconds: 3
             periodSeconds: 3
           env:
@@ -32,20 +32,19 @@ spec:
               value: {{.Chart.Version}}
             - name: HELM_REVISION
               value: "{{.Release.Revision}}"
-            - name: DOMAIN
-              value: "${window.location.host}"
+            - name: LAMASSU_API
+              value: "https://${window.location.host}/api"
             - name: OIDC_ENABLED
               value: "true"
             - name: OIDC_AUTHORITY
               value: {{.Values.auth.oidc.frontend.authority}}
             - name: OIDC_CLIENT_ID
               value: {{.Values.auth.oidc.frontend.clientId}}
-            - name: COGNITO_ENABLED
-              value: "{{.Values.auth.oidc.frontend.awsCognito.enabled}}"
-            - name: COGNITO_HOSTED_UI_DOMAIN
-              value: {{.Values.auth.oidc.frontend.awsCognito.hostedUiDomain}}
             - name: CLOUD_CONNECTORS
               value: "[{{- range $index, $element := .Values.services.connectors -}}{{- if $index }}, {{ end }}\"{{ $element.id }}\"{{- end }}]"
+            - name: UI_FOOTER_ENABLED
+              value: "false"
+
           ports:
-            - containerPort: 8080
+            - containerPort: 80
       restartPolicy: Always
