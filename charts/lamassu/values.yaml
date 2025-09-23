@@ -55,11 +55,6 @@ auth:
       clientId: "frontend"
       # -- URL pointing to the OIDC provider's base path to build the OIDC well-known URL (This is the complete URL preceding the "/.well-known/openid-configuration" URL). Can be a JS expression
       authority: https://${window.location.host}/auth/realms/lamassu
-      awsCognito:
-        # -- Enable AWS Cognito as the OIDC provider for the frontend
-        enabled: false
-        # -- AWS Cognito Hosted UI Domain
-        hostedUiDomain: ""
     apiGateway:
       # -- URL pointing to the issuer's public key set to validate the JWT tokens.
       jwks:
