@@ -326,7 +326,7 @@ gateway:
 EOF
 
 export DOMAIN=$DOMAIN
-yq -i '.services.ca.domain = (env(DOMAIN))' lamassu.yaml
+yq -i '.services.ca.domains = [env(DOMAIN)]' lamassu.yaml
 
 export IP_LIST="$(hostname -I)"
 export HTTPS_PORT=$HTTPS_PORT
