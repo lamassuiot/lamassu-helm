@@ -43,7 +43,7 @@ spec:
             - name: CLOUD_CONNECTORS
               value: "[{{- range $index, $element := .Values.services.connectors -}}{{- if $index }}, {{ end }}\"{{ $element.id }}\"{{- end }}]"
             - name: UI_FOOTER_ENABLED
-              value: false
+              value: "false"
 
           ports:
             - containerPort: 8080

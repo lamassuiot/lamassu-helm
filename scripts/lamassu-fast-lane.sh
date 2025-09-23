@@ -314,10 +314,7 @@ auth:
     apiGateway:
       jwks:
         - name: oidc-authn
-          protocol: http
-          host: auth-keycloak
-          port: 80
-          path: /auth/realms/lamassu/protocol/openid-connect/certs
+          uri: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
 
 gateway:
   extraRouting:
@@ -730,6 +727,7 @@ function check_microk8s_minimum_requirements() {
     is_microk8s_addon_enabled hostpath-storage
     is_microk8s_addon_enabled dns
     is_microk8s_addon_enabled cert-manager
+    check_envoy_gateway_helm
 }
 
 function init() {
@@ -772,6 +770,16 @@ function is_microk8s_addon_enabled() {
         echo "✅ $1 addon enabled"
     else
         echo "$1: Addon not enabled. Exiting"
+        exit 1
+    fi
+}
+
+function check_envoy_gateway_helm() {
+    if $kube $helm list -n envoy-gateway-system | grep -q "^eg\s"; then
+        echo "✅ Envoy Gateway (eg) Helm release found"
+    else
+        echo "Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
+        echo "Install it with: helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace"
         exit 1
     fi
 }
