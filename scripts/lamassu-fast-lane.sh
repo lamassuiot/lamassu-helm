@@ -336,6 +336,9 @@ yq -i '.gateway.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
 yq -i '.gateway.ports.https = env(HTTPS_PORT)' lamassu.yaml
 yq -i '.gateway.ports.http = env(HTTP_PORT)' lamassu.yaml
 
+export NAMESPACE=$NAMESPACE
+yq -i '.auth.oidc.apiGateway.jwks[0].uri = "http://auth-keycloak." + env(NAMESPACE) + "/auth/realms/lamassu/protocol/openid-connect/certs"' lamassu.yaml
+
 # Check if TLS_CRT and TLS_KEY are not empty
 if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
     echo -e "${ORANGE}Deploying Lamassu with EXTERNAL TLS Certificates${NOCOLOR}" 
