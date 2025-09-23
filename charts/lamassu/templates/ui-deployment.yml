@@ -33,7 +33,7 @@ spec:
             - name: HELM_REVISION
               value: "{{.Release.Revision}}"
             - name: LAMASSU_API
-              value: "${window.location.host}/api"
+              value: "https://${window.location.host}/api"
             - name: OIDC_ENABLED
               value: "true"
             - name: OIDC_AUTHORITY
