@@ -45,4 +45,4 @@ jobs:
           kubectl get gtw -A
       - name: Run helm tests
         run: |
-          helm test -n lamassu-ci lamassu
+          helm test -n lamassu-ci lamassu --logs
