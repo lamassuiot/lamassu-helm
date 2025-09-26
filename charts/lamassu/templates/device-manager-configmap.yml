@@ -26,19 +26,6 @@ data:
         enabled: true
         username: "{{ .Values.amqp.username }}"
         password: "{{ .Values.amqp.password }}"
-        
-    subscriber_dlq_event_bus:
-      log_level: "debug"
-      enabled: true
-      provider: amqp
-      protocol: amqp #amqp | amqps
-      hostname: {{ .Values.amqp.hostname }}
-      port: {{ .Values.amqp.port }}
-      exchange: lamassu-dlq
-      basic_auth:
-        enabled: true
-        username: "{{ .Values.amqp.username }}"
-        password: "{{ .Values.amqp.password }}"
 
     publisher_event_bus:
       log_level: "debug"
