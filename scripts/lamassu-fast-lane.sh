@@ -506,7 +506,7 @@ extraVolumeMounts:
 initContainers:
 - name: init-custom-theme
   image: curlimages/curl:8.10.1
-  command: ['sh', '-c', 'curl -L -f -S -o /extensions/lamassu-theme.jar https://github.com/lamassuiot/keycloak-theme/releases/download/1.0.0/keycloak-theme-for-kc-22-and-above.jar']
+  command: ['sh', '-c', 'curl -L -f -S -o /extensions/lamassu-theme.jar https://github.com/lamassuiot/keycloak-theme/releases/download/2.0.0/keycloak-theme-for-kc-22-to-25.jar']
   volumeMounts:  
   - mountPath: "/extensions"
     name: extensions
