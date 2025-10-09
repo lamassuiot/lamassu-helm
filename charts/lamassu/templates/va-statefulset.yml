@@ -28,6 +28,9 @@ spec:
               port: 8085
             initialDelaySeconds: 3
             periodSeconds: 3
+          env:
+            - name: TMPDIR
+              value: /data/crl
           volumeMounts:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
