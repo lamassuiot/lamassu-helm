@@ -1,5 +1,9 @@
 # Intended for helm version 16.0.14
 fullnameOverride: "rabbitmq"
+
+global:
+  allowInsecureImages: true
+
 image:
   registry: docker.io
   repository: bitnamilegacy/rabbitmq
