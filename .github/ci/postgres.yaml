@@ -6,7 +6,8 @@ image:
   tag: 17.6.0-debian-12-r4
 
 global:
-  allowInsecureImages: true
+  security:
+    allowInsecureImages: true
   postgresql:
     auth:
       username: admin

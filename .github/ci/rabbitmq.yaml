@@ -2,8 +2,9 @@
 fullnameOverride: "rabbitmq"
 
 global:
-  allowInsecureImages: true
-
+  security:
+    allowInsecureImages: true
+    
 image:
   registry: docker.io
   repository: bitnamilegacy/rabbitmq

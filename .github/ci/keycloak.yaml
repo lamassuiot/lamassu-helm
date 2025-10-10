@@ -5,8 +5,9 @@ image:
   tag: 26.3.3-debian-12-r0
 
 global:
-  allowInsecureImages: true
-  
+  security:
+    allowInsecureImages: true
+
 auth: 
   adminUser: "admin"
   adminPassword: "admin"
