@@ -64,9 +64,9 @@ jobs:
               controllerName: gateway.envoyproxy.io/gatewayclass-controller
           EOF
 
-          helm install postgres bitnami/postgresql --version 15.5.11 -n lamassu-test -f .github/ci/postgres.yaml --wait
-          helm install auth bitnami/keycloak --version 22.1.1 -n lamassu-test -f .github/ci/keycloak.yaml --wait
-          helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test --set fullnameOverride=rabbitmq --set auth.username=admin --set auth.password=admin
+          helm install postgres bitnami/postgresql --version 16.7.27 -n lamassu-test -f .github/ci/postgres.yaml --wait
+          helm install auth bitnami/keycloak --version 25.2.0 -n lamassu-test -f .github/ci/keycloak.yaml --wait
+          helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait
 
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
