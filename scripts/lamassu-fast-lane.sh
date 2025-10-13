@@ -561,6 +561,7 @@ primary:
         CREATE DATABASE cloudproxy;
         CREATE DATABASE devicemanager;
         CREATE DATABASE dmsmanager;
+        CREATE DATABASE kms;
 EOF
 
     export POSTGRES_USER=$POSTGRES_USER
