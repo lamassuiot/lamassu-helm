@@ -70,10 +70,10 @@ auth:
 services:
   ui:
     # -- Docker image for the UI component
-    image: ghcr.io/lamassuiot/lamassu-ui:4.1.0
+    image: ghcr.io/lamassuiot/lamassu-ui:4.1.1
   va:
     # -- Docker image for the VA component
-    image: ghcr.io/lamassuiot/lamassu-va:3.6.0
+    image: ghcr.io/lamassuiot/lamassu-va:3.6.1
     fileStore:
       id: "local-1"
       type: "local"
@@ -87,7 +87,7 @@ services:
     domains:
       - dev.lamassu.io
     # -- Docker image for the CA component
-    image: ghcr.io/lamassuiot/lamassu-ca:3.6.0
+    image: ghcr.io/lamassuiot/lamassu-ca:3.6.1
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
@@ -103,13 +103,13 @@ services:
           storage_directory: "/crypto/fs"
   deviceManager:
     # -- Docker image for the Device Manager component
-    image: ghcr.io/lamassuiot/lamassu-devmanager:3.6.0
+    image: ghcr.io/lamassuiot/lamassu-devmanager:3.6.1
   dmsManager:
     # -- Docker image for the DMS Manager component
-    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.6.0
+    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.6.1
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:3.6.0
+    image: ghcr.io/lamassuiot/lamassu-alerts:3.6.1
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""
