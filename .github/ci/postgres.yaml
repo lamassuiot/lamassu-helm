@@ -1,9 +1,18 @@
+# Intended for helm version 16.7.27
 fullnameOverride: "postgresql"
+image:
+  registry: docker.io
+  repository: bitnamilegacy/postgresql
+  tag: 17.6.0-debian-12-r4
+
 global:
+  security:
+    allowInsecureImages: true
   postgresql:
     auth:
       username: admin
       password: admin
+
 primary:
   initdb:
     scripts:
@@ -15,3 +24,4 @@ primary:
         CREATE DATABASE cloudproxy;
         CREATE DATABASE devicemanager;
         CREATE DATABASE dmsmanager;
+        CREATE DATABASE kms;

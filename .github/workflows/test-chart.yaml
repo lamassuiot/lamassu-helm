@@ -43,12 +43,14 @@ jobs:
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         uses: helm/kind-action@v1.12.0
+        with:
+          wait: 180s
+          verbosity: 10
 
       - name: Prepare kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         run: |
           kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.3/cert-manager.yaml
-          kubectl create namespace lamassu-test
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
           helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait
@@ -60,10 +62,11 @@ jobs:
             spec:
               controllerName: gateway.envoyproxy.io/gatewayclass-controller
           EOF
-
-          helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test --set fullnameOverride=rabbitmq --set auth.username=admin --set auth.password=admin
-          helm install postgres bitnami/postgresql --version 15.5.11 -n lamassu-test -f .github/ci/postgres.yaml --wait
-          helm install auth bitnami/keycloak --version 22.1.1 -n lamassu-test -f .github/ci/keycloak.yaml --wait
+                
+          kubectl create namespace lamassu-test
+          helm install postgres bitnami/postgresql --version 16.7.27 -n lamassu-test -f .github/ci/postgres.yaml --wait
+          helm install auth bitnami/keycloak --version 25.2.0 -n lamassu-test -f .github/ci/keycloak.yaml --wait
+          helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait
 
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'

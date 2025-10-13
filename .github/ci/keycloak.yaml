@@ -1,3 +1,13 @@
+# Intended for helm version 25.2.0
+image:
+  registry: docker.io
+  repository: bitnamilegacy/keycloak
+  tag: 26.3.3-debian-12-r0
+
+global:
+  security:
+    allowInsecureImages: true
+
 auth: 
   adminUser: "admin"
   adminPassword: "admin"
@@ -15,21 +25,22 @@ externalDatabase:
 logging:
   level: INFO
 
-extraVolumes:
-  - name: extensions
-    emptyDir: {}
+#extraVolumes:
+#  - name: extensions
+#    emptyDir: {}
 
-extraVolumeMounts: 
-  - name: extensions
-    mountPath: /opt/bitnami/keycloak/providers
+#extraVolumeMounts: 
+#  - name: extensions
+#    mountPath: /opt/bitnami/keycloak/providers
+
 
 initContainers:
-- name: init-custom-theme
-  image: curlimages/curl:8.10.1
-  command: ['sh', '-c', 'curl -L -f -S -o /extensions/lamassu-theme.jar https://github.com/lamassuiot/keycloak-theme/releases/download/1.0.0/keycloak-theme-for-kc-22-and-above.jar']
-  volumeMounts:  
-  - mountPath: "/extensions"
-    name: extensions
+  - name: init-custom-theme
+    image: curlimages/curl:8.10.1
+    command: ['sh', '-c', 'curl -L -f -S -o /opt/bitnami/keycloak/providers/lamassu-theme.jar https://github.com/lamassuiot/keycloak-theme/releases/download/1.0.0/keycloak-theme-for-kc-22-and-above.jar']
+    volumeMounts:
+      - name: empty-dir
+        mountPath: /opt/bitnami/keycloak/providers
 
 httpRelativePath: /auth/
 proxy: reencrypt
@@ -49,6 +60,10 @@ extraEnvVars:
 
 keycloakConfigCli:
   enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/keycloak-config-cli
+    tag: 6.4.0-debian-12-r11
   configuration:
     realm-configuration.yaml: |
       realm: lamassu
