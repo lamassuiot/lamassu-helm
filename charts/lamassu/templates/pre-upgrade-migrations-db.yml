@@ -60,7 +60,7 @@ spec:
                     echo "  >> Database '$db' already exists. Skipping creation."
                   else
                     echo "  >> Database '$db' does not exist. Creating..."
-                    PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -c "CREATE DATABASE $db;"
+                    PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -c "CREATE DATABASE $db;"
                     echo "  >> Database '$db' created successfully."
                   fi
                 done
