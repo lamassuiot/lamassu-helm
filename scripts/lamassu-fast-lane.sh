@@ -53,7 +53,7 @@ function main() {
     fi
 
     if [ "$OFFLINE" = true ]; then
-        echo -e "${ORANGE}Offline mode enabled. Images must be already imported${NOCOLOR}" 
+        echo -e "${ORANGE}Offline mode enabled. Images must be already imported${NOCOLOR}"
 
         if [ "$OFFLINE_HELMCHART_LAMASSU" = "" ]; then
             echo -e "\n${RED}Lamassu helm chart path is empty${NOCOLOR}"
@@ -72,7 +72,7 @@ function main() {
             exit 1
         fi
     else
-        echo -e "${ORANGE}ONLINE MODE ENABLED${NOCOLOR}" 
+        echo -e "${ORANGE}ONLINE MODE ENABLED${NOCOLOR}"
     fi
 
     echo -e "${BLUE}=== Installing Lamassu IoT using Fast Lane ===${NOCOLOR}"
@@ -206,7 +206,7 @@ function process_flags() {
 
             shift
             ;;
-            
+
         --https-port)
             if ! has_argument $@; then
                   echo -e "\n${RED}HTTPS port not specified.${NOCOLOR}" >&2
@@ -217,7 +217,7 @@ function process_flags() {
 
             shift
             ;;
-            
+
         --http-port)
             if ! has_argument $@; then
                   echo -e "\n${RED}HTTP port not specified.${NOCOLOR}" >&2
@@ -228,7 +228,7 @@ function process_flags() {
 
             shift
             ;;
-            
+
         -ns | --namespace*)
             if ! has_argument $@; then
             echo -e "\n${RED}Namespace not specified.${NOCOLOR}" >&2
@@ -259,7 +259,7 @@ function process_flags() {
             fi
             LAMASSU_USE_LOCAL_PATH=true
             LAMASSU_CHART_PATH=$(extract_argument $@)
-            
+
             shift
             ;;
         *)
@@ -341,9 +341,9 @@ yq -i '.auth.oidc.apiGateway.jwks[0].uri = "http://auth-keycloak." + env(NAMESPA
 
 # Check if TLS_CRT and TLS_KEY are not empty
 if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
-    echo -e "${ORANGE}Deploying Lamassu with EXTERNAL TLS Certificates${NOCOLOR}" 
+    echo -e "${ORANGE}Deploying Lamassu with EXTERNAL TLS Certificates${NOCOLOR}"
 
-    $kube $kubectl create secret tls downstream-provided-crt --cert=$TLS_CRT --key=$TLS_KEY -n $NAMESPACE 
+    $kube $kubectl create secret tls downstream-provided-crt --cert=$TLS_CRT --key=$TLS_KEY -n $NAMESPACE
 
     cat >tls.yaml <<"EOF"
 tls:
@@ -372,7 +372,7 @@ fi
     yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
     yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
     yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
-  
+
 
     helm_path=$LAMASSU_CHART_PATH
     if [ "$OFFLINE" = false ]; then
@@ -381,7 +381,7 @@ fi
       else
         echo -e "${ORANGE}Using local chart path ${LAMASSU_CHART_PATH} ${NOCOLOR}"
       fi
-    else 
+    else
         cat >offline.yaml <<"EOF"
 global:
   imagePullPolicy: Never
@@ -411,11 +411,33 @@ function install_rabbitmq() {
     if [ "$OFFLINE" = false ]; then
         $kube $helm repo add bitnami https://charts.bitnami.com/bitnami
         $kube $helm repo update
-    else 
+    else
         helm_path=$OFFLINE_HELMCHART_RABBITMQ
     fi
+    cat >rabbitmq.yaml <<"EOF"
+fullnameOverride: "rabbitmq"
 
-    $kube $helm install rabbitmq $helm_path --version 12.6.0 -n $NAMESPACE --set fullnameOverride=rabbitmq --set auth.username=$RABBIT_USER --set auth.password=$RABBIT_PWD  --wait
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/rabbitmq
+  #tag: 4.1.3-debian-12-r1
+
+auth:
+  username:
+  password:
+EOF
+
+   export RABBIT_USER=$RABBIT_USER
+   export RABBIT_PWD=$RABBIT_PWD
+
+   yq -i '.auth.username = env(RABBIT_USER)' rabbitmq.yaml
+   yq -i '.auth.password = env(RABBIT_PWD)' rabbitmq.yaml
+   
+   $kube $helm install rabbitmq $helm_path --version 12.6.0 -n $NAMESPACE -f rabbitmq.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}RabbitMQ installed${NOCOLOR}"
     else
@@ -426,7 +448,12 @@ function install_rabbitmq() {
 
 function install_keycloak() {
     cat >keycloak.yaml <<"EOF"
-auth: 
+image:
+  registry: docker.io
+  repository: bitnamilegacy/keycloak
+  tag: 25.0.2-debian-12-r1
+
+auth:
   adminUser: ""
   adminPassword: ""
 
@@ -463,6 +490,10 @@ extraEnvVars:
 
 keycloakConfigCli:
   enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/keycloak-config-cli
+    tag: 6.1.6-debian-12-r0
   configuration:
     realm-configuration.yaml: |
       realm: lamassu
@@ -485,7 +516,7 @@ keycloakConfigCli:
       clients:
       - clientId: frontend
         enabled: true
-        redirectUris: 
+        redirectUris:
         - "/*"
         webOrigins:
         - "/*"
@@ -529,7 +560,7 @@ EOF
     if [ "$OFFLINE" = false ]; then
         $kube $helm repo add bitnami https://charts.bitnami.com/bitnami
         $kube $helm repo update
-    else 
+    else
         helm_path=$OFFLINE_HELMCHART_KEYCLOAK
     fi
 
@@ -545,7 +576,12 @@ EOF
 function install_postgresql() {
     cat >postgres.yaml <<"EOF"
 fullnameOverride: "postgresql"
+image:
+  registry: docker.io
+  repository: bitnamilegacy/postgresql
 global:
+  security:
+    allowInsecureImages: true
   postgresql:
     auth:
       username: ""
@@ -572,11 +608,11 @@ EOF
     helm_path=bitnami/postgresql
     if [ "$OFFLINE" = false ]; then
         $kube $helm repo add bitnami https://charts.bitnami.com/bitnami
-    else 
+    else
         helm_path=$OFFLINE_HELMCHART_POSTGRES
     fi
 
-    $kube $helm install postgres $helm_path -n $NAMESPACE -f postgres.yaml --wait
+    $kube $helm install postgres $helm_path -n $NAMESPACE --version 16.7.27 -f postgres.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}PostgreSQL installed${NOCOLOR}"
     else
@@ -613,13 +649,13 @@ function request_config_data() {
         request_keycloak_pwd
         request_namespace
     else
-        echo -e "${ORANGE}Non-interactive mode enabled. Credentials will be auto generated${NOCOLOR}" 
+        echo -e "${ORANGE}Non-interactive mode enabled. Credentials will be auto generated${NOCOLOR}"
         if [ "$DOMAIN_OVERRIDE" = false ]; then
             echo -e "${ORANGE}Domain not provied. Default will be used: $DOMAIN${NOCOLOR}"
         fi
         if [ "$NAMESPACE_OVERRIDE" = false ]; then
             echo -e "${ORANGE}Namespace not provied. Default will be used: $NAMESPACE${NOCOLOR}"
-        fi        
+        fi
     fi
 }
 
