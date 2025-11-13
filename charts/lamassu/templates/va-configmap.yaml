@@ -73,6 +73,13 @@ data:
       username: "{{ $.Values.postgres.username }}"
       password: "{{ $.Values.postgres.password }}"
 
+    kms_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: kms
+      port: 8085
+    
     ca_client:
       log_level: debug
       auth_mode: "noauth"

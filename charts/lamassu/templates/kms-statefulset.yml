@@ -1,30 +1,37 @@
+{{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
 apiVersion: apps/v1
+{{- if $hasFilesystemEngine }}
 kind: StatefulSet
+{{- else }}
+kind: Deployment
+{{- end }}
 metadata:  
-  name: ca
+  name: kms
   namespace: {{.Release.Namespace}}
   annotations:
     reloader.stakater.com/auto: "true"
   labels:
-    app: ca
+    app: kms
 spec:
   replicas: 1
-  serviceName: "ca"
+{{- if $hasFilesystemEngine }}
+  serviceName: "kms"
+{{- end }}
   selector:
     matchLabels:
-      app: ca
+      app: kms
   template:
     metadata:
       labels:
-        app: ca
+        app: kms
     spec:
       containers:
-        - name: ca
-          image: {{ .Values.services.ca.image }}
+        - name: kms
+          image: {{ .Values.services.kms.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
           tty: true
           env:
-            {{- range .Values.services.ca.cryptoEngines.engines }}
+            {{- range .Values.services.kms.cryptoEngines.engines }}
             {{- if eq .type "pkcs11" }}
             {{- if .module_extra_options.env }}
             {{- range $key, $value := .module_extra_options.env }}
@@ -52,9 +59,10 @@ spec:
       volumes:
         - name: api-config
           configMap:  
-            name: ca-config
+            name: kms-config
+{{- if $hasFilesystemEngine }}
   volumeClaimTemplates:
-  # If no FileSystem engine is defined, the PVC wont be used
+  # Filesystem engine is configured, using PVC for persistent storage
   - metadata:
       name: golang-engine-storage
     spec:
@@ -63,3 +71,4 @@ spec:
       resources:
         requests:
           storage: 1Gi
+{{- end }}
