@@ -91,8 +91,11 @@ services:
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
+  kms:
+    # -- Docker image for the KMS component
+    image: ghcr.io/lamassuiot/lamassu-kms:3.6.1
     cryptoEngines:
-      # -- Default engine ID to be used for the CA component
+      # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
       engines:
         - id: "filesystem-1"
@@ -126,5 +129,9 @@ services:
       # -- SMTP server port
       port: 25
   connectors:
+
 toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
+
+migrations:
+  image: ghcr.io/lamassuiot/lamassu-goose-lamassu:dev

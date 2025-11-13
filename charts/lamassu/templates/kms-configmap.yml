@@ -1,7 +1,7 @@
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: ca-config
+  name: kms-config
   namespace: {{.Release.Namespace}}
 data:
   config: |
@@ -35,22 +35,9 @@ data:
       username: "{{ $.Values.postgres.username }}"
       password: "{{ $.Values.postgres.password }}"
 
-    kms_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: kms
-      port: 8085
-        
-    certificate_monitoring_job:
-      enabled: true
-      frequency: "{{ .Values.services.ca.monitoring.frequency }}"
-      automatic_ca_rotation:
-        enabled: false
-        renewal_delta: "1d"
-    
-        
-    va_server_domains:
-    {{ range $.Values.services.ca.domains }}
-      - "{{ . }}/api/va"
-    {{ end }}
+    crypto_engines:
+      migrate_keys_format: false
+      log_level: "trace"
+      default_id: {{ .Values.services.kms.cryptoEngines.defaultEngineID }}
+      engines:      
+        {{ .Values.services.kms.cryptoEngines.engines | toYaml | indent 4 | nindent 4 | trim  }}
