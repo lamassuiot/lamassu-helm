@@ -18,14 +18,3 @@ Check if KMS has a filesystem crypto engine configured
   {{- end -}}
   {{- $hasFilesystem -}}
 {{- end -}}
-
-{{- define "app.migrations" -}}
-jobs:
-  - name: migration-v3.6.2
-    targetVersion: "3.6.2"
-    dbs:
-      - db: kms
-        migration_id: "20251031174938"
-      - db: ca
-        migration_id: "20251106120000"
-{{- end -}}
