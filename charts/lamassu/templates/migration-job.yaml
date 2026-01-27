@@ -1,17 +1,7 @@
-{{- $migrations := fromYaml (include "app.migrations" .) }}
-{{- $old := (and (lookup "v1" "ConfigMap" .Release.Namespace "app-version") 
-                 (lookup "v1" "ConfigMap" .Release.Namespace "app-version").data.version) | default "0.0.0" }}
-{{- $new := .Chart.AppVersion }}
-
-{{- range $index, $job := $migrations.jobs }}
-{{- if (and (semverCompare (printf "<%s" $job.targetVersion) $old)
-            (semverCompare (printf ">=%s" $job.targetVersion) $new)) }}
-{{- range $db := $job.dbs }}
----
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migration-{{ $job.name | replace "." "-" | replace "migration" "" }}-{{ $db.db }}
+  name: migration-db
   annotations:
     "helm.sh/hook": pre-upgrade
     "helm.sh/hook-weight": "{{ $index }}"
@@ -26,8 +16,7 @@ spec:
           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
           args:
             - "host={{ $.Values.postgres.hostname }} user={{ $.Values.postgres.username }} password={{ $.Values.postgres.password }} dbname={{ $db.db }} port={{ $.Values.postgres.port }} sslmode=disable"
-            - "up-to"
-            - "{{ $db.migration_id }}"
+            - "up"
       restartPolicy: OnFailure
 {{- end }}
 {{- end }}
