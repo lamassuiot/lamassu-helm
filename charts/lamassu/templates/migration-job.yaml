@@ -9,7 +9,7 @@ metadata:
 spec:
   template:
     spec:
-      restartPolicy: Never
+      restartPolicy: OnFailure
       containers:
         - name: migrate
           image: {{ $.Values.migrations.image }}
@@ -23,5 +23,5 @@ spec:
               port={{ $.Values.postgres.port }}
               sslmode=disable
             - "up"
-      restartPolicy: OnFailure
+---
 {{- end }}
