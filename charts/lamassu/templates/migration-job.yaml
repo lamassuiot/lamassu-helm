@@ -1,7 +1,8 @@
+{{- range $i, $dbName := .Values.migrations.databases }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migration-db
+  name: migration-db-{{ $dbName }}
   annotations:
     "helm.sh/hook": pre-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
@@ -14,9 +15,13 @@ spec:
           image: {{ $.Values.migrations.image }}
           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
           args:
-            - "host={{ $.Values.postgres.hostname }} user={{ $.Values.postgres.username }} password={{ $.Values.postgres.password }} dbname={{ $db.db }} port={{ $.Values.postgres.port }} sslmode=disable"
+            - >-
+              host={{ $.Values.postgres.hostname }}
+              user={{ $.Values.postgres.username }}
+              password={{ $.Values.postgres.password }}
+              dbname={{ $dbName }}
+              port={{ $.Values.postgres.port }}
+              sslmode=disable
             - "up"
       restartPolicy: OnFailure
-{{- end }}
-{{- end }}
 {{- end }}
