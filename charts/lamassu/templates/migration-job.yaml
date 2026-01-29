@@ -4,7 +4,6 @@ metadata:
   name: migration-db
   annotations:
     "helm.sh/hook": pre-upgrade
-    "helm.sh/hook-weight": "{{ $index }}"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
