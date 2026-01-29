@@ -815,12 +815,35 @@ function is_microk8s_addon_enabled() {
 }
 
 function check_envoy_gateway_helm() {
+    # 1. Check Helm Release
     if $kube $helm list -n envoy-gateway-system | grep -q "^eg\s"; then
         echo "✅ Envoy Gateway (eg) Helm release found"
     else
-        echo "Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
-        echo "Install it with: helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace"
-        exit 1
+        echo "❌ Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
+        echo "Installing Envoy Gateway v1.3.0..."
+        $kube $helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace
+    fi
+
+    # 2. Check/Create GatewayClass
+    if $kube kubectl get gatewayclass eg >/dev/null 2>&1; then
+        echo "✅ GatewayClass 'eg' already exists"
+    else
+        echo "Missing GatewayClass 'eg'. Applying now..."
+        cat <<EOF | $kube kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+EOF
+        
+        if [ $? -eq 0 ]; then
+            echo "✅ GatewayClass 'eg' created successfully"
+        else
+            echo "❌ Failed to create GatewayClass 'eg'. Ensure Gateway API CRDs are installed."
+            exit 1
+        fi
     fi
 }
 
