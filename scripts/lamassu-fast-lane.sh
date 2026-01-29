@@ -822,7 +822,12 @@ function check_envoy_gateway_helm() {
     else
         echo "❌ Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
         echo "Installing Envoy Gateway v1.3.0..."
-        $kube $helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace
+        if $kube $helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace; then
+            echo "✅ Envoy Gateway Helm chart 'eg' installed successfully"
+        else
+            echo "❌ Failed to install Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
+            exit 1
+        fi
     fi
 
     # 2. Check/Create GatewayClass
