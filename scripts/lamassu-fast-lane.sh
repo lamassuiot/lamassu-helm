@@ -498,6 +498,7 @@ keycloakConfigCli:
     realm-configuration.yaml: |
       realm: lamassu
       enabled: true
+      loginTheme: keycloakify-starter
       roles:
         realm:
         - name: pki-admin
