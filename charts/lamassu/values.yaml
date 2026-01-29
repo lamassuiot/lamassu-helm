@@ -135,3 +135,12 @@ toolbox:
 
 migrations:
   image: ghcr.io/lamassuiot/lamassu-db-migration:3.6.1
+  databases:
+    - auth
+    - alerts
+    - ca
+    - va
+    - cloudproxy
+    - devicemanager
+    - dmsmanager
+    - kms
