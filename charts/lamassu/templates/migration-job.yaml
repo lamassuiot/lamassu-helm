@@ -1,4 +1,7 @@
 {{- range $i, $dbName := .Values.migrations.databases }}
+{{- if $i }}
+---
+{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
