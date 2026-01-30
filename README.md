@@ -2,6 +2,47 @@
 
 This repository contains Helm charts for deploying and managing Lamassu services within Kubernetes environments. Lamassu is an IoT device identity management platform that provides certificate management and device lifecycle management capabilities.
 
+## Version History
+
+This table shows the relationship between Helm chart versions, application versions, and the Docker image versions used for each component.
+
+### Version 3.x Series
+
+| Helm Chart | App Version | UI Image | Backend Images (CA/VA/DevMgr/DMS/Alerts) | KMS Image | Notes |
+|------------|-------------|----------|-------------------------------------------|-----------|-------|
+| 3.7.0 | 3.7.0 | 4.2.0 | 3.7.0 | 3.7.0 | **NEW**: KMS service introduced as first-class service |
+| 3.6.1 | 3.6.1 | 4.1.1 | 3.6.1 | N/A | Latest stable release on main branch |
+| 3.6.0 | 3.6.0 | 4.1.0 | 3.6.0 | N/A | |
+| 3.5.2 | 3.5.2 | 4.0.5 | 3.5.2 | N/A | |
+| 3.5.1 | 3.5.1 | 4.0.3 | 3.5.1 | N/A | |
+| 3.5.0 | 3.5.0 | 4.0.2 | 3.5.0 | N/A | |
+| 3.4.0 | 3.4.0 | 3.4.0 | 3.4.0 | N/A | |
+| 3.3.1 | 3.3.1 | 3.3.1 | 3.3.1 | N/A | Multiple OIDC providers support |
+| 3.3.0 | 3.3.0 | 3.3.0 | 3.3.0 | N/A | **MAJOR**: Migration from Ingress to Envoy Gateway |
+| 3.2.1 | 3.2.2 | 3.2.1 | 3.2.2 | N/A | Automatic DB migrations introduced |
+| 3.2.0 | 3.2.2 | 3.2.1 | 3.2.2 | N/A | Crypto engines restructure |
+| 3.1.1 | 2.8.0 | 3.1.0 | 2.8.0 | N/A | |
+| 3.1.0 | 2.8.0 | 3.1.0 | 2.8.0 | N/A | |
+| 3.0.0 | 2.7.0 | 3.0.0 | 2.7.0 | N/A | **MAJOR**: First 3.x release |
+
+**Component Legend:**
+- **UI Image**: Frontend web application (`lamassu-ui`)
+- **Backend Images**: Core services with synchronized versions:
+  - `lamassu-ca`: Certificate Authority service
+  - `lamassu-va`: Validation Authority service  
+  - `lamassu-devmanager`: Device Manager service
+  - `lamassu-dmsmanager`: DMS Manager service
+  - `lamassu-alerts`: Alerts service
+- **KMS Image**: Key Management Service (`lamassu-kms`) - introduced in 3.7.0
+
+### Migration Guides
+
+For detailed migration instructions between versions, see the CHANGELOG directory:
+- [3.3.2 → 3.7.0](charts/lamassu/CHANGELOG/3.3.2->3.7.0.md) - KMS service introduction
+- [3.3.0 → 3.3.1](charts/lamassu/CHANGELOG/3.3.0->3.3.1.md) - Multiple OIDC providers
+- [3.2.X → 3.3.0](charts/lamassu/CHANGELOG/3.2.X->3.3.0.md) - Ingress to Envoy Gateway migration
+- [3.0.X → 3.2.X](charts/lamassu/CHANGELOG/3.0.X->3.2.X.md) - Crypto engines restructure
+
 ## Repository Structure
 
 ```

@@ -70,10 +70,10 @@ auth:
 services:
   ui:
     # -- Docker image for the UI component
-    image: ghcr.io/lamassuiot/lamassu-ui:4.1.1
+    image: ghcr.io/lamassuiot/lamassu-ui:4.2.0
   va:
     # -- Docker image for the VA component
-    image: ghcr.io/lamassuiot/lamassu-va:3.6.1
+    image: ghcr.io/lamassuiot/lamassu-va:3.7.0
     fileStore:
       id: "local-1"
       type: "local"
@@ -87,12 +87,15 @@ services:
     domains:
       - dev.lamassu.io
     # -- Docker image for the CA component
-    image: ghcr.io/lamassuiot/lamassu-ca:3.6.1
+    image: ghcr.io/lamassuiot/lamassu-ca:3.7.0
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
+  kms:
+    # -- Docker image for the KMS component
+    image: ghcr.io/lamassuiot/lamassu-kms:3.7.0
     cryptoEngines:
-      # -- Default engine ID to be used for the CA component
+      # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
       engines:
         - id: "filesystem-1"
@@ -103,13 +106,13 @@ services:
           storage_directory: "/crypto/fs"
   deviceManager:
     # -- Docker image for the Device Manager component
-    image: ghcr.io/lamassuiot/lamassu-devmanager:3.6.1
+    image: ghcr.io/lamassuiot/lamassu-devmanager:3.7.0
   dmsManager:
     # -- Docker image for the DMS Manager component
-    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.6.1
+    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.7.0
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:3.6.1
+    image: ghcr.io/lamassuiot/lamassu-alerts:3.7.0
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""
@@ -126,5 +129,18 @@ services:
       # -- SMTP server port
       port: 25
   connectors:
+
 toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
+
+migrations:
+  image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.7.0
+  databases:
+    - auth
+    - alerts
+    - ca
+    - va
+    - cloudproxy
+    - devicemanager
+    - dmsmanager
+    - kms

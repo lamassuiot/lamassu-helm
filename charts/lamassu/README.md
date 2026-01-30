@@ -13,73 +13,75 @@ PKI for Industrial IoT for Kubernetes
 * <https://github.com/lamassuiot>
 * <https://github.com/lamassuiot/lamassu-kubernetes-chart>
 
+
 ## Values
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| amqp.hostname | string | `""` | Hostname for the AMQP server |
-| amqp.password | string | `""` | Password to be used to authenticate with the AMQP server |
-| amqp.port | int | `5672` | Port for the AMQP server |
-| amqp.tls | bool | `false` | Enable AMQP over TLS (aka AMPQS) |
-| amqp.username | string | `""` | Username to be used to authenticate with the AMQP server |
-| auth.authorization.roles.admin | string | `"pki-admin"` | Role association to be used to authorize the user as LAMASSU's admin |
-| auth.authorization.roles.operator | string | `"operator"` | Role association to be used to authorize the user as LAMASSU's operator |
-| auth.authorization.rolesClaim | string | `"realm_access.roles"` | Claim to use to find and filter the user's roles |
-| auth.oidc.apiGateway.jwksUrl | string | `"https://auth:8443/auth/realms/lamassu/protocol/openid-connect/certs"` | URL pointing to the issuer's public key set to validate the JWT tokens. |
-| auth.oidc.frontend.authority | string | `"https://${window.location.host}/auth/realms/lamassu"` | URL pointing to the OIDC provider's base path to build the OIDC well-known URL (This is the complete URL preceding the "/.well-known/openid-configuration" URL). Can be a JS expression |
-| auth.oidc.frontend.awsCognito.enabled | bool | `false` | Enable AWS Cognito as the OIDC provider for the frontend |
-| auth.oidc.frontend.awsCognito.hostedUiDomain | string | `""` | AWS Cognito Hosted UI Domain |
-| auth.oidc.frontend.clientId | string | `"frontend"` | Client ID to be used as the OIDC client for the frontend |
-| debugMode | bool | `true` |  |
-| global.imagePullPolicy | string | `"Always"` |  |
-| ingress.annotations | string | `""` | Annotations to be added to the Ingress resource |
-| ingress.enabled | bool | `true` |  |
-| ingress.hostname | string | `"dev.lamassu.io"` | Hostname to be used for the Ingress resource to route all incoming traffic to the API Gateway |
-| postgres.hostname | string | `""` | Hostname for the PostgreSQL server |
-| postgres.password | string | `""` | Password to be used to authenticate with the PostgreSQL server |
-| postgres.port | int | `5432` | Port for the PostgreSQL server |
-| postgres.username | string | `""` | Username to be used to authenticate with the PostgreSQL server |
-| service.nodePorts.apiGateway | int | `nil` | Node port for the HTTP port from the API Gateway service |
-| service.nodePorts.apiGatewayTls | int | `nil` | Node port for the HTTP port from the API Gateway service |
-| service.type | string | `"ClusterIP"` |  |
-| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:2.5.1"` | Docker image for the Alerts component |
-| services.alerts.smtp_server.enable_ssl | bool | `true` | use TLS for the SMTP connection |
-| services.alerts.smtp_server.from | string | `""` | email address to use as the sender of the alerts |
+| global.imagePullPolicy | string | `"Always"` | Image pull policy for all containers |
+| **TLS Configuration** | | | |
+| tls.type | string | `"certManager"` | TLS certificate provider. Allowed values: `certManager`, `external` |
+| tls.certManagerOptions.clusterIssuer | string | `""` | CertManager ClusterIssuer to use to sign the certificate |
+| tls.certManagerOptions.issuer | string | `""` | CertManager Issuer to use (ignored if clusterIssuer is set) |
+| tls.certManagerOptions.certSpec.commonName | string | `"dev.lamassu.io"` | Common name for the certificate |
+| tls.certManagerOptions.certSpec.hostnames | list | `["dev.lamassu.io"]` | DNS names to include in the certificate |
+| tls.certManagerOptions.certSpec.addresses | list | `[]` | IP addresses to include in the certificate |
+| tls.certManagerOptions.certSpec.duration | string | `"2160h"` | Certificate validity duration (90 days) |
+| tls.externalOptions.secretName | string | `""` | Secret name for external TLS certificate (must have `tls.crt` and `tls.key` keys) |
+| **Gateway Configuration** | | | |
+| gateway.addresses | list | `[]` | IP addresses for Envoy Gateway (for non-LoadBalancer scenarios) |
+| gateway.ports.http | int | `80` | HTTP port for the Gateway |
+| gateway.ports.https | int | `443` | HTTPS port for the Gateway |
+| gateway.extraRouting | list | `[]` | Additional HTTP routes to expose through the Gateway |
+| **Database Configuration** | | | |
+| postgres.hostname | string | `""` | PostgreSQL server hostname |
+| postgres.port | int | `5432` | PostgreSQL server port |
+| postgres.username | string | `""` | PostgreSQL username |
+| postgres.password | string | `""` | PostgreSQL password |
+| **Message Queue Configuration** | | | |
+| amqp.hostname | string | `""` | AMQP server hostname |
+| amqp.port | int | `5672` | AMQP server port |
+| amqp.username | string | `""` | AMQP username |
+| amqp.password | string | `""` | AMQP password |
+| amqp.tls | bool | `false` | Enable AMQP over TLS (AMQPS) |
+| **Authentication & Authorization** | | | |
+| auth.oidc.frontend.clientId | string | `"frontend"` | OIDC client ID for the frontend |
+| auth.oidc.frontend.authority | string | `"https://${window.location.host}/auth/realms/lamassu"` | OIDC provider base URL (can be a JS expression) |
+| auth.oidc.apiGateway.jwks[0].name | string | `"oidc-authn"` | Name for the JWKS provider |
+| auth.oidc.apiGateway.jwks[0].uri | string | `"http://keycloak/..."` | URI to fetch the public key set for JWT validation |
+| auth.authorization.rolesClaim | string | `"realm_access.roles"` | JWT claim to extract user roles from |
+| auth.authorization.roles.admin | string | `"pki-admin"` | Role for Lamassu admin users |
+| **Service Images** | | | |
+| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:4.2.0"` | Docker image for UI component |
+| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:3.7.0"` | Docker image for CA component |
+| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:3.7.0"` | Docker image for VA component |
+| services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.7.0"` | Docker image for KMS component |
+| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.7.0"` | Docker image for Device Manager component |
+| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.7.0"` | Docker image for DMS Manager component |
+| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.7.0"` | Docker image for Alerts component |
+| **CA Service Configuration** | | | |
+| services.ca.domains | list | `["dev.lamassu.io"]` | Domains for signing/generating CAs and certificates |
+| services.ca.monitoring.frequency | string | `"* * * * *"` | CA health check frequency (CRON syntax, can include seconds) |
+| **VA Service Configuration** | | | |
+| services.va.fileStore.id | string | `"local-1"` | File store ID for VA |
+| services.va.fileStore.type | string | `"local"` | File store type |
+| services.va.fileStore.storageDirectory | string | `"/data/crl"` | Storage directory for CRLs |
+| services.va.job.crl.frequency | string | `"* * * * *"` | CRL computation job frequency (CRON syntax) |
+| **KMS Service Configuration** | | | |
+| services.kms.cryptoEngines.defaultEngineID | string | `"filesystem-1"` | Default crypto engine ID to use |
+| services.kms.cryptoEngines.engines[0].id | string | `"filesystem-1"` | Crypto engine ID |
+| services.kms.cryptoEngines.engines[0].type | string | `"filesystem"` | Engine type: `filesystem`, `pkcs11`, `hashicorp_vault`, `aws_kms`, `aws_secrets_manager` |
+| services.kms.cryptoEngines.engines[0].storage_directory | string | `"/crypto/fs"` | Storage directory for filesystem engine |
+| **Alerts Service Configuration** | | | |
+| services.alerts.smtp_server.from | string | `""` | Email address for alert sender |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
-| services.alerts.smtp_server.insecure | bool | `false` | skip TLS verification |
-| services.alerts.smtp_server.password | string | `""` | SMTP server password |
 | services.alerts.smtp_server.port | int | `25` | SMTP server port |
-| services.alerts.smtp_server.username | string | `""` | SMTP server username |
-| services.connectors.awsIoT.connectorID | string | `"aws.<account_id>"` | AWS IoT Connector ID. It is strongly recommended to use the aws.<account_id> format |
-| services.connectors.awsIoT.credentials.accessKeyId | string | `""` | AWS Access Key ID |
-| services.connectors.awsIoT.credentials.defaultRegion | string | `""` | AWS Region |
-| services.connectors.awsIoT.credentials.secretAccessKey | string | `""` | AWS Secret Access Key |
-| services.connectors.awsIoT.enabled | bool | `false` | Enable the AWS IoT Connector |
-| services.connectors.awsIoT.image | string | `"ghcr.io/lamassuiot/lamassu-aws-connector:2.5.1"` | Docker image for the AWS Connector component |
-| services.ca.domain | string | `"dev.lamassu.io"` | Domain to be used while signing/generating new CAs and certificates |
-| services.ca.engines.awsKms | string | `nil` |  |
-| services.ca.engines.awsSecretsManager | string | `nil` |  |
-| services.ca.engines.defaultEngineID | string | `"golang-1"` | Default engine ID to be used for the CA component |
-| services.ca.engines.golang[0].id | string | `"golang-1"` |  |
-| services.ca.engines.golang[0].metadata.prod-ready | string | `"false"` |  |
-| services.ca.engines.golang[0].storage_directory | string | `"/data"` |  |
-| services.ca.engines.hashicorpVault | string | `nil` |  |
-| services.ca.engines.pkcs11 | string | `nil` |  |
-| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:2.5.1"` | Docker image for the CA component |
-| services.ca.monitoring.frequency | string | `"* * * * *"` | Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term |
-| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:2.5.1"` | Docker image for the Device Manager component |
-| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:2.5.1"` | Docker image for the DMS Manager component |
-| services.keycloak.adminCreds.password | string | `"admin"` | Password for the Keycloak admin user (used by the master realm) |
-| services.keycloak.adminCreds.username | string | `"admin"` | Username for the Keycloak admin user (used by the master realm) |
-| services.keycloak.enabled | bool | `true` | If disabled, the internal Keycloak authentication component is disabled. An external one must be provided through the `auth.oidc` properties |
-| services.keycloak.image | string | `"ghcr.io/lamassuiot/keycloak:2.1.0"` | Docker image for keycloak component |
-| services.openPolicyAgent.image | string | `"openpolicyagent/opa:0.37.1-envoy"` | Docker image for the Open Policy Agent component |
-| services.openPolicyAgent.remLogger.image | string | `"ghcr.io/lamassuiot/opa-rem-logger:2.1.0"` | Docker image for the Remote Logger component |
-| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:2.5.2"` | Docker image for the UI component |
-| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:2.5.1"` | Docker image for the VA component |
-| tls.certManagerOptions.clusterIssuer | string | `""` | CertManager ClusterIssuer to use to sign the certificate for the API Gateway.  |
-| tls.certManagerOptions.duration | string | `"2160h"` | Duration for the certificate to be valid |
-| tls.certManagerOptions.issuer | string | `""` | CertManager Issuer to use to sign the certificate for the API Gateway. Ignored if `clusterIssuer` is set. If left empty, a self signed certificate will be used. |
-| tls.externalOptions.secretName | string | `""` | Secret name for the TLS certificate to be used for the API Gateway (the secret at least must have `tls.crt` and `tls.key` keys) |
-| tls.type | string | `"certManager"` | TLS certificate provider to use for the API Gateway. Allowed values are: `certManager`, `external` |
+| services.alerts.smtp_server.username | string | `""` | SMTP username |
+| services.alerts.smtp_server.password | string | `""` | SMTP password |
+| services.alerts.smtp_server.enable_ssl | bool | `true` | Enable TLS for SMTP connection |
+| services.alerts.smtp_server.insecure | bool | `false` | Skip TLS certificate verification |
+| **Toolbox & Migrations** | | | |
+| toolbox.image | string | `"ghcr.io/lamassuiot/toolbox:2.2.0"` | Docker image for toolbox utility |
+| migrations.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.7.0"` | Docker image for database migrations |
+| migrations.databases | list | `["auth", "alerts", "ca", "va", "cloudproxy", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
 
