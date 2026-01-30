@@ -70,7 +70,7 @@ auth:
 services:
   ui:
     # -- Docker image for the UI component
-    image: "ghcr.io/lamassuiot/lamassu-ui:4.2.0\t"
+    image: "ghcr.io/lamassuiot/lamassu-ui:4.2.0"
   va:
     # -- Docker image for the VA component
     image: ghcr.io/lamassuiot/lamassu-va:3.7.0
