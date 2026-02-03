@@ -21,18 +21,18 @@ TLS_KEY=
 
 POSTGRES_USER=admin
 POSTGRES_PWD=$(
-    shuf -er -n30  {A..Z} {a..z} {0..9} {.,@,$} | tr -d '\n'
+    shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
     echo
 )
 RABBIT_USER=admin
 RABBIT_PWD=$(
-    shuf -er -n30  {A..Z} {a..z} {0..9} {.,@,$} | tr -d '\n'
+    shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
     echo
 )
 
 KEYCLOAK_USER=admin
 KEYCLOAK_PWD=$(
-    shuf -er -n30  {A..Z} {a..z} {0..9} {.,@,$} | tr -d '\n'
+    shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
     echo
 )
 
