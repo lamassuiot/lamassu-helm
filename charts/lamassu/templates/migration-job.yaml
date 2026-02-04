@@ -6,7 +6,7 @@ metadata:
   name: migration-db-{{ $dbName }}
   namespace: {{ $.Release.Namespace }}
   annotations:
-    "helm.sh/hook": pre-upgrade, pre-install
+    "helm.sh/hook": pre-upgrade,pre-install
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
