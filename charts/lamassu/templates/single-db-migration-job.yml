@@ -1,0 +1,192 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "single-db-migration-job-{{ .Release.Name }}"
+  annotations:
+    # This hook runs before upgrade to migrate from separate databases to single database with schemas
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-3"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "single-db-migration-job-{{ .Release.Name }}"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pre-upgrade-schema-migration-job
+          image: docker.io/bitnamilegacy/postgresql:17
+          env:
+            - name: POSTGRES_USER
+              value: "{{ .Values.postgres.username }}"
+            - name: POSTGRES_PASSWORD
+              value: "{{ .Values.postgres.password }}"
+            - name: POSTGRES_HOST
+              value: "{{ .Values.postgres.hostname }}"
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+
+              echo "=========================================="
+              echo "Starting Database Schema Migration"
+              echo "From: Separate databases per service"
+              echo "To: Single 'lamassu' database with schemas"
+              echo "=========================================="
+              echo ""
+
+              # List of services and their databases
+              SERVICES="{{ join " " .Values.migrations.databases }}"
+              TARGET_DB="lamassu"
+
+              # Function to check if database exists
+              check_db_exists() {
+                local db_name=$1
+                local result=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='$db_name'" | tr -d ' ')
+                echo "$result"
+              }
+
+              # Function to check if schema exists
+              check_schema_exists() {
+                local db_name=$1
+                local schema_name=$2
+                local result=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$db_name" -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name='$schema_name'" | tr -d ' ')
+                echo "$result"
+              }
+
+              # Function to check if database has any tables
+              check_db_has_tables() {
+                local db_name=$1
+                local count=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$db_name" -tc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'" | tr -d ' ')
+                echo "$count"
+              }
+
+              # Step 1: Check if migration has already been performed
+              echo "Step 1: Checking if migration has already been performed..."
+              if [ "$(check_db_exists $TARGET_DB)" == "1" ]; then
+                echo "  >> Target database '$TARGET_DB' already exists."
+                
+                # Check if all schemas exist
+                all_schemas_exist=true
+                for service in $SERVICES; do
+                  if [ "$(check_schema_exists $TARGET_DB $service)" != "1" ]; then
+                    all_schemas_exist=false
+                    break
+                  fi
+                done
+                
+                if [ "$all_schemas_exist" == "true" ]; then
+                  echo "  >> All service schemas already exist in '$TARGET_DB'."
+                  echo "  >> Migration appears to be already completed. Skipping..."
+                  exit 0
+                fi
+              fi
+              echo ""
+
+              # Step 2: Create target database if it doesn't exist
+              echo "Step 2: Creating target database '$TARGET_DB'..."
+              if [ "$(check_db_exists $TARGET_DB)" == "1" ]; then
+                echo "  >> Database '$TARGET_DB' already exists. Skipping creation."
+              else
+                echo "  >> Creating database '$TARGET_DB'..."
+                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -c "CREATE DATABASE $TARGET_DB;"
+                echo "  >> Database '$TARGET_DB' created successfully."
+              fi
+              echo ""
+
+              # Step 3: Migrate each service database to its own schema
+              for service in $SERVICES; do
+                echo "=========================================="
+                echo "Migrating service: $service"
+                echo "=========================================="
+                
+                # Check if source database exists
+                if [ "$(check_db_exists $service)" != "1" ]; then
+                  echo "  >> Source database '$service' does not exist. Skipping migration for this service..."
+                  echo ""
+                  continue
+                fi
+                
+                # Check if source database has any tables
+                table_count=$(check_db_has_tables $service)
+                if [ "$table_count" == "0" ]; then
+                  echo "  >> Source database '$service' has no tables. Skipping migration for this service..."
+                  echo ""
+                  continue
+                fi
+                
+                echo "  >> Source database '$service' exists with $table_count table(s)."
+                
+                # Check if target schema already exists
+                if [ "$(check_schema_exists $TARGET_DB $service)" == "1" ]; then
+                  echo "  >> Schema '$service' already exists in '$TARGET_DB'. Skipping migration for this service..."
+                  echo ""
+                  continue
+                fi
+                
+                # Create schema in target database
+                echo "  >> Creating schema '$service' in database '$TARGET_DB'..."
+                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "CREATE SCHEMA IF NOT EXISTS $service;"
+                echo "  >> Schema '$service' created."
+                
+                # Dump the source database (schema and data)
+                echo "  >> Dumping data from database '$service'..."
+                PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d "$service" --schema=public --no-owner --no-acl > /tmp/${service}_dump.sql
+                
+                # Modify the dump to use the new schema
+                echo "  >> Adapting dump for schema '$service'..."
+                # Replace all references to 'public' schema with the service schema
+                sed -i "s/SCHEMA public/SCHEMA $service/g" /tmp/${service}_dump.sql
+                sed -i "s/search_path = public/search_path = $service/g" /tmp/${service}_dump.sql
+                sed -i "s/TO public;/TO $service;/g" /tmp/${service}_dump.sql
+                # Replace public. prefix with service schema (handles CREATE TABLE public.tablename)
+                sed -i "s/\bpublic\./$service\./g" /tmp/${service}_dump.sql
+                # Make CREATE SCHEMA idempotent
+                sed -i "s/CREATE SCHEMA $service;/CREATE SCHEMA IF NOT EXISTS $service;/g" /tmp/${service}_dump.sql
+                
+                # Import the modified dump into the new schema
+                echo "  >> Importing data into schema '$service' in database '$TARGET_DB'..."
+                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" < /tmp/${service}_dump.sql
+                
+                # Verify the migration
+                echo "  >> Verifying migration..."
+                target_table_count=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -tc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$service'" | tr -d ' ')
+                echo "  >> Migrated $target_table_count table(s) to schema '$service'."
+                
+                # Clean up dump file
+                rm -f /tmp/${service}_dump.sql
+                
+                echo "  >> Migration completed for service '$service'."
+                echo ""
+              done
+
+              # Step 4: Create migration marker table
+              echo "=========================================="
+              echo "Step 4: Creating migration marker..."
+              echo "=========================================="
+              PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "
+                CREATE TABLE IF NOT EXISTS public.migration_history (
+                  id SERIAL PRIMARY KEY,
+                  migration_name VARCHAR(255) NOT NULL,
+                  applied_at TIMESTAMP DEFAULT NOW() NOT NULL,
+                  description TEXT
+                );
+                
+                INSERT INTO public.migration_history (migration_name, description) 
+                VALUES ('schema_migration_v1', 'Migrated from separate databases to single database with schemas for: ca, devicemanager, dmsmanager, alerts, va');
+              "
+              echo "  >> Migration marker created."
+              echo ""
+
+              echo "=========================================="
+              echo "Database Schema Migration Completed!"
+              echo "=========================================="
+              echo ""
+              echo "Summary:"
+              echo "  - Target database: $TARGET_DB"
+              echo "  - Migrated services: $SERVICES"
+              echo ""
+              echo "IMPORTANT: Update your application configuration to use:"
+              echo "  - Database: $TARGET_DB"
+              echo "  - Schema search path: <service_name> (e.g., 'ca', 'devicemanager', etc.)"
+              echo "=========================================="
