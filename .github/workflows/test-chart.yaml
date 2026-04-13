@@ -70,9 +70,18 @@ jobs:
           # CRITICAL: Wait for PostgreSQL to be fully ready before proceeding
           echo "Waiting for PostgreSQL to be fully operational..."
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=postgresql -n lamassu-test --timeout=300s
-          sleep 10  # Additional grace period for init scripts to complete
+          
+          # Verify databases are created and PostgreSQL is accepting connections
+          echo "Verifying PostgreSQL databases are initialized..."
+          kubectl run pg-check --image=postgres:17 --rm -i --restart=Never -n lamassu-test -- \
+            psql "postgresql://admin:admin@postgresql:5432/auth" -c "SELECT 1" || \
+            (echo "Database not ready, waiting longer..." && sleep 30 && \
+             kubectl run pg-check-retry --image=postgres:17 --rm -i --restart=Never -n lamassu-test -- \
+             psql "postgresql://admin:admin@postgresql:5432/auth" -c "SELECT 1")
+          
+          echo "PostgreSQL is ready and databases are accessible"
 
-          helm install auth bitnami/keycloak --version 25.2.0 -n lamassu-test -f .github/ci/keycloak.yaml --wait --timeout 300s
+          helm install auth bitnami/keycloak --version 25.2.0 -n lamassu-test -f .github/ci/keycloak.yaml --wait --timeout 600s
           helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait --timeout 300s
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
