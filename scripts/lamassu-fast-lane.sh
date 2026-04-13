@@ -314,7 +314,7 @@ auth:
     apiGateway:
       jwks:
         - name: oidc-authn
-          uri: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
+          uri: http://auth-keycloak:8080/auth/realms/lamassu/protocol/openid-connect/certs
 
 gateway:
   extraRouting:
@@ -322,7 +322,7 @@ gateway:
     name: auth
     target:
       host: auth-keycloak
-      port: 80 # If no sidecar is used
+      port: 8080
 EOF
 
 export DOMAIN=$DOMAIN
