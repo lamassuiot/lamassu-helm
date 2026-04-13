@@ -461,7 +461,7 @@ tls:
 database:
   type: postgres
   host: postgresql
-  port: 5432
+  port: "5432"
   name: auth
   username: ""
   password: ""
