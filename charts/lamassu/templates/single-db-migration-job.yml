@@ -2,6 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: "single-db-migration-job-{{ .Release.Name }}"
+  namespace: "{{ .Release.Namespace }}"
   annotations:
     # This hook runs before upgrade to migrate from separate databases to single database with schemas
     "helm.sh/hook": pre-upgrade
