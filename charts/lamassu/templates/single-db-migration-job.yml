@@ -16,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: pre-upgrade-schema-migration-job
-          image: docker.io/bitnamilegacy/postgresql:16.7.27
+          image: docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4
           env:
             - name: POSTGRES_USER
               value: "{{ .Values.postgres.username }}"
