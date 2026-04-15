@@ -142,8 +142,8 @@ spec:
                 sed -E -i "s/^SET search_path = public;$/SET search_path = $service;/" /tmp/${service}_dump.sql
                 sed -E -i "s/\bIN SCHEMA public\b/IN SCHEMA $service/g" /tmp/${service}_dump.sql
                 sed -E -i "s/\bON SCHEMA public\b/ON SCHEMA $service/g" /tmp/${service}_dump.sql
-                # Replace public. prefix with service schema (handles CREATE TABLE public.tablename)
-                sed -E -i "s/\bpublic\./$service\./g" /tmp/${service}_dump.sql
+                # Replace public. schema qualifiers with the service schema using a basic sed-compatible boundary match
+                 sed -i "s/\(^\|[^[:alnum:]_]\)public\./\1$service\./g" /tmp/${service}_dump.sql
                 # Make CREATE SCHEMA idempotent
                 sed -E -i "s/CREATE SCHEMA $service;/CREATE SCHEMA IF NOT EXISTS $service;/g" /tmp/${service}_dump.sql
                 
