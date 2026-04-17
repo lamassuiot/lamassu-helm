@@ -127,7 +127,7 @@ spec:
                 
                 # Create schema in target database
                 echo "  >> Creating schema '$service' in database '$TARGET_DB'..."
-                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "CREATE SCHEMA IF NOT EXISTS $service;"
+                PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "CREATE SCHEMA IF NOT EXISTS $service;"
                 echo "  >> Schema '$service' created."
                 
                 # Dump the source database (schema and data)
@@ -149,11 +149,11 @@ spec:
                 
                 # Import the modified dump into the new schema
                 echo "  >> Importing data into schema '$service' in database '$TARGET_DB'..."
-                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" < /tmp/${service}_dump.sql
+                PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" < /tmp/${service}_dump.sql
                 
                 # Verify the migration
                 echo "  >> Verifying migration..."
-                target_table_count=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -tc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$service'" | tr -d ' ')
+                target_table_count=$(PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -tc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$service'" | tr -d ' ')
                 echo "  >> Migrated $target_table_count table(s) to schema '$service'."
                 
                 # Clean up dump file
