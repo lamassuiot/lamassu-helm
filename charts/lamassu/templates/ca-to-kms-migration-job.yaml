@@ -1,0 +1,60 @@
+{{- if .Values.migrations.caToKms.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-ca-to-kms-migration-config
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-11"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+data:
+  config: |
+    log_level: info
+    ca_storage:
+      provider: postgres
+      hostname: {{ .Values.postgres.hostname }}
+      port: {{ .Values.postgres.port }}
+      username: {{ .Values.postgres.username }}
+      password: {{ .Values.postgres.password }}
+    kms_storage:
+      provider: postgres
+      hostname: {{ .Values.postgres.hostname }}
+      port: {{ .Values.postgres.port }}
+      username: {{ .Values.postgres.username }}
+      password: {{ .Values.postgres.password }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-ca-to-kms-migration
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      name: ca-to-kms-migration
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: ca-to-kms-migration
+          image: {{ .Values.migrations.caToKms.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: LAMASSU_CONFIG_FILE
+              value: /etc/lamassuiot/config.yml
+          volumeMounts:
+            - name: migration-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+              readOnly: true
+      volumes:
+        - name: migration-config
+          configMap:
+            name: {{ .Release.Name }}-ca-to-kms-migration-config
+{{- end }}
