@@ -1,4 +1,4 @@
-{{- range $i, $dbName := .Values.migrations.databases }}
+{{- range $i, $dbName := .Values.migrations.db.databases }}
 ---
 apiVersion: batch/v1
 kind: Job
@@ -14,7 +14,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: {{ $.Values.migrations.image }}
+          image: {{ $.Values.migrations.db.image }}
           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
           args:
             - >-

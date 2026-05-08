@@ -1,0 +1,32 @@
+{{- if .Values.migrations.caToKms.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-ca-to-kms-migration
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      name: ca-to-kms-migration
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: ca-to-kms-migration
+          image: {{ .Values.migrations.caToKms.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          volumeMounts:
+            - name: kms-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+              readOnly: true
+      volumes:
+        - name: kms-config
+          configMap:
+            name: kms-config
+{{- end }}
