@@ -1,11 +1,11 @@
 name: Lint and Test Charts
 
-on: 
+on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
   workflow_dispatch:
-    
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-python@v5.3.0
         with:
-          python-version: '3.9'
+          python-version: "3.9"
           check-latest: true
 
       - name: Set up chart-testing
@@ -35,11 +35,11 @@ jobs:
           if [[ -n "$changed" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-     
+
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct lint --charts charts/lamassu --github-groups --target-branch main
-      
+
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         uses: helm/kind-action@v1.12.0
@@ -53,7 +53,8 @@ jobs:
           kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.3/cert-manager.yaml
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
-          helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait
+          helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait --timeout 300s
+
           cat <<EOF | kubectl apply -f -
             apiVersion: gateway.networking.k8s.io/v1
             kind: GatewayClass
@@ -62,12 +63,26 @@ jobs:
             spec:
               controllerName: gateway.envoyproxy.io/gatewayclass-controller
           EOF
-                
-          kubectl create namespace lamassu-test
-          helm install postgres bitnami/postgresql --version 16.7.27 -n lamassu-test -f .github/ci/postgres.yaml --wait
-          helm install auth bitnami/keycloak --version 25.2.0 -n lamassu-test -f .github/ci/keycloak.yaml --wait
-          helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait
 
+          kubectl create namespace lamassu-test
+          helm install postgres bitnami/postgresql --version 16.7.27 -n lamassu-test -f .github/ci/postgres.yaml --wait --timeout 600s
+
+          # CRITICAL: Wait for PostgreSQL to be fully ready before proceeding
+          echo "Waiting for PostgreSQL to be fully operational..."
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=postgresql -n lamassu-test --timeout=300s
+
+          # Verify databases are created and PostgreSQL is accepting connections
+          echo "Verifying PostgreSQL databases are initialized..."
+          kubectl run pg-check --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test -- \
+            psql "postgresql://admin:admin@postgresql:5432/auth" -c "SELECT 1" || \
+            (echo "Database not ready, waiting longer..." && sleep 30 && \
+             kubectl run pg-check-retry --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test -- \
+             psql "postgresql://admin:admin@postgresql:5432/auth" -c "SELECT 1")
+
+          echo "PostgreSQL is ready and databases are accessible"
+
+          helm install auth bitnami/keycloak --version 25.2.0 -n lamassu-test -f .github/ci/keycloak.yaml --wait --timeout 600s
+          helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait --timeout 300s
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct install --config .github/ci/ct.yaml --github-groups --target-branch main
