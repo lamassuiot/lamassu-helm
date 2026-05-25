@@ -51,7 +51,7 @@ spec:
     kind: Gateway
     name: eg
   tls:
-    maxVersion: "1.2"
+    maxVersion: "1.3"
     # we are not adding clientValidation for the following reasons:
     # 1. it is required defining a set of trusted CA certificates to be used for client certificate validation
     # 2. in the TLS handshake, the server sends a CertificateRequest message setting the CA's Distinguished Names field, limiting to some HTTPS clients what certs can be sent
