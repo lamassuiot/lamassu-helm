@@ -60,6 +60,7 @@ jobs:
             spec:
               controllerName: gateway.envoyproxy.io/gatewayclass-controller
           EOF
+          kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
                 
           kubectl create namespace lamassu-test
           helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml --wait
