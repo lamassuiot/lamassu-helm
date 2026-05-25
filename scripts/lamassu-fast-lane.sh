@@ -407,24 +407,13 @@ EOF
 }
 
 function install_rabbitmq() {
-    helm_path=bitnami/rabbitmq
-    if [ "$OFFLINE" = false ]; then
-        $kube $helm repo add bitnami https://charts.bitnami.com/bitnami
-        $kube $helm repo update
-    else
-        helm_path=$OFFLINE_HELMCHART_RABBITMQ
-    fi
     cat >rabbitmq.yaml <<"EOF"
 fullnameOverride: "rabbitmq"
 
-global:
-  security:
-    allowInsecureImages: true
-
 image:
   registry: docker.io
-  repository: bitnamilegacy/rabbitmq
-  #tag: 4.1.3-debian-12-r1
+  repository: rabbitmq
+  tag: "4.3.0"
 
 auth:
   username:
@@ -436,8 +425,13 @@ EOF
 
    yq -i '.auth.username = env(RABBIT_USER)' rabbitmq.yaml
    yq -i '.auth.password = env(RABBIT_PWD)' rabbitmq.yaml
+
+    helm_path=oci://registry-1.docker.io/cloudpirates/rabbitmq
+    if [ "$OFFLINE" = true ]; then
+        helm_path=$OFFLINE_HELMCHART_RABBITMQ
+    fi
    
-   $kube $helm install rabbitmq $helm_path --version 12.6.0 -n $NAMESPACE -f rabbitmq.yaml --wait
+   $kube $helm install rabbitmq $helm_path --version 0.21.4 -n $NAMESPACE -f rabbitmq.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}RabbitMQ installed${NOCOLOR}"
     else
@@ -451,7 +445,7 @@ function install_keycloak() {
 image:
   registry: docker.io
   repository: keycloak/keycloak
-  tag: "26.6"
+  tag: "26.6.2"
 
 service:
   httpPort: 80
@@ -481,6 +475,8 @@ extraEnvVars:
     value: "false"
   - name: KC_HEALTH_ENABLED
     value: "true"
+  - name: KC_SPI_X509CERT_LOOKUP_PROVIDER
+    value: "envoy"
   - name: HTTP_ADDRESS_FORWARDING
     value: "true"
   - name: KC_HTTP_ACCESS_LOG_ENABLED
