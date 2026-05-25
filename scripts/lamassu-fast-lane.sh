@@ -578,42 +578,35 @@ function install_postgresql() {
 fullnameOverride: "postgresql"
 image:
   registry: docker.io
-  repository: bitnamilegacy/postgresql
-global:
-  security:
-    allowInsecureImages: true
-  postgresql:
-    auth:
-      username: ""
-      password: ""
-primary:
-  initdb:
-    scripts:
-      init.sql: |
-        CREATE DATABASE auth;
-        CREATE DATABASE alerts;
-        CREATE DATABASE ca;
-        CREATE DATABASE va;
-        CREATE DATABASE cloudproxy;
-        CREATE DATABASE devicemanager;
-        CREATE DATABASE dmsmanager;
-        CREATE DATABASE kms;
+  repository: postgres
+  tag: "18.4"
+auth:
+  username: ""
+  password: ""
+initdb:
+  scripts:
+    init.sql: |
+      CREATE DATABASE auth;
+      CREATE DATABASE alerts;
+      CREATE DATABASE ca;
+      CREATE DATABASE va;
+      CREATE DATABASE cloudproxy;
+      CREATE DATABASE devicemanager;
+      CREATE DATABASE dmsmanager;
+      CREATE DATABASE kms;
 EOF
 
     export POSTGRES_USER=$POSTGRES_USER
     export POSTGRES_PWD=$POSTGRES_PWD
-    yq -i '.global.postgresql.auth.username = env(POSTGRES_USER)' postgres.yaml
-    yq -i '.global.postgresql.auth.password = env(POSTGRES_PWD)' postgres.yaml
+    yq -i '.auth.username = env(POSTGRES_USER)' postgres.yaml
+    yq -i '.auth.password = env(POSTGRES_PWD)' postgres.yaml
 
-    helm_path=bitnami/postgresql
-    if [ "$OFFLINE" = false ]; then
-        $kube $helm repo add bitnami https://charts.bitnami.com/bitnami
-        $kube $helm repo update
-    else
+    helm_path=oci://registry-1.docker.io/cloudpirates/postgres
+    if [ "$OFFLINE" = true ]; then
         helm_path=$OFFLINE_HELMCHART_POSTGRES
     fi
 
-    $kube $helm install postgres $helm_path -n $NAMESPACE --version 16.7.27 -f postgres.yaml --wait
+    $kube $helm install postgres $helm_path -n $NAMESPACE --version 0.19.5 -f postgres.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}PostgreSQL installed${NOCOLOR}"
     else
