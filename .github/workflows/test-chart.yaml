@@ -50,7 +50,7 @@ jobs:
       - name: Prepare kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         run: |
-          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml --wait
           helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.8.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait
           cat <<EOF | kubectl apply -f -
             apiVersion: gateway.networking.k8s.io/v1
