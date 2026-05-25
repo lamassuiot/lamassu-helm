@@ -50,10 +50,8 @@ jobs:
       - name: Prepare kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         run: |
-          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.3/cert-manager.yaml
-          helm repo add bitnami https://charts.bitnami.com/bitnami
-          helm repo update
-          helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
+          helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.8.0 -n envoy-gateway-system --create-namespace -f .github/ci/eg.yaml --wait
           cat <<EOF | kubectl apply -f -
             apiVersion: gateway.networking.k8s.io/v1
             kind: GatewayClass
@@ -64,9 +62,9 @@ jobs:
           EOF
                 
           kubectl create namespace lamassu-test
-          helm install postgres bitnami/postgresql --version 16.7.27 -n lamassu-test -f .github/ci/postgres.yaml --wait
-          helm install auth bitnami/keycloak --version 25.2.0 -n lamassu-test -f .github/ci/keycloak.yaml --wait
-          helm install rabbitmq bitnami/rabbitmq --version 12.6.0 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait
+          helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml --wait
+          helm install auth oci://registry-1.docker.io/cloudpirates/keycloak --version 0.21.9 -n lamassu-test -f .github/ci/keycloak.yaml --wait
+          helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq --version 0.21.4 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait
 
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
