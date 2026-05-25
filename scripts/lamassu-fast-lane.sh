@@ -750,67 +750,6 @@ function check_dependencies() {
         check_microk8s_minimum_requirements
     fi
 
-    if [ $dist == "kind" ]; then
-        exit_if_command_not_installed $kubectl
-        exit_if_command_not_installed $helm
-        fix_kind_dns
-        check_kind_minimum_requirements
-    fi
-
-}
-
-function check_kind_minimum_requirements() {
-    # Gateway API CRDs (required by Envoy Gateway and Lamassu chart)
-    if ! $kubectl get crd gateways.gateway.networking.k8s.io &>/dev/null; then
-        echo -e "${ORANGE}Gateway API CRDs not found. Installing...${NOCOLOR}"
-        $kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}Gateway API CRDs installed${NOCOLOR}"
-        else
-            echo -e "${RED}Failed to install Gateway API CRDs${NOCOLOR}"
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}✅ Gateway API CRDs already installed${NOCOLOR}"
-    fi
-
-    # cert-manager (required for Certificate and Issuer resources)
-    if ! $kubectl get ns cert-manager &>/dev/null; then
-        echo -e "${ORANGE}cert-manager not found. Installing...${NOCOLOR}"
-        $helm repo add jetstack https://charts.jetstack.io
-        $helm repo update jetstack
-        $helm install cert-manager jetstack/cert-manager \
-            --namespace cert-manager \
-            --create-namespace \
-            --set crds.enabled=true \
-            --wait
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}cert-manager installed${NOCOLOR}"
-        else
-            echo -e "${RED}Failed to install cert-manager${NOCOLOR}"
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}✅ cert-manager already installed${NOCOLOR}"
-    fi
-
-    # Envoy Gateway (HTTPRoute, GatewayClass, ClientTrafficPolicy, etc.)
-    check_envoy_gateway_helm
-}
-
-function fix_kind_dns() {
-    echo -e "${ORANGE}Kind detected: patching CoreDNS to use 8.8.8.8...${NOCOLOR}"
-    $kubectl -n kube-system get configmap coredns -o json \
-      | sed 's|forward . /etc/resolv.conf|forward . 8.8.8.8 8.8.4.4|' \
-      | $kubectl apply -f -
-    $kubectl -n kube-system rollout restart deployment coredns
-    $kubectl -n kube-system rollout status deployment coredns --timeout=60s
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}CoreDNS patched successfully${NOCOLOR}"
-    else
-        echo -e "${RED}Failed to patch CoreDNS${NOCOLOR}"
-        exit 1
-    fi
 }
 
 function check_microk8s_minimum_requirements() {
