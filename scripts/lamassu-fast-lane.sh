@@ -450,122 +450,121 @@ function install_keycloak() {
     cat >keycloak.yaml <<"EOF"
 image:
   registry: docker.io
-  repository: bitnamilegacy/keycloak
-  tag: 25.0.2-debian-12-r1
+  repository: keycloak/keycloak
+  tag: "26.6"
 
-auth:
+service:
+  httpPort: 80
+
+keycloak:
   adminUser: ""
   adminPassword: ""
+  httpRelativePath: /auth
+  proxyHeaders: xforwarded
 
-postgresql:
+database:
+  type: postgres
+  host: "postgresql"
+  port: "5432"
+  name: "auth"
+  username: ""
+  password: ""
+
+postgres:
   enabled: false
 
-externalDatabase:
-  host: "postgresql"
-  port: 5432
-  user: ""
-  password: ""
-  database: auth
-
-logging:
-  level: INFO
-
-httpRelativePath: /auth/
-proxy: reencrypt
-proxyHeaders: xforwarded
+mariadb:
+  enabled: false
 
 extraEnvVars:
   - name: KC_HOSTNAME_STRICT
     value: "false"
   - name: KC_HEALTH_ENABLED
     value: "true"
-  - name: KC_LEGACY_OBSERVABILITY_INTERFACE
-    value: "true"
   - name: HTTP_ADDRESS_FORWARDING
     value: "true"
-  - name: QUARKUS_HTTP_ACCESS_LOG_ENABLED
+  - name: KC_HTTP_ACCESS_LOG_ENABLED
     value: "true"
-  - name: QUARKUS_HTTP_ACCESS_LOG_PATTERN
-    value: "%r\n%{ALL_REQUEST_HEADERS}"
+  - name: KC_HTTP_ACCESS_LOG_PATTERN
+    value: combined
 
-keycloakConfigCli:
-  enabled: true
-  image:
-    registry: docker.io
-    repository: bitnamilegacy/keycloak-config-cli
-    tag: 6.1.6-debian-12-r0
-  configuration:
-    realm-configuration.yaml: |
-      realm: lamassu
-      enabled: true
-      loginTheme: keycloakify-starter
-      roles:
-        realm:
-        - name: pki-admin
-          description: "PKI Full Access"
-      users:
-      - username: lamassu
-        enabled: true
-        credentials:
-        - type: password
-          value: lamassu
-          temporary: true
-        requiredActions:
-        - UPDATE_PASSWORD
-        realmRoles:
-        - pki-admin
-      clients:
-      - clientId: frontend
-        enabled: true
-        redirectUris:
-        - "/*"
-        webOrigins:
-        - "/*"
-        publicClient: true
-        directAccessGrantsEnabled: true
+realm:
+  import: true
+  configFile: |
+    {
+      "realm": "lamassu",
+      "enabled": true,
+      "loginTheme": "lamassu-theme-v3",
+      "roles": {
+        "realm": [
+          {
+            "name": "pki-admin",
+            "description": "PKI Full Access"
+          }
+        ]
+      },
+      "users": [
+        {
+          "username": "lamassu",
+          "enabled": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "lamassu",
+              "temporary": true
+            }
+          ],
+          "requiredActions": ["UPDATE_PASSWORD"],
+          "realmRoles": ["pki-admin"]
+        }
+      ],
+      "clients": [
+        {
+          "clientId": "frontend",
+          "enabled": true,
+          "redirectUris": ["/*"],
+          "webOrigins": ["/*"],
+          "publicClient": true,
+          "directAccessGrantsEnabled": true
+        }
+      ]
+    }
 EOF
 
     if [ "$OFFLINE" = false ]; then
         cat >>keycloak.yaml <<"EOF"
-extraVolumes:
-  - name: extensions
-    emptyDir: {}
-
-extraVolumeMounts: 
-  - name: extensions
-    mountPath: /opt/bitnami/keycloak/providers
-
-initContainers:
+extraInitContainers:
 - name: init-custom-theme
   image: curlimages/curl:8.10.1
-  command: ['sh', '-c', 'curl -L -f -S -o /extensions/lamassu-theme.jar https://github.com/lamassuiot/keycloak-theme/releases/download/2.0.0/keycloak-theme-for-kc-22-to-25.jar']
-  volumeMounts:  
-  - mountPath: "/extensions"
-    name: extensions
+  command:
+  - 'sh'
+  - '-c'
+  - |
+    curl -L -f -o /opt/keycloak/providers/lamassu-theme.jar https://github.com/lamassuiot/keycloak-theme/releases/download/3.0.0/lamassu-theme.jar
+  volumeMounts:
+  - mountPath: "/opt/keycloak/providers"
+    name: keycloak-providers
 EOF
     fi
 
 
     export POSTGRES_USER=$POSTGRES_USER
     export POSTGRES_PWD=$POSTGRES_PWD
-    yq -i '.externalDatabase.user = env(POSTGRES_USER)' keycloak.yaml
-    yq -i '.externalDatabase.password = env(POSTGRES_PWD)' keycloak.yaml
+    yq -i '.database.username = env(POSTGRES_USER)' keycloak.yaml
+    yq -i '.database.password = env(POSTGRES_PWD)' keycloak.yaml
 
     export KEYCLOAK_USER=$KEYCLOAK_USER
     export KEYCLOAK_PWD=$KEYCLOAK_PWD
-    yq -i '.auth.adminUser = env(KEYCLOAK_USER)' keycloak.yaml
-    yq -i '.auth.adminPassword = env(KEYCLOAK_PWD)' keycloak.yaml
+    yq -i '.keycloak.adminUser = env(KEYCLOAK_USER)' keycloak.yaml
+    yq -i '.keycloak.adminPassword = env(KEYCLOAK_PWD)' keycloak.yaml
 
 
-    helm_path=bitnami/keycloak
-    if [ "$OFFLINE" = false ]; then
-        $kube $helm repo add bitnami https://charts.bitnami.com/bitnami
-        $kube $helm repo update
-    else
+    helm_path=oci://registry-1.docker.io/cloudpirates/keycloak
+    if [ "$OFFLINE" = true ]; then
         helm_path=$OFFLINE_HELMCHART_KEYCLOAK
     fi
 
-    $kube $helm install auth $helm_path --version 22.1.1 -n $NAMESPACE --wait -f keycloak.yaml
+    $kube $helm install auth $helm_path --version 0.21.9 -n $NAMESPACE --wait -f keycloak.yaml
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Keycloak installed${NOCOLOR}"
     else
@@ -609,6 +608,7 @@ EOF
     helm_path=bitnami/postgresql
     if [ "$OFFLINE" = false ]; then
         $kube $helm repo add bitnami https://charts.bitnami.com/bitnami
+        $kube $helm repo update
     else
         helm_path=$OFFLINE_HELMCHART_POSTGRES
     fi
@@ -704,7 +704,7 @@ function request_keycloak_user() {
     echo -n "Keycloak admin user ($KEYCLOAK_USER): "
     read req
     if [ "$req" != "" ]; then
-        RABBIT_USER=$req
+        KEYCLOAK_USER=$req
     fi
 }
 
@@ -712,7 +712,7 @@ function request_keycloak_pwd() {
     echo -n "Keycloak admin password ($KEYCLOAK_PWD): "
     read req
     if [ "$req" != "" ]; then
-        RABBIT_PWD=$req
+        KEYCLOAK_PWD=$req
     fi
 }
 
@@ -761,6 +761,67 @@ function check_dependencies() {
         check_microk8s_minimum_requirements
     fi
 
+    if [ $dist == "kind" ]; then
+        exit_if_command_not_installed $kubectl
+        exit_if_command_not_installed $helm
+        fix_kind_dns
+        check_kind_minimum_requirements
+    fi
+
+}
+
+function check_kind_minimum_requirements() {
+    # Gateway API CRDs (required by Envoy Gateway and Lamassu chart)
+    if ! $kubectl get crd gateways.gateway.networking.k8s.io &>/dev/null; then
+        echo -e "${ORANGE}Gateway API CRDs not found. Installing...${NOCOLOR}"
+        $kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}Gateway API CRDs installed${NOCOLOR}"
+        else
+            echo -e "${RED}Failed to install Gateway API CRDs${NOCOLOR}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✅ Gateway API CRDs already installed${NOCOLOR}"
+    fi
+
+    # cert-manager (required for Certificate and Issuer resources)
+    if ! $kubectl get ns cert-manager &>/dev/null; then
+        echo -e "${ORANGE}cert-manager not found. Installing...${NOCOLOR}"
+        $helm repo add jetstack https://charts.jetstack.io
+        $helm repo update jetstack
+        $helm install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --set crds.enabled=true \
+            --wait
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}cert-manager installed${NOCOLOR}"
+        else
+            echo -e "${RED}Failed to install cert-manager${NOCOLOR}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✅ cert-manager already installed${NOCOLOR}"
+    fi
+
+    # Envoy Gateway (HTTPRoute, GatewayClass, ClientTrafficPolicy, etc.)
+    check_envoy_gateway_helm
+}
+
+function fix_kind_dns() {
+    echo -e "${ORANGE}Kind detected: patching CoreDNS to use 8.8.8.8...${NOCOLOR}"
+    $kubectl -n kube-system get configmap coredns -o json \
+      | sed 's|forward . /etc/resolv.conf|forward . 8.8.8.8 8.8.4.4|' \
+      | $kubectl apply -f -
+    $kubectl -n kube-system rollout restart deployment coredns
+    $kubectl -n kube-system rollout status deployment coredns --timeout=60s
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}CoreDNS patched successfully${NOCOLOR}"
+    else
+        echo -e "${RED}Failed to patch CoreDNS${NOCOLOR}"
+        exit 1
+    fi
 }
 
 function check_microk8s_minimum_requirements() {
