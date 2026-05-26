@@ -36,10 +36,6 @@ extraInitContainers:
     - mountPath: "/opt/keycloak/providers"
       name: keycloak-providers
 
-httpRelativePath: /auth/
-proxy: reencrypt
-proxyHeaders: xforwarded
-
 extraEnvVars:
   - name: KC_HOSTNAME_STRICT
     value: "false"
@@ -47,8 +43,6 @@ extraEnvVars:
     value: "true"
   - name: KC_SPI_X509CERT_LOOKUP_PROVIDER
     value: "envoy"
-  - name: HTTP_ADDRESS_FORWARDING
-    value: "true"
   - name: KC_HTTP_ACCESS_LOG_ENABLED
     value: "true"
   - name: KC_HTTP_ACCESS_LOG_PATTERN
