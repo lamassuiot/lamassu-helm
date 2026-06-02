@@ -1,4 +1,5 @@
 {{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
+{{- $hasPkcs11Sidecar := .Values.services.kms.pkcs11Sidecar.enabled -}}
 apiVersion: apps/v1
 {{- if $hasFilesystemEngine }}
 kind: StatefulSet
@@ -51,15 +52,53 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+            {{- if $hasPkcs11Sidecar }}
+            - name: pkcs11-socket
+              mountPath: {{ .Values.services.kms.pkcs11Sidecar.socketDir | quote }}
+            {{- end }}
             - name: golang-engine-storage
               mountPath: /crypto/fs
           ports:
             - containerPort: 8085
+        {{- if $hasPkcs11Sidecar }}
+        - name: kms-pkcs11-sidecar
+          image: {{ .Values.services.kms.pkcs11Sidecar.image | quote }}
+          imagePullPolicy: {{ .Values.services.kms.pkcs11Sidecar.imagePullPolicy | quote }}
+          {{- with .Values.services.kms.pkcs11Sidecar.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.services.kms.pkcs11Sidecar.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.services.kms.pkcs11Sidecar.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: pkcs11-socket
+              mountPath: {{ .Values.services.kms.pkcs11Sidecar.socketDir | quote }}
+            {{- with .Values.services.kms.pkcs11Sidecar.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.services.kms.pkcs11Sidecar.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
       restartPolicy: Always
       volumes:
         - name: api-config
           configMap:  
             name: kms-config
+        {{- if $hasPkcs11Sidecar }}
+        - name: pkcs11-socket
+          emptyDir: {}
+        {{- with .Values.services.kms.pkcs11Sidecar.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- end }}
 {{- if $hasFilesystemEngine }}
   volumeClaimTemplates:
   # Filesystem engine is configured, using PVC for persistent storage
