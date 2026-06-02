@@ -120,6 +120,32 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.cryptoEngines.engines[0].id | string | `"filesystem-1"` | Crypto engine ID |
 | services.kms.cryptoEngines.engines[0].type | string | `"filesystem"` | Engine type: `filesystem`, `pkcs11`, `hashicorp_vault`, `aws_kms`, `aws_secrets_manager` |
 | services.kms.cryptoEngines.engines[0].storage_directory | string | `"/crypto/fs"` | Storage directory for filesystem engine |
+| services.kms.pkcs11Sidecar.enabled | bool | `false` | Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS |
+| services.kms.pkcs11Sidecar.image | string | `""` | Sidecar image used to create the forwarded PKCS#11 socket |
+| services.kms.pkcs11Sidecar.imagePullPolicy | string | `"IfNotPresent"` | Image pull policy for the PKCS#11 sidecar |
+| services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory where the sidecar should create the PKCS#11 socket |
+| services.kms.pkcs11Sidecar.command | list | `[]` | Command for the PKCS#11 sidecar |
+| services.kms.pkcs11Sidecar.args | list | `[]` | Arguments for the PKCS#11 sidecar |
+| services.kms.pkcs11Sidecar.env | list | `[]` | Extra environment variables for the PKCS#11 sidecar |
+| services.kms.pkcs11Sidecar.volumeMounts | list | `[]` | Extra sidecar volume mounts, for example SSH key secrets |
+| services.kms.pkcs11Sidecar.volumes | list | `[]` | Extra pod volumes needed by the PKCS#11 sidecar |
+| services.kms.pkcs11Sidecar.resources | object | `{}` | Resource requests and limits for the PKCS#11 sidecar |
+| **Multi-HSM Deployment** | | | |
+| services.kms.cryptoEngines.engines[0].module_path | string | `"/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"` | PKCS#11 client module to use when the HSM socket is forwarded |
+| services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory used by the sidecar and the KMS container for the forwarded socket |
+
+When the KMS image is responsible for the PKCS#11 client environment, the chart
+only needs to make the forwarded socket available inside the pod. Enable the
+sidecar and have it create the socket in the shared directory.
+
+For multiple HSMs, deploy multiple KMS releases instead of trying to multiplex
+them inside a single pod. Each release should point at exactly one HSM/socket
+pair, for example:
+
+- Release `kms-a` mounts `/run/p11-kit-a` and its sidecar forwards HSM `a`
+- Release `kms-b` mounts `/run/p11-kit-b` and its sidecar forwards HSM `b`
+
+This keeps token state, socket ownership, and failure domains isolated.
 | **Alerts Service Configuration** | | | |
 | services.alerts.smtp_server.from | string | `""` | Email address for alert sender |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |

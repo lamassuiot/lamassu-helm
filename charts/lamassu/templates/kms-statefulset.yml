@@ -21,6 +21,58 @@
         storage: 1Gi
 {{- end -}}
 
+{{- define "lamassu.kms.volumeMounts" -}}
+{{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
+{{- if .Values.services.kms.pkcs11Sidecar.enabled }}
+- name: pkcs11-socket
+  mountPath: {{ .Values.services.kms.pkcs11Sidecar.socketDir | quote }}
+{{- end }}
+{{- if $hasFilesystemEngine }}
+- name: golang-engine-storage
+  mountPath: /crypto/fs
+{{- end }}
+{{- end -}}
+
+{{- define "lamassu.kms.volumes" -}}
+{{- if .Values.services.kms.pkcs11Sidecar.enabled }}
+- name: pkcs11-socket
+  emptyDir: {}
+{{- with .Values.services.kms.pkcs11Sidecar.volumes }}
+{{- toYaml . | nindent 0 }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "lamassu.kms.sidecars" -}}
+{{- if .Values.services.kms.pkcs11Sidecar.enabled }}
+- name: kms-pkcs11-sidecar
+  image: {{ .Values.services.kms.pkcs11Sidecar.image | quote }}
+  imagePullPolicy: {{ .Values.services.kms.pkcs11Sidecar.imagePullPolicy | quote }}
+  {{- with .Values.services.kms.pkcs11Sidecar.command }}
+  command:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.services.kms.pkcs11Sidecar.args }}
+  args:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.services.kms.pkcs11Sidecar.env }}
+  env:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  volumeMounts:
+    - name: pkcs11-socket
+      mountPath: {{ .Values.services.kms.pkcs11Sidecar.socketDir | quote }}
+    {{- with .Values.services.kms.pkcs11Sidecar.volumeMounts }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.services.kms.pkcs11Sidecar.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+
 {{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
 {{- $kms := include "lamassu.svc.merged" (dict "root" $ "svcKey" "kms") | fromYaml -}}
 {{- if and $hasFilesystemEngine (gt (int $kms.replicaCount) 1) -}}
@@ -36,5 +88,7 @@
   "kind" (ternary "StatefulSet" "Deployment" $hasFilesystemEngine)
   "serviceName" (ternary "kms" "" $hasFilesystemEngine)
   "env" (include "lamassu.kms.extraEnv" $)
-  "volumeMounts" (ternary "- name: golang-engine-storage\n  mountPath: /crypto/fs" "" $hasFilesystemEngine)
+  "volumeMounts" (include "lamassu.kms.volumeMounts" $)
+  "volumes" (include "lamassu.kms.volumes" $)
+  "sidecars" (include "lamassu.kms.sidecars" $)
   "volumeClaimTemplates" (ternary (include "lamassu.kms.volumeClaimTemplates" $) "" $hasFilesystemEngine)) }}

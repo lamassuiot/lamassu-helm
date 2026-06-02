@@ -147,6 +147,9 @@ spec:
           {{- end }}
           ports:
             - containerPort: {{ $svc.port }}
+      {{- with .sidecars }}
+      {{- . | nindent 8 }}
+      {{- end }}
       restartPolicy: Always
       {{- with $svc.nodeSelector }}
       nodeSelector:
