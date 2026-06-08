@@ -56,6 +56,13 @@ spec:
       optional: true
       mode: Request
   headers:
+    earlyRequestHeaders:
+      remove:
+      - X-Principal-Id
+      - X-Lms-Source
+      - X-Forwarded-Cert
+      - Ssl-Client-Cert
+      - X-Amzn-Mtls-Clientcert
     xForwardedClientCert:
       mode: AppendForward
       certDetailsToAdd: 
