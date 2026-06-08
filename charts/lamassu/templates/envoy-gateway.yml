@@ -57,6 +57,13 @@ spec:
     # 2. in the TLS handshake, the server sends a CertificateRequest message setting the CA's Distinguished Names field, limiting to some HTTPS clients what certs can be sent
     # 3. an EnvoyPatchPolicy is added to fully customize the TLS configuration with Request (but not enforce) client certificate as well as accept untrusted certificates
   headers:
+    earlyRequestHeaders:
+      remove:
+      - X-Principal-Id
+      - X-Lms-Source
+      - X-Forwarded-Cert
+      - Ssl-Client-Cert
+      - X-Amzn-Mtls-Clientcert
     xForwardedClientCert:
       mode: AppendForward
       certDetailsToAdd: 
