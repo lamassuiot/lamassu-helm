@@ -21,9 +21,10 @@ spec:
       containers:
         - name: softhsm-v2
           image: {{ .Values.image }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}: Always
+          imagePullPolicy: {{ default "Always" (get (default (dict) (get .Values "global")) "imagePullPolicy") | quote }}
           ports:
             - containerPort: 5657
+            - containerPort: 22
           env:
             - name: LABEL
               value: "{{ .Values.hsm.label }}"
@@ -31,8 +32,14 @@ spec:
               value: "{{ .Values.hsm.pin }}"
             - name: SO_PIN
               value: "{{ .Values.hsm.so_pin }}"
+            - name: SLOT
+              value: "{{ .Values.hsm.slot }}"
             - name: CONNECTION_PROTOCOL
               value: "tcp"
+            {{- if .Values.ssh.authorizedKeys }}
+            - name: SSH_AUTHORIZED_KEYS
+              value: {{ .Values.ssh.authorizedKeys | quote }}
+            {{- end }}
           volumeMounts:
             - name: softhsm-v2-data
               mountPath: /softhsm/tokens
@@ -53,4 +60,3 @@ spec:
       resources:
         requests:
           storage: 2Gi
-

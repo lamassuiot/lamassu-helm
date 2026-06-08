@@ -72,6 +72,8 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.cryptoEngines.engines[0].id | string | `"filesystem-1"` | Crypto engine ID |
 | services.kms.cryptoEngines.engines[0].type | string | `"filesystem"` | Engine type: `filesystem`, `pkcs11`, `hashicorp_vault`, `aws_kms`, `aws_secrets_manager` |
 | services.kms.cryptoEngines.engines[0].storage_directory | string | `"/crypto/fs"` | Storage directory for filesystem engine |
+| services.kms.command | list | `[]` | Optional command override for the KMS container, useful for waiting on a forwarded PKCS#11 socket before launch |
+| services.kms.args | list | `[]` | Optional arguments override for the KMS container |
 | services.kms.pkcs11Sidecar.enabled | bool | `false` | Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS |
 | services.kms.pkcs11Sidecar.image | string | `""` | Sidecar image used to create the forwarded PKCS#11 socket |
 | services.kms.pkcs11Sidecar.imagePullPolicy | string | `"IfNotPresent"` | Image pull policy for the PKCS#11 sidecar |
@@ -98,6 +100,7 @@ pair, for example:
 - Release `kms-b` mounts `/run/p11-kit-b` and its sidecar forwards HSM `b`
 
 This keeps token state, socket ownership, and failure domains isolated.
+
 | **Alerts Service Configuration** | | | |
 | services.alerts.smtp_server.from | string | `""` | Email address for alert sender |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
@@ -111,3 +114,82 @@ This keeps token state, socket ownership, and failure domains isolated.
 | migrations.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.7.0"` | Docker image for database migrations |
 | migrations.databases | list | `["auth", "alerts", "ca", "va", "cloudproxy", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
 
+### In-Cluster HSM over `p11-kit`
+
+Use this mode when the HSM endpoint is another pod or StatefulSet inside the
+cluster and only the KMS sidecar should connect to it.
+
+The flow is:
+
+1. The HSM pod runs `p11-kit server` and `sshd`.
+2. The KMS PKCS#11 sidecar opens an SSH session to the internal HSM Service.
+3. That sidecar forwards the HSM socket into the shared `socketDir` with
+   `ssh -L`.
+4. Lamassu KMS uses `p11-kit-client.so` and `P11_KIT_SERVER_ADDRESS` to talk
+   to the forwarded token.
+
+Example values: [charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml](/home/ubuntu/dev/lamassu/lamassu-helm/charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml)
+
+Build the proxy image from [ci/softhsm/proxy.dockerfile](/home/ubuntu/dev/lamassu/lamassu-helm/ci/softhsm/proxy.dockerfile:1), then configure:
+
+```yaml
+services:
+  kms:
+    command:
+      - /bin/sh
+    args:
+      - -ec
+      - |
+        until [ -S /run/p11-kit/pkcs11 ]; do
+          echo "Waiting for PKCS#11 SSH tunnel..."
+          sleep 1
+        done
+        exec /bin/lamassu-kms
+    pkcs11Sidecar:
+      enabled: true
+      image: ghcr.io/lamassuiot/p11-kit-ssh-proxy:latest
+      env:
+        - name: SSH_DESTINATION
+          value: root@hsm-softhsm
+        - name: SSH_IDENTITY_FILE
+          value: /etc/p11-kit-ssh/id_ed25519
+      volumeMounts:
+        - name: kms-pkcs11-ssh-key
+          mountPath: /etc/p11-kit-ssh
+          readOnly: true
+      volumes:
+        - name: kms-pkcs11-ssh-key
+          secret:
+            secretName: kms-pkcs11-sidecar-ssh-key
+    cryptoEngines:
+      defaultEngineID: pkcs11-1
+      engines:
+        - id: pkcs11-1
+          type: pkcs11
+          token: "your-token-label"
+          pin: "1234"
+          module_path: "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"
+          module_extra_options:
+            env:
+              P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
+```
+
+On the proxy sidecar, the image runs an SSH client roughly equivalent to:
+
+```bash
+ssh -N \
+  -o ExitOnForwardFailure=yes \
+  -o StreamLocalBindUnlink=yes \
+  -L /run/p11-kit/pkcs11:/run/p11-kit/pkcs11 \
+  -i /etc/p11-kit-ssh/id_ed25519 \
+  root@hsm-softhsm
+```
+
+Notes:
+
+- The HSM Service can stay `ClusterIP`; no KMS-side SSH Service is required.
+- The HSM pod must accept the sidecar's SSH public key and expose port `22`
+  internally.
+- The Lamassu KMS image must already contain `p11-kit-client.so`.
+- If KMS starts before the tunnel is ready, use `services.kms.command/args`
+  to wait until `/run/p11-kit/pkcs11` exists before launching the real binary.

@@ -94,6 +94,31 @@ services:
   kms:
     # -- Docker image for the KMS component
     image: ghcr.io/lamassuiot/lamassu-kms:3.7.0
+    # -- Optional command override for the KMS container
+    command: []
+    # -- Optional arguments override for the KMS container
+    args: []
+    pkcs11Sidecar:
+      # -- Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS
+      enabled: false
+      # -- Sidecar image used to create the forwarded PKCS#11 socket
+      image: ""
+      # -- Image pull policy for the PKCS#11 sidecar
+      imagePullPolicy: IfNotPresent
+      # -- Shared directory where the sidecar should create the PKCS#11 socket
+      socketDir: /run/p11-kit
+      # -- Command for the PKCS#11 sidecar
+      command: []
+      # -- Arguments for the PKCS#11 sidecar
+      args: []
+      # -- Extra environment variables for the PKCS#11 sidecar
+      env: []
+      # -- Extra sidecar volume mounts, for example SSH key secrets
+      volumeMounts: []
+      # -- Extra pod volumes needed by the PKCS#11 sidecar
+      volumes: []
+      # -- Resource requests and limits for the PKCS#11 sidecar
+      resources: {}
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
@@ -134,11 +159,9 @@ toolbox:
 migrations:
   image: ghcr.io/lamassuiot/lamassu-db-migration:3.7.0
   databases:
-    - auth
     - alerts
     - ca
     - va
-    - cloudproxy
     - devicemanager
     - dmsmanager
     - kms
