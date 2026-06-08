@@ -73,6 +73,5 @@ data:
       port: 8085
 
     {{- include "lamassu.config.authzClient" $ | nindent 4 }}
-
     downstream_cert_file: /shared/root.crt
     {{- include "lamassu.config.otel" $ | nindent 4 }}

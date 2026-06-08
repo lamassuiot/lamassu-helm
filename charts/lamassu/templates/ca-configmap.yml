@@ -19,7 +19,6 @@ data:
       port: 8085
 
     {{- include "lamassu.config.authzClient" $ | nindent 4 }}
-
     certificate_monitoring_job:
       enabled: true
       frequency: "{{ .Values.services.ca.monitoring.frequency }}"
