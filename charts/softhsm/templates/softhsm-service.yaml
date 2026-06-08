@@ -9,5 +9,9 @@ spec:
     targetPort: 5657
     protocol: TCP
     name: "tcp-pkcs11"
+  - port: {{ .Values.ssh.port }}
+    targetPort: 22
+    protocol: TCP
+    name: "ssh"
   selector:
     app: {{ include "soft.fullname" . }}

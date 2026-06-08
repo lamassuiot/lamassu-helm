@@ -18,6 +18,8 @@ HTTP_PORT=80
 GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
+SOFTHSM_CHART_PATH="./charts/softhsm"
+WITH_SOFTHSM=false
 
 TLS_CRT=
 TLS_KEY=
@@ -47,6 +49,7 @@ OFFLINE_HELMCHART_VICTORIA_LOGS=""
 OFFLINE_HELMCHART_VICTORIA_TRACES=""
 OFFLINE_HELMCHART_JAEGER=""
 OFFLINE_HELMCHART_OTEL_COLLECTOR=""
+OFFLINE_HELMCHART_SOFTHSM=""
 
 
 function main() {
@@ -101,6 +104,10 @@ function main() {
                 exit 1
             fi
         fi
+        if [ "$WITH_SOFTHSM" = true ] && [ "$OFFLINE_HELMCHART_SOFTHSM" = "" ]; then
+            echo -e "\n${RED}SoftHSM helm chart path is empty${NOCOLOR}"
+            exit 1
+        fi
     else
         echo -e "${ORANGE}ONLINE MODE ENABLED${NOCOLOR}"
     fi
@@ -118,13 +125,21 @@ function main() {
     install_keycloak
     echo -e "\n${BLUE}6) Install RabbitMQ${NOCOLOR}"
     install_rabbitmq
+
+    next_step=7
     if [ "$OTEL" = true ]; then
-        echo -e "\n${BLUE}7) Install Observability Stack (Victoria Logs + VictoriaTraces + Jaeger + OTel Collector)${NOCOLOR}"
+        echo -e "\n${BLUE}${next_step}) Install Observability Stack (Victoria Logs + VictoriaTraces + Jaeger + OTel Collector)${NOCOLOR}"
         install_observability
-        echo -e "\n${BLUE}8) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
-    else
-        echo -e "\n${BLUE}7) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
+        next_step=$((next_step + 1))
     fi
+
+    if [ "$WITH_SOFTHSM" = true ]; then
+        echo -e "\n${BLUE}${next_step}) Install SoftHSM${NOCOLOR}"
+        install_softhsm
+        next_step=$((next_step + 1))
+    fi
+
+    echo -e "\n${BLUE}${next_step}) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
     install_lamassu
 
     final_instructions
@@ -148,6 +163,7 @@ function usage() {
     echo " --helm-chart-postgres        (Only needed while using --offline) Path to the Posgtres helm chart (.tgz format)"
     echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
     echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
+    echo " --helm-chart-softhsm         (Only needed while using --offline and --with-softhsm) Path to the SoftHSM helm chart (.tgz format)"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
@@ -155,6 +171,8 @@ function usage() {
     echo " --helm-chart-victoria-traces (Only needed while using --offline with --otel) Path to the victoria-traces-single helm chart (.tgz format)"
     echo " --helm-chart-jaeger          (Only needed while using --offline with --otel) Path to the Jaeger helm chart (.tgz format)"
     echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
+    echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: ./charts/softhsm"
+    echo " --with-softhsm               Install SoftHSM and configure Lamassu KMS to use PKCS#11"
 }
 
 function has_argument() {
@@ -184,6 +202,19 @@ function process_flags() {
             ;;
         --offline)
             OFFLINE=true
+            ;;
+        --with-softhsm)
+            WITH_SOFTHSM=true
+            ;;
+        --softhsm-chart-path)
+            if ! has_argument $@; then
+                echo -e "\n${RED}SoftHSM chart path not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            SOFTHSM_CHART_PATH=$(extract_argument $@)
+
+            shift
             ;;
          --tls-crt)
               if ! has_argument $@; then
@@ -242,6 +273,16 @@ function process_flags() {
                 exit 1
             fi
             OFFLINE_HELMCHART_KEYCLOAK=$(extract_argument $@)
+
+            shift
+            ;;
+         --helm-chart-softhsm)
+              if ! has_argument $@; then
+                echo -e "\n${RED}SoftHSM Helm Chart not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_HELMCHART_SOFTHSM=$(extract_argument $@)
 
             shift
             ;;
@@ -384,8 +425,32 @@ function final_instructions() {
     echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
     echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
     echo -e "${BLUE}Use the provided Keycloak credentials ${KEYCLOAK_USER}/${KEYCLOAK_PWD}${NOCOLOR}"
+    if [ "$WITH_SOFTHSM" = true ]; then
+        echo -e "${BLUE}SoftHSM endpoint configured for PKCS#11: tcp://hsm-softhsm:5657${NOCOLOR}"
+    fi
 }
 
+function create_softhsm_kms_override_file() {
+target_file="$1"
+cat >"$target_file" <<"EOF"
+services:
+    kms:
+        cryptoEngines:
+            defaultEngineID: "pkcs11-1"
+            engines:
+                - id: "pkcs11-1"
+                  type: "pkcs11"
+                  token: "lamassuHSM"
+                  pin: "1234"
+                  module_path: "/usr/local/lib/libpkcs11-proxy.so"
+                  module_extra_options:
+                    env:
+                      PKCS11_PROXY_SOCKET: "tcp://hsm-softhsm:5657"
+                - id: "filesystem-1"
+                  type: "filesystem"
+                  storage_directory: "/crypto/fs"
+EOF
+}
 
 function install_lamassu() {
 if [ "$HTTPS_PORT" -ne 443 ]; then
@@ -487,6 +552,12 @@ else
     yq -i '.tls.certManagerOptions.issuer = "downstream-ca-selfsigned-issuer"' lamassu.yaml
     yq -i '.tls.certManagerOptions.certSpec.commonName = (env(DOMAIN))' lamassu.yaml
     yq -i '.tls.certManagerOptions.certSpec.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
+fi
+
+if [ "$WITH_SOFTHSM" = true ]; then
+        create_softhsm_kms_override_file softhsm-kms.yaml
+        yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml softhsm-kms.yaml -i
+        rm softhsm-kms.yaml
 fi
 
 
@@ -765,6 +836,21 @@ function create_kubernetes_namespace() {
             echo -e "\n${RED}Error creating namespace $NAMESPACE${NOCOLOR}"
             exit 1
         fi
+    fi
+}
+
+function install_softhsm() {
+    helm_path="$SOFTHSM_CHART_PATH"
+    if [ "$OFFLINE" = true ]; then
+        helm_path="$OFFLINE_HELMCHART_SOFTHSM"
+    fi
+
+    $kube $helm install hsm "$helm_path" -n "$NAMESPACE" --wait
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error installing SoftHSM${NOCOLOR}"
+        exit 1
     fi
 }
 

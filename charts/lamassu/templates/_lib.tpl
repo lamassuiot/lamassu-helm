@@ -102,6 +102,14 @@ spec:
         - name: {{ $name }}
           image: {{ $svc.image }}
           imagePullPolicy: {{ $root.Values.global.imagePullPolicy | quote }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if $tty }}
           tty: true
           {{- end }}

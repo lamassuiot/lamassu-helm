@@ -1,0 +1,45 @@
+services:
+  kms:
+    command:
+      - /bin/sh
+    args:
+      - -ec
+      - |
+        until [ -S /run/p11-kit/pkcs11 ]; do
+          echo "Waiting for PKCS#11 SSH tunnel..."
+          sleep 1
+        done
+        exec /bin/lamassu-kms
+    pkcs11Sidecar:
+      enabled: true
+      image: ghcr.io/lamassuiot/p11-kit-ssh-proxy:latest
+      imagePullPolicy: IfNotPresent
+      socketDir: /run/p11-kit
+      env:
+        - name: SSH_DESTINATION
+          value: root@hsm-softhsm
+        - name: SSH_IDENTITY_FILE
+          value: /etc/p11-kit-ssh/.key
+        - name: P11_LOCAL_SOCKET
+          value: /run/p11-kit/pkcs11
+        - name: P11_REMOTE_SOCKET
+          value: /run/p11-kit/pkcs11
+      volumeMounts:
+        - name: kms-pkcs11-ssh-key
+          mountPath: /etc/p11-kit-ssh
+          readOnly: true
+      volumes:
+        - name: kms-pkcs11-ssh-key
+          secret:
+            secretName: kms-pkcs11-sidecar-ssh-key
+    cryptoEngines:
+      defaultEngineID: pkcs11-1
+      engines:
+        - id: pkcs11-1
+          type: pkcs11
+          token: "your-token-label"
+          pin: "1234"
+          module_path: "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"
+          module_extra_options:
+            env:
+              P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"

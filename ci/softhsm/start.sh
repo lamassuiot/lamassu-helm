@@ -10,6 +10,9 @@ chmod 700 /root/.ssh
 if [[ -n "${SSH_AUTHORIZED_KEYS:-}" ]]; then
     printf '%s\n' "$SSH_AUTHORIZED_KEYS" > /root/.ssh/authorized_keys
     chmod 600 /root/.ssh/authorized_keys
+    echo "SSH authorized_keys configured for root login."
+else
+    echo "SSH_AUTHORIZED_KEYS is empty. sshd will listen on port 22, but key-based login will fail until a public key is provided."
 fi
 
 ssh-keygen -A
@@ -23,10 +26,13 @@ UsePAM no
 AllowTcpForwarding yes
 X11Forwarding no
 PermitTunnel no
-Subsystem sftp /usr/lib/openssh/sftp-server
 EOF
 
+echo "Validating sshd configuration..."
+/usr/sbin/sshd -t
+echo "Starting sshd on port 22..."
 /usr/sbin/sshd
+echo "sshd started successfully and is listening on port 22."
 
 function chck_empty(){
     if [[ "$2" == "" ]]; then
@@ -107,6 +113,8 @@ echo "
                      +------------------------------------------------------+
 
 "
+
+echo "SoftHSM startup complete. SSH is enabled on port 22 and p11-kit server is starting in the foreground."
 
 p11-kit server --foreground \
     --name "$P11_SOCKET_PATH" \
