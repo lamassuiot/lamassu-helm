@@ -25,9 +25,11 @@ spec:
       labels:
         app: kms
     spec:
-      # securityContext:
-      #   fsGroup: 10650
-      #   fsGroupChangePolicy: Always
+{{- if $hasFilesystemEngine }}
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 0
+{{- end }}
       containers:
         - name: kms
           image: {{ .Values.services.kms.image }}

@@ -47,6 +47,13 @@ data:
       password: "{{ .Values.postgres.password }}"
       database: {{ .Values.services.authz.database }}
 
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
+      port: 8085
+
     {{- if .Values.services.authz.credentials }}
     credentials:
       {{- range .Values.services.authz.credentials }}
@@ -69,6 +76,7 @@ data:
 
     http_schemas:
     - /etc/lamassuiot/authz/schemas/http-wfx.json
+
 
     {{- if .Values.services.authz.preloadDir }}
     preload_dir: {{ .Values.services.authz.preloadDir }}
