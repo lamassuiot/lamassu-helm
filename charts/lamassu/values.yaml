@@ -28,11 +28,24 @@ gateway:
   ports:
     http: 80
     https: 443
+  responseOverride:
+    # -- Rewrite 401 responses with a custom body
+    unauthorized:
+      enabled: true
+      contentType: application/json
+      body: '{"error": "Unauthorized"}'
+    # -- Rewrite 403 responses with a custom body
+    forbidden:
+      enabled: true
+      contentType: application/json
+      body: '{"error": "Forbidden"}'
 postgres:
   # -- Hostname for the PostgreSQL server
   hostname: ""
   # -- Port for the PostgreSQL server
   port: 5432
+  # -- Log level used by components that connect to PostgreSQL for their storage layer
+  logLevel: "info"
   # -- Username to be used to authenticate with the PostgreSQL server
   username: ""
   # -- Password to be used to authenticate with the PostgreSQL server

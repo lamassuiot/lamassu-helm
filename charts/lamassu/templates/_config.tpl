@@ -58,12 +58,22 @@ AMQP event bus block. Context dict:
 {{/* PostgreSQL storage block. Context: chart root ($) */}}
 {{- define "lamassu.config.storage" -}}
 storage:
-  log_level: "info"
+  log_level: "{{ .Values.postgres.logLevel }}"
   provider: "postgres" #couch_db | postgres | dynamo_db
   hostname: {{ .Values.postgres.hostname }}
   port: {{ .Values.postgres.port }}
   username: "{{ .Values.postgres.username }}"
   password: "{{ .Values.postgres.password }}"
+{{- end -}}
+
+{{/* Authz client block, used by every service that enforces authorization checks. Context: chart root ($) */}}
+{{- define "lamassu.config.authzClient" -}}
+authz_client:
+  log_level: debug
+  auth_mode: noauth
+  protocol: http
+  hostname: authz
+  port: 8085
 {{- end -}}
 
 {{/* OTel traces/logging block, guarded by observability.enabled. Context: chart root ($) */}}
