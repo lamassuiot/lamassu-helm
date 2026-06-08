@@ -244,6 +244,19 @@ services:
       host: ""
       # -- SMTP server port
       port: 25
+  authz:
+    # -- Docker image for the Authz connector component
+    image: ghcr.io/lamassuiot/lamassu-authz:latest
+    # -- PostgreSQL database name for authz principals, grants, and policies
+    database: authz
+    # -- Map of schema name to inline JSON schema content. Each schema is mounted as a file at /etc/lamassuiot/schemas/<name>.json
+    schemas: {}
+    # -- Map of schema name to PostgreSQL database name. Uses global postgres credentials.
+    credentials: {}
+    # -- Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids}
+    bootstrap: []
+    # -- Optional directory to preload policies from on startup
+    preloadDir: ""
   connectors:
 toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
