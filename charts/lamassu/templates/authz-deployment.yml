@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authz
+  namespace: {{.Release.Namespace}}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  labels:
+    app: authz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authz
+  template:
+    metadata:
+      labels:
+        app: authz
+    spec:
+      containers:
+        - name: authz
+          image: {{ .Values.services.authz.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+          tty: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          volumeMounts:
+            - name: api-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+            {{- range $schemaName, $_ := .Values.services.authz.schemas }}
+            - name: api-config
+              mountPath: /etc/lamassuiot/schemas/{{ $schemaName }}.json
+              subPath: schema-{{ $schemaName }}.json
+            {{- end }}
+          ports:
+            - containerPort: 8085
+      restartPolicy: Always
+      volumes:
+        - name: api-config
+          configMap:
+            name: authz-config
