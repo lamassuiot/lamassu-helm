@@ -13,6 +13,12 @@ data:
 
     {{- include "lamassu.config.storage" $ | nindent 4 }}
 
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
+      port: 8085
     smtp_server:
       from: {{ .Values.services.alerts.smtp_server.from }}
       host: {{ .Values.services.alerts.smtp_server.host }}

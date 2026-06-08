@@ -1,0 +1,4 @@
+server:
+  fullnameOverride: "victoria-traces"
+  persistentVolume:
+    enabled: false

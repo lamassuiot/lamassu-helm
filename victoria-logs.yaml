@@ -1,0 +1,4 @@
+server:
+  fullnameOverride: "victoria-logs"
+  persistentVolume:
+    enabled: false

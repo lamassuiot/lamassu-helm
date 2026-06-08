@@ -1,0 +1,24 @@
+fullnameOverride: "postgresql"
+image:
+  registry: docker.io
+  repository: postgres
+  tag: "18.4"
+auth:
+  username: "admin"
+  password: "Mg6VZHve4nNQk8UfE1mdrOAJwBbg5Z"
+initdb:
+  scripts:
+    init.sql: |
+      CREATE DATABASE auth;
+      CREATE DATABASE pki;
+      CREATE DATABASE authz;
+      CREATE DATABASE wfx;
+
+      \connect pki
+
+      CREATE SCHEMA IF NOT EXISTS alerts;
+      CREATE SCHEMA IF NOT EXISTS ca;
+      CREATE SCHEMA IF NOT EXISTS va;
+      CREATE SCHEMA IF NOT EXISTS devicemanager;
+      CREATE SCHEMA IF NOT EXISTS dmsmanager;
+      CREATE SCHEMA IF NOT EXISTS kms;

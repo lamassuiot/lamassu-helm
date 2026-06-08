@@ -1,0 +1,106 @@
+postgres:
+  hostname: "postgresql"
+  port: 5432
+  username: "admin"
+  password: "Mg6VZHve4nNQk8UfE1mdrOAJwBbg5Z"
+amqp:
+  hostname: "rabbitmq"
+  port: 5672
+  username: "admin"
+  password: "kIk1w3YcC1uNXjxTnfJXuKoYHXnJo2"
+  tls: false
+services:
+  ca:
+    cryptoEngines:
+      defaultEngineID: fs-1
+      engines:
+        - id: fs-1
+          type: filesystem
+          storage_directory: /crypto/fs
+    domains:
+      - lab.lamassu.io
+  authz:
+    credentials:
+      pki:
+        database: pki
+        hostname: "postgresql"
+        port: 5432
+        username: "admin"
+        password: "Mg6VZHve4nNQk8UfE1mdrOAJwBbg5Z"
+      authz:
+        database: authz
+        hostname: "postgresql"
+        port: 5432
+        username: "admin"
+        password: "Mg6VZHve4nNQk8UfE1mdrOAJwBbg5Z"
+    bootstrap:
+      - principal_id: "oidc:lamassu"
+        principal_name: "lamassu"
+        principal_type: "oidc"
+        policy_ids:
+          - "lamassu.a6811b60-5f89-4ce7-badb-78ea234794d3"
+        auth_config:
+          claims:
+            - claim: "preferred_username"
+              operator: "equals"
+              value: "lamassu"
+    jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
+  kms:
+    pkcs11Sidecar:
+      enabled: true
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+      imagePullPolicy: IfNotPresent
+      socketDir: /run/p11-kit
+      env:
+        - name: SSH_DESTINATION
+          value: root@hsm-softhsm
+        - name: SSH_IDENTITY_FILE
+          value: /etc/p11-kit-ssh/.key
+        - name: P11_LOCAL_SOCKET
+          value: /run/p11-kit/pkcs11
+        - name: P11_REMOTE_SOCKET
+          value: /run/p11-kit/pkcs11
+      volumeMounts:
+        - name: kms-pkcs11-ssh-key
+          mountPath: /etc/p11-kit-ssh
+          readOnly: true
+      volumes:
+        - name: kms-pkcs11-ssh-key
+          secret:
+            secretName: kms-pkcs11-sidecar-ssh-key
+    cryptoEngines:
+      defaultEngineID: "pkcs11-1"
+      engines:
+        - id: "pkcs11-1"
+          type: "pkcs11"
+          token: "lamassuHSM"
+          pin: "1234"
+          module_path: "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"
+          module_extra_options:
+            env:
+              P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
+        - id: "filesystem-1"
+          type: "filesystem"
+          storage_directory: "/crypto/fs"
+gateway:
+  extraRouting:
+    - path: /auth
+      name: auth
+      target:
+        host: auth-keycloak
+        port: 80 # If no sidecar is used
+  addresses:
+    - 172.31.3.116
+  ports:
+    https: 443
+    http: 80
+tls:
+  type: certManager
+  certManagerOptions:
+    issuer: downstream-ca-selfsigned-issuer
+    certSpec:
+      commonName: lab.lamassu.io
+      addresses:
+        - 172.31.3.116
+observability:
+  enabled: true

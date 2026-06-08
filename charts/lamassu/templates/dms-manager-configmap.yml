@@ -72,5 +72,11 @@ data:
       hostname: ca
       port: 8085
 
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
+      port: 8085
     downstream_cert_file: /shared/root.crt
     {{- include "lamassu.config.otel" $ | nindent 4 }}
