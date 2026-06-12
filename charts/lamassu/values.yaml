@@ -133,7 +133,7 @@ toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
 migrations:
   db:
-    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0
     databases:
       - alerts
       - ca
@@ -145,5 +145,5 @@ migrations:
     # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0.
     enabled: false
     # -- Docker image for the CA-to-KMS migration tool
-    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0
   image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0
