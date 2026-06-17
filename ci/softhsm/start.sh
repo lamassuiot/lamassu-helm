@@ -26,13 +26,19 @@ UsePAM no
 AllowTcpForwarding yes
 X11Forwarding no
 PermitTunnel no
+# VERBOSE logs each accepted connection and key used — visible in container logs
+# via 'kubectl logs' because sshd is started with -e (log to stderr)
+LogLevel VERBOSE
 EOF
 
 echo "Validating sshd configuration..."
 /usr/sbin/sshd -t
 echo "Starting sshd on port 22..."
-/usr/sbin/sshd
-echo "sshd started successfully and is listening on port 22."
+# -D: don't daemonize  -e: log to stderr instead of syslog
+# Running in background so p11-kit can run in foreground below.
+/usr/sbin/sshd -D -e &
+SSHD_PID=$!
+echo "sshd started successfully (pid $SSHD_PID) and is listening on port 22."
 
 function chck_empty(){
     if [[ "$2" == "" ]]; then

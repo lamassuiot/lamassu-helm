@@ -2,10 +2,6 @@
 
 set -euo pipefail
 
-mkdir -p /root/.ssh /run/p11-kit
-chmod 700 /root/.ssh
-chmod 755 /run/p11-kit
-
 SSH_DESTINATION="${SSH_DESTINATION:?SSH_DESTINATION is required}"
 SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-/etc/p11-kit-ssh/id_ed25519}"
 SSH_PORT="${SSH_PORT:-22}"
@@ -15,7 +11,19 @@ SSH_LOG_LEVEL="${SSH_LOG_LEVEL:-VERBOSE}"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-10}"
 SSH_SERVER_ALIVE_INTERVAL="${SSH_SERVER_ALIVE_INTERVAL:-30}"
 SSH_SERVER_ALIVE_COUNT_MAX="${SSH_SERVER_ALIVE_COUNT_MAX:-3}"
+SSH_STREAMLOCAL_BIND_MASK="${SSH_STREAMLOCAL_BIND_MASK:-0177}"
 SSH_RUNTIME_IDENTITY_FILE="${SSH_RUNTIME_IDENTITY_FILE:-/tmp/p11-kit-ssh-key}"
+SSH_HOME_DIR="${HOME:-/tmp}"
+P11_LOCAL_SOCKET_DIR="$(dirname "$P11_LOCAL_SOCKET")"
+
+mkdir -p "$SSH_HOME_DIR/.ssh" "$P11_LOCAL_SOCKET_DIR"
+chmod 700 "$SSH_HOME_DIR/.ssh"
+
+# The shared socket directory may come from a pod volume owned by another user.
+# We only need it to exist; changing its mode is optional and should not block startup.
+if [[ -O "$P11_LOCAL_SOCKET_DIR" ]]; then
+    chmod 755 "$P11_LOCAL_SOCKET_DIR"
+fi
 
 if [[ ! -f "$SSH_IDENTITY_FILE" ]]; then
     echo "SSH identity file not found: $SSH_IDENTITY_FILE" >&2
@@ -26,7 +34,6 @@ cp "$SSH_IDENTITY_FILE" "$SSH_RUNTIME_IDENTITY_FILE"
 chmod 600 "$SSH_RUNTIME_IDENTITY_FILE"
 
 rm -f "$P11_LOCAL_SOCKET"
-mkdir -p "$(dirname "$P11_LOCAL_SOCKET")"
 
 echo "Starting PKCS#11 SSH tunnel"
 echo "  destination : $SSH_DESTINATION"
@@ -37,6 +44,7 @@ echo "  log level   : $SSH_LOG_LEVEL"
 echo "  conn timeout: $SSH_CONNECT_TIMEOUT"
 echo "  alive intvl : $SSH_SERVER_ALIVE_INTERVAL"
 echo "  alive count : $SSH_SERVER_ALIVE_COUNT_MAX"
+echo "  sock mask   : $SSH_STREAMLOCAL_BIND_MASK"
 echo "  key source  : $SSH_IDENTITY_FILE"
 echo "  key runtime : $SSH_RUNTIME_IDENTITY_FILE"
 
@@ -47,6 +55,7 @@ exec ssh -N \
     -o LogLevel="$SSH_LOG_LEVEL" \
     -o ServerAliveInterval="$SSH_SERVER_ALIVE_INTERVAL" \
     -o ServerAliveCountMax="$SSH_SERVER_ALIVE_COUNT_MAX" \
+    -o StreamLocalBindMask="$SSH_STREAMLOCAL_BIND_MASK" \
     -o TCPKeepAlive=yes \
     -o StreamLocalBindUnlink=yes \
     -o StrictHostKeyChecking=no \

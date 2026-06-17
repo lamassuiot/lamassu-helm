@@ -22,18 +22,16 @@
 {{- end -}}
 
 {{- define "lamassu.kms.volumeMounts" -}}
-{{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
 {{- if .Values.services.kms.pkcs11Sidecar.enabled }}
 - name: pkcs11-socket
   mountPath: {{ .Values.services.kms.pkcs11Sidecar.socketDir | quote }}
 {{- end }}
-{{- if $hasFilesystemEngine }}
 - name: golang-engine-storage
   mountPath: /crypto/fs
-{{- end }}
 {{- end -}}
 
 {{- define "lamassu.kms.volumes" -}}
+{{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
 {{- if .Values.services.kms.pkcs11Sidecar.enabled }}
 - name: pkcs11-socket
   emptyDir: {}
@@ -41,32 +39,48 @@
 {{- toYaml . | nindent 0 }}
 {{- end }}
 {{- end }}
+{{- if not $hasFilesystemEngine }}
+- name: golang-engine-storage
+  emptyDir: {}
+{{- end }}
 {{- end -}}
 
-{{- define "lamassu.kms.sidecars" -}}
+{{- define "lamassu.kms.initContainers" -}}
 {{- if .Values.services.kms.pkcs11Sidecar.enabled }}
+{{- $pkcs11Sidecar := .Values.services.kms.pkcs11Sidecar }}
 - name: kms-pkcs11-sidecar
-  image: {{ .Values.services.kms.pkcs11Sidecar.image | quote }}
-  imagePullPolicy: {{ .Values.services.kms.pkcs11Sidecar.imagePullPolicy | quote }}
-  {{- with .Values.services.kms.pkcs11Sidecar.command }}
+  image: {{ $pkcs11Sidecar.image | quote }}
+  imagePullPolicy: {{ $pkcs11Sidecar.imagePullPolicy | quote }}
+  # restartPolicy: Always on an initContainer is a Kubernetes 1.29+ sidecar feature.
+  # Unlike regular initContainers (which must exit 0 before main containers start),
+  # a sidecar initContainer with restartPolicy: Always stays running for the pod's
+  # lifetime. Main containers wait only for this container to become Ready (via
+  # readinessProbe), not for it to exit — which is what we need for the SSH tunnel.
+  restartPolicy: Always
+  {{- with $pkcs11Sidecar.command }}
   command:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.services.kms.pkcs11Sidecar.args }}
+  {{- with $pkcs11Sidecar.args }}
   args:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.services.kms.pkcs11Sidecar.env }}
+  {{- with $pkcs11Sidecar.env }}
   env:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  readinessProbe:
+    exec:
+      command: ["test", "-S", {{ $pkcs11Sidecar.socketDir | printf "%s/pkcs11" | quote }}]
+    initialDelaySeconds: 2
+    periodSeconds: 2
   volumeMounts:
     - name: pkcs11-socket
-      mountPath: {{ .Values.services.kms.pkcs11Sidecar.socketDir | quote }}
-    {{- with .Values.services.kms.pkcs11Sidecar.volumeMounts }}
+      mountPath: {{ $pkcs11Sidecar.socketDir | quote }}
+    {{- with $pkcs11Sidecar.volumeMounts }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- with .Values.services.kms.pkcs11Sidecar.resources }}
+  {{- with $pkcs11Sidecar.resources }}
   resources:
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -88,7 +102,7 @@
   "kind" (ternary "StatefulSet" "Deployment" $hasFilesystemEngine)
   "serviceName" (ternary "kms" "" $hasFilesystemEngine)
   "env" (include "lamassu.kms.extraEnv" $)
+  "initContainers" (include "lamassu.kms.initContainers" $)
   "volumeMounts" (include "lamassu.kms.volumeMounts" $)
   "volumes" (include "lamassu.kms.volumes" $)
-  "sidecars" (include "lamassu.kms.sidecars" $)
   "volumeClaimTemplates" (ternary (include "lamassu.kms.volumeClaimTemplates" $) "" $hasFilesystemEngine)) }}
