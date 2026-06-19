@@ -10,6 +10,7 @@ This table shows the relationship between Helm chart versions, application versi
 
 | Helm Chart | App Version | UI Image | Backend Images (CA/VA/DevMgr/DMS/Alerts) | KMS Image | Notes |
 |------------|-------------|----------|-------------------------------------------|-----------|-------|
+| 3.8.0 | 3.8.0 | 4.3.0 | 3.8.0 | 3.8.0 | mTLS + Webhook authentication method introduced. Full chain validation in enroll |
 | 3.7.0 | 3.7.0 | 4.2.0 | 3.7.0 | 3.7.0 | **NEW**: KMS service introduced as first-class service |
 | 3.6.1 | 3.6.1 | 4.1.1 | 3.6.1 | N/A | Latest stable release on main branch |
 | 3.6.0 | 3.6.0 | 4.1.0 | 3.6.0 | N/A | |

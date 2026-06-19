@@ -70,10 +70,10 @@ auth:
 services:
   ui:
     # -- Docker image for the UI component
-    image: "ghcr.io/lamassuiot/lamassu-ui:4.2.0"
+    image: "ghcr.io/lamassuiot/lamassu-ui:4.3.0"
   va:
     # -- Docker image for the VA component
-    image: ghcr.io/lamassuiot/lamassu-va:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-va:3.8.0
     fileStore:
       id: "local-1"
       type: "local"
@@ -87,13 +87,13 @@ services:
     domains:
       - dev.lamassu.io
     # -- Docker image for the CA component
-    image: ghcr.io/lamassuiot/lamassu-ca:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-ca:3.8.0
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
   kms:
     # -- Docker image for the KMS component
-    image: ghcr.io/lamassuiot/lamassu-kms:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-kms:3.8.0
     # -- Optional command override for the KMS container
     command: []
     # -- Optional arguments override for the KMS container
@@ -131,13 +131,13 @@ services:
           storage_directory: "/crypto/fs"
   deviceManager:
     # -- Docker image for the Device Manager component
-    image: ghcr.io/lamassuiot/lamassu-devmanager:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-devmanager:3.8.0
   dmsManager:
     # -- Docker image for the DMS Manager component
-    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:3.7.0
+    image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""
@@ -157,11 +157,18 @@ services:
 toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
 migrations:
-  image: ghcr.io/lamassuiot/lamassu-db-migration:3.7.0
-  databases:
-    - alerts
-    - ca
-    - va
-    - devicemanager
-    - dmsmanager
-    - kms
+  db:
+    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0
+    databases:
+      - alerts
+      - ca
+      - va
+      - devicemanager
+      - dmsmanager
+      - kms
+  caToKms:
+    # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0.
+    enabled: false
+    # -- Docker image for the CA-to-KMS migration tool
+    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0
+  image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0
