@@ -1,4 +1,8 @@
 {{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
+{{- $services := (get .Values "services" | default (dict)) -}}
+{{- $kms := (get $services "kms" | default (dict)) -}}
+{{- $pkcs11Sidecar := (get $kms "pkcs11Sidecar" | default (dict)) -}}
+{{- $hasPkcs11Sidecar := (get $pkcs11Sidecar "enabled" | default false) -}}
 apiVersion: apps/v1
 {{- if $hasFilesystemEngine }}
 kind: StatefulSet
@@ -25,10 +29,57 @@ spec:
       labels:
         app: kms
     spec:
+      {{- if $hasPkcs11Sidecar }}
+      initContainers:
+        - name: kms-pkcs11-sidecar
+          image: {{ (get $pkcs11Sidecar "image" | default "") | quote }}
+          imagePullPolicy: {{ (get $pkcs11Sidecar "imagePullPolicy" | default "IfNotPresent") | quote }}
+          # restartPolicy: Always on an initContainer is a Kubernetes 1.29+ sidecar feature.
+          # Unlike regular initContainers (which must exit 0 before main containers start),
+          # a sidecar initContainer with restartPolicy: Always stays running for the pod's
+          # lifetime. Main containers wait only for this container to become Ready (via
+          # readinessProbe), not for it to exit — which is what we need for the SSH tunnel.
+          restartPolicy: Always
+          {{- with (get $pkcs11Sidecar "command") }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (get $pkcs11Sidecar "args") }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (get $pkcs11Sidecar "env") }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            exec:
+              command: ["test", "-S", {{ (get $pkcs11Sidecar "socketDir" | default "/run/p11-kit") | printf "%s/pkcs11" | quote }}]
+            initialDelaySeconds: 2
+            periodSeconds: 2
+          volumeMounts:
+            - name: pkcs11-socket
+              mountPath: {{ (get $pkcs11Sidecar "socketDir" | default "/run/p11-kit") | quote }}
+            {{- with (get $pkcs11Sidecar "volumeMounts") }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with (get $pkcs11Sidecar "resources") }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
       containers:
         - name: kms
           image: {{ .Values.services.kms.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+          {{- with .Values.services.kms.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.services.kms.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           tty: true
           env:
             {{- range .Values.services.kms.cryptoEngines.engines }}
@@ -51,6 +102,10 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+            {{- if $hasPkcs11Sidecar }}
+            - name: pkcs11-socket
+              mountPath: {{ (get $pkcs11Sidecar "socketDir" | default "/run/p11-kit") | quote }}
+            {{- end }}
             - name: golang-engine-storage
               mountPath: /crypto/fs
           ports:
@@ -60,6 +115,17 @@ spec:
         - name: api-config
           configMap:  
             name: kms-config
+        {{- if $hasPkcs11Sidecar }}
+        - name: pkcs11-socket
+          emptyDir: {}
+        {{- with (get $pkcs11Sidecar "volumes") }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- end }}
+{{- if not $hasFilesystemEngine }}
+        - name: golang-engine-storage
+          emptyDir: {}
+{{- end }}
 {{- if $hasFilesystemEngine }}
   volumeClaimTemplates:
   # Filesystem engine is configured, using PVC for persistent storage

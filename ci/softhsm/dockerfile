@@ -11,7 +11,10 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     libsqlite3-dev \
     cmake \
-    libseccomp-dev
+    libseccomp-dev \
+    openssh-server \
+    p11-kit \
+    p11-kit-modules
 
 # Builging sfthsmv2/installing
 RUN git clone https://github.com/opendnssec/SoftHSMv2.git && \
@@ -28,17 +31,14 @@ RUN git clone https://github.com/opendnssec/SoftHSMv2.git && \
 # Install pkcs11-tool
 RUN apt-get install -y opensc 
 
-# building/installing pkcs11-proxy
-RUN git clone https://github.com/SUNET/pkcs11-proxy && \
-    cd pkcs11-proxy && \
-    cmake . && make && make install && cp pkcs11-daemon /usr/local/bin/
+RUN mkdir -p /var/run/sshd
 
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-EXPOSE 5657
-
 # SoftHSM only logs into Syslog. We need to run a syslog daemon to capture the logs
 RUN apt-get install syslog-ng -y
+
+EXPOSE 22
 
 ENTRYPOINT  [ "/app/start.sh" ]
