@@ -1,0 +1,84 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: authz-config
+  namespace: {{.Release.Namespace}}
+data:
+  config: |
+    logs:
+      level: "debug"
+
+    server:
+      log_level: "debug"
+      health_check: false
+      listen_address: "0.0.0.0"
+      port: 8085
+      protocol: "http" #http | https
+
+    subscriber_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+
+    publisher_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+
+    authz_db:
+      provider: "postgres"
+      hostname: {{ .Values.postgres.hostname }}
+      port: {{ .Values.postgres.port }}
+      username: "{{ .Values.postgres.username }}"
+      password: "{{ .Values.postgres.password }}"
+      database: {{ .Values.services.authz.database }}
+
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
+      port: 8085
+
+    {{- if .Values.services.authz.credentials }}
+    credentials:
+      {{- range $i, $credential := .Values.services.authz.credentials }}
+      {{ $credential.schema }}:
+        provider: "postgres"
+        hostname: {{ $.Values.postgres.hostname }}
+        port: {{ $.Values.postgres.port }}
+        username: "{{ $.Values.postgres.username }}"
+        password: "{{ $.Values.postgres.password }}"
+        database: {{ $credential.database }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.services.authz.schemas }}
+    schemas:
+      {{- range $i, $schemaName := .Values.services.authz.schemas }}
+      {{ $schemaName }}: /etc/lamassuiot/authz/schemas/{{ $schemaName }}.json
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.services.authz.preloadDir }}
+    preload_dir: {{ .Values.services.authz.preloadDir }}
+    {{- end }}
+
+    {{- if .Values.services.authz.bootstrap }}
+    bootstrap:
+      {{ .Values.services.authz.bootstrap | toYaml | nindent 6 | trim }}
+    {{- end }}
