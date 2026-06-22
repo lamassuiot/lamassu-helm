@@ -47,28 +47,32 @@ data:
       password: "{{ .Values.postgres.password }}"
       database: {{ .Values.services.authz.database }}
 
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
+      port: 8085
+
     {{- if .Values.services.authz.credentials }}
     credentials:
-      {{- range .Values.services.authz.credentials }}
-      {{ .schema }}:
+      {{- range $i, $credential := .Values.services.authz.credentials }}
+      {{ $credential.schema }}:
         provider: "postgres"
         hostname: {{ $.Values.postgres.hostname }}
         port: {{ $.Values.postgres.port }}
         username: "{{ $.Values.postgres.username }}"
         password: "{{ $.Values.postgres.password }}"
-        database: {{ .database }}
+        database: {{ $credential.database }}
       {{- end }}
     {{- end }}
 
     {{- if .Values.services.authz.schemas }}
     schemas:
-      {{- range .Values.services.authz.schemas }}
-      {{ . }}: /etc/lamassuiot/authz/schemas/{{ . }}.json
+      {{- range $i, $schemaName := .Values.services.authz.schemas }}
+      {{ $schemaName }}: /etc/lamassuiot/authz/schemas/{{ $schemaName }}.json
       {{- end }}
     {{- end }}
-
-    http_schemas:
-    - /etc/lamassuiot/authz/schemas/http-wfx.json
 
     {{- if .Values.services.authz.preloadDir }}
     preload_dir: {{ .Values.services.authz.preloadDir }}

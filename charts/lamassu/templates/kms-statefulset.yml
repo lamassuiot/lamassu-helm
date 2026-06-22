@@ -25,9 +25,6 @@ spec:
       labels:
         app: kms
     spec:
-      # securityContext:
-      #   fsGroup: 10650
-      #   fsGroupChangePolicy: Always
       containers:
         - name: kms
           image: {{ .Values.services.kms.image }}
