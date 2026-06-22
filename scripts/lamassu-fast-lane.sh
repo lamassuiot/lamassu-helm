@@ -698,10 +698,12 @@ initdb:
       CREATE DATABASE alerts;
       CREATE DATABASE ca;
       CREATE DATABASE va;
-      CREATE DATABASE cloudproxy;
       CREATE DATABASE devicemanager;
       CREATE DATABASE dmsmanager;
       CREATE DATABASE kms;
+      CREATE DATABASE pki;
+      CREATE DATABASE authz;
+      CREATE DATABASE wfx;
 EOF
 
     export POSTGRES_USER=$POSTGRES_USER

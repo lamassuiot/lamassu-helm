@@ -24,19 +24,3 @@ spec:
         remoteJWKS:
           uri: "{{ .uri }}"
     {{- end }}
-    
-  authorization:
-    defaultAction: Deny
-    rules:
-    {{- range $.Values.auth.oidc.apiGateway.jwks }}
-     - name: "allow"
-       action: Allow
-       principal:
-        jwt:
-          provider: {{ .name }}
-          claims:
-          - name: {{ $.Values.auth.authorization.rolesClaim }}
-            valueType: StringArray
-            values: ["{{ $.Values.auth.authorization.roles.admin }}"]
-    {{- end }}
-    
