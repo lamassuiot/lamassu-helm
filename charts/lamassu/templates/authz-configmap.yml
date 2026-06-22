@@ -49,23 +49,26 @@ data:
 
     {{- if .Values.services.authz.credentials }}
     credentials:
-      {{- range $schemaName, $dbName := .Values.services.authz.credentials }}
-      {{ $schemaName }}:
+      {{- range .Values.services.authz.credentials }}
+      {{ .schema }}:
         provider: "postgres"
         hostname: {{ $.Values.postgres.hostname }}
         port: {{ $.Values.postgres.port }}
         username: "{{ $.Values.postgres.username }}"
         password: "{{ $.Values.postgres.password }}"
-        database: {{ $dbName }}
+        database: {{ .database }}
       {{- end }}
     {{- end }}
 
     {{- if .Values.services.authz.schemas }}
     schemas:
-      {{- range $schemaName, $_ := .Values.services.authz.schemas }}
-      {{ $schemaName }}: /etc/lamassuiot/schemas/{{ $schemaName }}.json
+      {{- range .Values.services.authz.schemas }}
+      {{ . }}: /etc/lamassuiot/authz/schemas/{{ . }}.json
       {{- end }}
     {{- end }}
+
+    http_schemas:
+    - /etc/lamassuiot/authz/schemas/http-wfx.json
 
     {{- if .Values.services.authz.preloadDir }}
     preload_dir: {{ .Values.services.authz.preloadDir }}
@@ -75,8 +78,3 @@ data:
     bootstrap:
       {{ .Values.services.authz.bootstrap | toYaml | nindent 6 | trim }}
     {{- end }}
-
-  {{- range $schemaName, $schemaContent := .Values.services.authz.schemas }}
-  schema-{{ $schemaName }}.json: |
-    {{ $schemaContent | nindent 4 | trim }}
-  {{- end }}

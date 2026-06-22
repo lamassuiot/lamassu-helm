@@ -59,7 +59,7 @@ For detailed migration instructions between versions, see the CHANGELOG director
 - Kubernetes 1.19+
 - Helm 3.2.0+
 - cert-manager v1.14.0+ (for TLS certificate management)
-- Envoy Gateway v1.3.0+ (for API Gateway functionality)
+- Envoy Gateway v1.8.0+ (for API Gateway functionality)
 
 ## Installation
 
@@ -113,6 +113,61 @@ You can deploy these dependencies independently or let the Lamassu chart handle 
 For detailed migration steps, please refer to the `/charts/lamassu/CHANGELOG` folder in this repository.
 
 **Important Note:** Starting from version 3.x, Lamassu uses Envoy Gateway instead of Ingress for routing traffic. See the migration guides for details.
+
+### Envoy Gateway And CRDs
+
+Lamassu requires Envoy Gateway v1.8.0 or newer. Upgrade the Envoy Gateway CRDs before upgrading the Envoy Gateway controller. This avoids starting a new controller version against stale Gateway API or Envoy Gateway CRDs.
+
+Set the version once:
+
+```bash
+export ENVOY_GATEWAY_VERSION=v1.8.0
+```
+
+Apply the Envoy Gateway CRDs:
+
+```bash
+helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+  --version "${ENVOY_GATEWAY_VERSION}" \
+  --set crds.gatewayAPI.enabled=true \
+  --set crds.gatewayAPI.channel=experimental \
+  --set crds.envoyGateway.enabled=true \
+  | kubectl apply --server-side --force-conflicts -f -
+```
+
+Use the same Gateway API channel that is already installed in the cluster. Lamassu development clusters commonly use `experimental`; clusters using only standard Gateway API resources can use `standard`.
+
+Upgrade the Envoy Gateway Helm release:
+
+```bash
+helm upgrade eg oci://docker.io/envoyproxy/gateway-helm \
+  --version "${ENVOY_GATEWAY_VERSION}" \
+  -n envoy-gateway-system
+```
+
+Verify that the controller is running the expected version:
+
+```bash
+helm list -n envoy-gateway-system
+kubectl rollout status deployment/envoy-gateway -n envoy-gateway-system
+kubectl get deployment envoy-gateway -n envoy-gateway-system \
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
+
+Then upgrade Lamassu with your values file:
+
+```bash
+helm upgrade lamassu charts/lamassu \
+  -n lamassu-dev \
+  -f lamassu-dev-values.yaml
+```
+
+For external authorization, confirm the `SecurityPolicy` contains the v1.8.0 `pathOverride` field:
+
+```bash
+kubectl get securitypolicy external-authz -n lamassu-dev \
+  -o jsonpath='{.spec.extAuth.http.pathOverride}{"\n"}'
+```
 
 ## Development
 
