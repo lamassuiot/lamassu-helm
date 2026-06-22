@@ -666,10 +666,12 @@ initdb:
       CREATE DATABASE alerts;
       CREATE DATABASE ca;
       CREATE DATABASE va;
-      CREATE DATABASE cloudproxy;
       CREATE DATABASE devicemanager;
       CREATE DATABASE dmsmanager;
       CREATE DATABASE kms;
+      CREATE DATABASE pki;
+      CREATE DATABASE authz;
+      CREATE DATABASE wfx;
 EOF
 
     export POSTGRES_USER=$POSTGRES_USER
@@ -885,13 +887,36 @@ function is_microk8s_addon_enabled() {
 }
 
 function check_envoy_gateway_helm() {
-    # 1. Check Helm Release
+    envoy_gateway_version="v1.8.0"
+
+    # 1. Apply/upgrade Envoy Gateway and Gateway API CRDs before starting the controller.
+    echo "Applying Envoy Gateway CRDs ${envoy_gateway_version}..."
+    if $kube $helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+        --version "${envoy_gateway_version}" \
+        --set crds.gatewayAPI.enabled=true \
+        --set crds.gatewayAPI.channel=experimental \
+        --set crds.envoyGateway.enabled=true \
+        | $kube $kubectl apply --server-side --force-conflicts -f -; then
+        echo "✅ Envoy Gateway CRDs applied successfully"
+    else
+        echo "❌ Failed to apply Envoy Gateway CRDs. Please check Helm/Kubernetes output and try again."
+        exit 1
+    fi
+
+    # 2. Check Helm Release
     if $kube $helm list -n envoy-gateway-system | grep -q "^eg\s"; then
         echo "✅ Envoy Gateway (eg) Helm release found"
+        echo "Upgrading Envoy Gateway to ${envoy_gateway_version}..."
+        if $kube $helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system; then
+            echo "✅ Envoy Gateway Helm chart 'eg' upgraded successfully"
+        else
+            echo "❌ Failed to upgrade Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
+            exit 1
+        fi
     else
         echo "❌ Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
-        echo "Installing Envoy Gateway v1.3.0..."
-        if $kube $helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace; then
+        echo "Installing Envoy Gateway ${envoy_gateway_version}..."
+        if $kube $helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace; then
             echo "✅ Envoy Gateway Helm chart 'eg' installed successfully"
         else
             echo "❌ Failed to install Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
@@ -899,7 +924,7 @@ function check_envoy_gateway_helm() {
         fi
     fi
 
-    # 2. Check/Create GatewayClass
+    # 3. Check/Create GatewayClass
     if $kube kubectl get gatewayclass eg >/dev/null 2>&1; then
         echo "✅ GatewayClass 'eg' already exists"
     else
