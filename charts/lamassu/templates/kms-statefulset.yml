@@ -25,11 +25,17 @@ spec:
       labels:
         app: kms
     spec:
+      # securityContext:
+      #   fsGroup: 10650
+      #   fsGroupChangePolicy: Always
       containers:
         - name: kms
           image: {{ .Values.services.kms.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
           tty: true
+          # securityContext:
+          #   runAsUser: 10650
+          #   runAsGroup: 10650
           env:
             {{- range .Values.services.kms.cryptoEngines.engines }}
             {{- if eq .type "pkcs11" }}
