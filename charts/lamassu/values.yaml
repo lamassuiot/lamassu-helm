@@ -111,6 +111,17 @@ auth:
     roles:
       # -- Role association to be used to authorize the user as LAMASSU's admin
       admin: pki-admin
+  externalAuthorization:
+    # -- Protect routes labeled auth=external with Envoy Gateway external authorization.
+    enabled: true
+    # -- Kubernetes Service name for the external authorization endpoint.
+    serviceName: authz
+    # -- Kubernetes Service port for the external authorization endpoint.
+    servicePort: 8085
+    # -- HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+.
+    path: /v1/ext_authz/check
+    # -- Allow traffic when the external authorization service cannot be reached.
+    failOpen: false
 # -- Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts,
 # deviceManager, dmsManager and aws connector instances). Any key here can be
 # overridden per service under `services.<name>` — the per-service block is
@@ -224,6 +235,44 @@ services:
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
+  wfx:
+    # -- Enable the Siemens WFX workflow service
+    enabled: true
+    # -- Docker image for the WFX component
+    image: ghcr.io/siemens/wfx:latest
+    # -- Number of WFX replicas.
+    replicas: 1
+    # -- WFX southbound/client API port.
+    clientPort: 9080
+    # -- WFX northbound/management API port.
+    managementPort: 9081
+    logs:
+      # -- WFX log format.
+      format: json
+      # -- WFX log level.
+      level: debug
+    postgres:
+      # -- PostgreSQL database name for WFX.
+      database: wfx
+      # -- PostgreSQL SSL mode for WFX.
+      sslmode: disable
+      iamAuth:
+        # -- Enable AWS RDS IAM authentication for PostgreSQL.
+        enabled: false
+        # -- AWS region used for PostgreSQL IAM authentication.
+        region: ""
+    routing:
+      # -- Expose WFX through the Lamassu Gateway.
+      enabled: true
+      # -- Gateway path for the WFX southbound/client API.
+      sbiPath: /api/wfx/sbi/
+      # -- Gateway path for the WFX northbound/management API.
+      nbiPath: /api/wfx/nbi/
+      # -- Path used when rewriting Gateway routes to WFX.
+      rewritePath: /api/wfx/
+    extraEnv: []
+    # -- Additional command line arguments for the WFX container.
+    extraArgs: []
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
@@ -249,10 +298,10 @@ services:
     image: ghcr.io/lamassuiot/lamassu-authz:latest
     # -- PostgreSQL database name for authz principals, grants, and policies
     database: authz
-    # -- Map of schema name to inline JSON schema content. Each schema is mounted as a file at /etc/lamassuiot/schemas/<name>.json
-    schemas: {}
-    # -- Map of schema name to PostgreSQL database name. Uses global postgres credentials.
-    credentials: {}
+    # -- List of schema names to expose to Authz. Each schema is resolved at /etc/lamassuiot/schemas/<name>.json
+    schemas: []
+    # -- List of Authz schema/database credentials. Uses global postgres credentials.
+    credentials: []
     # -- Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids}
     bootstrap: []
     # -- Optional directory to preload policies from on startup
