@@ -48,6 +48,50 @@ amqp:
   password: ""
   # -- Enable AMQP over TLS (aka AMPQS)
   tls: false
+observability:
+  # -- Enable OpenTelemetry instrumentation for all Lamassu services
+  enabled: false
+  # -- HTTP routes for the observability UIs exposed through the API Gateway
+  routes:
+    logs:
+      # -- Path prefix at which Victoria Logs UI is exposed through the gateway
+      path: /infra/logs
+      # -- Backend service for the Victoria Logs UI (vmui)
+      hostname: "victoria-logs"
+      # -- Backend port for the Victoria Logs UI
+      port: 9428
+    traces:
+      # -- Path prefix at which VictoriaTraces UI is exposed through the gateway
+      path: /infra/traces
+      # -- Backend service for the VictoriaTraces UI (vmui)
+      hostname: "victoria-traces"
+      # -- Backend port for the VictoriaTraces UI
+      port: 10428
+    jaeger:
+      # -- Path prefix at which the Jaeger UI is exposed through the gateway (must match the Jaeger query base_path)
+      path: /infra/jaeger
+      # -- Backend service for the Jaeger query UI
+      hostname: "jaeger"
+      # -- Backend port for the Jaeger query UI
+      port: 16686
+  traces:
+    # -- Hostname of the OTLP HTTP collector that fans out traces to Jaeger and VictoriaTraces (deployed by --otel fastlane flag)
+    hostname: "otel-collector"
+    # -- OTLP HTTP port exposed by the OTel Collector
+    port: 4318
+    # -- Scheme for the OTLP traces endpoint (http | https)
+    scheme: http
+    # -- Base path for the OTLP traces ingestion endpoint (empty = standard /v1/traces)
+    basePath: ""
+  logs:
+    # -- Hostname of the Victoria Logs OTLP HTTP endpoint (deployed by --otel fastlane flag)
+    hostname: "victoria-logs"
+    # -- OTLP HTTP port exposed by Victoria Logs
+    port: 9428
+    # -- Scheme for the Victoria Logs OTLP endpoint (http | https)
+    scheme: http
+    # -- Base path for the Victoria Logs OTLP log ingestion endpoint
+    basePath: "/insert/opentelemetry/v1/logs"
 auth:
   oidc:
     frontend:

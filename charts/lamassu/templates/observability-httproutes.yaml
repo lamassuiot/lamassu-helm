@@ -1,0 +1,142 @@
+{{ if .Values.observability.enabled }}
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: infra-logs
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: eg
+      sectionName: https
+  rules:
+    # Redirect the bare path to a trailing slash so the VictoriaLogs vmui
+    # resolves its relative ./assets/* references correctly.
+    - matches:
+      - path:
+          type: Exact
+          value: {{ .Values.observability.routes.logs.path }}
+      filters:
+      - type: RequestRedirect
+        requestRedirect:
+          path:
+            type: ReplaceFullPath
+            replaceFullPath: {{ .Values.observability.routes.logs.path }}/
+          statusCode: 302
+    # Forward the vmui query/API calls (e.g. /select/logsql/query, /select/jaeger/*)
+    # to the backend /select/* path. This rule has a longer prefix than the UI
+    # rule below, so Gateway API longest-prefix precedence selects it for API calls.
+    - matches:
+      - path:
+          type: PathPrefix
+          value: {{ .Values.observability.routes.logs.path }}/select
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /select
+      backendRefs:
+        - name: {{ .Values.observability.routes.logs.hostname }}
+          port: {{ .Values.observability.routes.logs.port }}
+    # Serve the VictoriaLogs web UI (vmui) under the configured path.
+    - matches:
+      - path:
+          type: PathPrefix
+          value: {{ .Values.observability.routes.logs.path }}
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /select/vmui
+      backendRefs:
+        - name: {{ .Values.observability.routes.logs.hostname }}
+          port: {{ .Values.observability.routes.logs.port }}
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: infra-traces
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: eg
+      sectionName: https
+  rules:
+    # Redirect the bare path to a trailing slash so the VictoriaTraces vmui
+    # resolves its relative ./assets/* references correctly.
+    - matches:
+      - path:
+          type: Exact
+          value: {{ .Values.observability.routes.traces.path }}
+      filters:
+      - type: RequestRedirect
+        requestRedirect:
+          path:
+            type: ReplaceFullPath
+            replaceFullPath: {{ .Values.observability.routes.traces.path }}/
+          statusCode: 302
+    # Forward the vmui query/API calls (e.g. /select/logsql/query, /select/jaeger/*)
+    # to the backend /select/* path. This rule has a longer prefix than the UI
+    # rule below, so Gateway API longest-prefix precedence selects it for API calls.
+    - matches:
+      - path:
+          type: PathPrefix
+          value: {{ .Values.observability.routes.traces.path }}/select
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /select
+      backendRefs:
+        - name: {{ .Values.observability.routes.traces.hostname }}
+          port: {{ .Values.observability.routes.traces.port }}
+    # Serve the VictoriaTraces web UI (vmui) under the configured path.
+    - matches:
+      - path:
+          type: PathPrefix
+          value: {{ .Values.observability.routes.traces.path }}
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /select/vmui
+      backendRefs:
+        - name: {{ .Values.observability.routes.traces.hostname }}
+          port: {{ .Values.observability.routes.traces.port }}
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: infra-jaeger
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: eg
+      sectionName: https
+  rules:
+    # Redirect the bare path to a trailing slash so the Jaeger UI computes the
+    # correct relative ./static/* references and <base href>.
+    - matches:
+      - path:
+          type: Exact
+          value: {{ .Values.observability.routes.jaeger.path }}
+      filters:
+      - type: RequestRedirect
+        requestRedirect:
+          path:
+            type: ReplaceFullPath
+            replaceFullPath: {{ .Values.observability.routes.jaeger.path }}/
+          statusCode: 302
+    # Serve the Jaeger query UI. Jaeger is configured with query base_path equal
+    # to this prefix, so no path rewrite is applied.
+    - matches:
+      - path:
+          type: PathPrefix
+          value: {{ .Values.observability.routes.jaeger.path }}
+      backendRefs:
+        - name: {{ .Values.observability.routes.jaeger.hostname }}
+          port: {{ .Values.observability.routes.jaeger.port }}
+{{ end }}
