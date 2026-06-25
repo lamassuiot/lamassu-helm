@@ -146,4 +146,3 @@ migrations:
     enabled: false
     # -- Docker image for the CA-to-KMS migration tool
     image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0
-  image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0
