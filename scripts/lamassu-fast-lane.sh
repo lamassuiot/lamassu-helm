@@ -11,6 +11,7 @@ NAMESPACE=lamassu-dev
 NAMESPACE_OVERRIDE=false
 OFFLINE=false
 NON_INTERACTIVE=false
+OTEL=false
 HTTPS_PORT=443
 HTTP_PORT=80
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
@@ -40,6 +41,10 @@ OFFLINE_HELMCHART_LAMASSU=""
 OFFLINE_HELMCHART_RABBITMQ=""
 OFFLINE_HELMCHART_KEYCLOAK=""
 OFFLINE_HELMCHART_POSTGRES=""
+OFFLINE_HELMCHART_VICTORIA_LOGS=""
+OFFLINE_HELMCHART_VICTORIA_TRACES=""
+OFFLINE_HELMCHART_JAEGER=""
+OFFLINE_HELMCHART_OTEL_COLLECTOR=""
 
 
 function main() {
@@ -71,6 +76,24 @@ function main() {
             echo -e "\n${RED}Postgres helm chart path is empty${NOCOLOR}"
             exit 1
         fi
+        if [ "$OTEL" = true ]; then
+            if [ "$OFFLINE_HELMCHART_VICTORIA_LOGS" = "" ]; then
+                echo -e "\n${RED}Victoria Logs helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
+                exit 1
+            fi
+            if [ "$OFFLINE_HELMCHART_VICTORIA_TRACES" = "" ]; then
+                echo -e "\n${RED}VictoriaTraces helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
+                exit 1
+            fi
+            if [ "$OFFLINE_HELMCHART_JAEGER" = "" ]; then
+                echo -e "\n${RED}Jaeger helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
+                exit 1
+            fi
+            if [ "$OFFLINE_HELMCHART_OTEL_COLLECTOR" = "" ]; then
+                echo -e "\n${RED}OTel Collector helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
+                exit 1
+            fi
+        fi
     else
         echo -e "${ORANGE}ONLINE MODE ENABLED${NOCOLOR}"
     fi
@@ -88,7 +111,13 @@ function main() {
     install_keycloak
     echo -e "\n${BLUE}6) Install RabbitMQ${NOCOLOR}"
     install_rabbitmq
-    echo -e "\n${BLUE}7) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
+    if [ "$OTEL" = true ]; then
+        echo -e "\n${BLUE}7) Install Observability Stack (Victoria Logs + VictoriaTraces + Jaeger + OTel Collector)${NOCOLOR}"
+        install_observability
+        echo -e "\n${BLUE}8) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
+    else
+        echo -e "\n${BLUE}7) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
+    fi
     install_lamassu
 
     final_instructions
@@ -112,6 +141,11 @@ function usage() {
     echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
     echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
     echo " -l, --local-chart-path       Path to the local chart folder"
+    echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
+    echo " --helm-chart-victoria-logs   (Only needed while using --offline with --otel) Path to the victoria-logs-single helm chart (.tgz format)"
+    echo " --helm-chart-victoria-traces (Only needed while using --offline with --otel) Path to the victoria-traces-single helm chart (.tgz format)"
+    echo " --helm-chart-jaeger          (Only needed while using --offline with --otel) Path to the Jaeger helm chart (.tgz format)"
+    echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
 }
 
 function has_argument() {
@@ -262,6 +296,49 @@ function process_flags() {
 
             shift
             ;;
+        --otel)
+            OTEL=true
+            ;;
+        --helm-chart-victoria-logs)
+            if ! has_argument $@; then
+                echo -e "\n${RED}Victoria Logs Helm Chart not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_HELMCHART_VICTORIA_LOGS=$(extract_argument $@)
+
+            shift
+            ;;
+        --helm-chart-victoria-traces)
+            if ! has_argument $@; then
+                echo -e "\n${RED}VictoriaTraces Helm Chart not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_HELMCHART_VICTORIA_TRACES=$(extract_argument $@)
+
+            shift
+            ;;
+        --helm-chart-jaeger)
+            if ! has_argument $@; then
+                echo -e "\n${RED}Jaeger Helm Chart not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_HELMCHART_JAEGER=$(extract_argument $@)
+
+            shift
+            ;;
+        --helm-chart-otel-collector)
+            if ! has_argument $@; then
+                echo -e "\n${RED}OTel Collector Helm Chart not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_HELMCHART_OTEL_COLLECTOR=$(extract_argument $@)
+
+            shift
+            ;;
         *)
             echo -e "\n${RED}Invalid option: $1${NOCOLOR}" >&2
             usage
@@ -373,6 +450,9 @@ fi
     yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
     yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
 
+    if [ "$OTEL" = true ]; then
+        yq -i '.observability.enabled = true' lamassu.yaml
+    fi
 
     helm_path=$LAMASSU_CHART_PATH
     if [ "$OFFLINE" = false ]; then
@@ -839,6 +919,151 @@ EOF
             echo "❌ Failed to create GatewayClass 'eg'. Ensure Gateway API CRDs are installed."
             exit 1
         fi
+    fi
+}
+
+function install_observability() {
+    echo -e "${ORANGE}Installing Victoria Logs...${NOCOLOR}"
+    cat >victoria-logs.yaml <<"EOF"
+server:
+  fullnameOverride: "victoria-logs"
+  persistentVolume:
+    enabled: false
+EOF
+
+    victoria_logs_helm_path=vm/victoria-logs-single
+    if [ "$OFFLINE" = false ]; then
+        $kube $helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
+        $kube $helm repo update vm 2>/dev/null || true
+    else
+        victoria_logs_helm_path=$OFFLINE_HELMCHART_VICTORIA_LOGS
+    fi
+
+    $kube $helm install victoria-logs $victoria_logs_helm_path -n $NAMESPACE -f victoria-logs.yaml --wait
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}Victoria Logs installed${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error installing Victoria Logs${NOCOLOR}"
+        exit 1
+    fi
+
+    echo -e "${ORANGE}Installing VictoriaTraces...${NOCOLOR}"
+    cat >victoria-traces.yaml <<"EOF"
+server:
+  fullnameOverride: "victoria-traces"
+  persistentVolume:
+    enabled: false
+EOF
+
+    victoria_traces_helm_path=vm/victoria-traces-single
+    if [ "$OFFLINE" = false ]; then
+        $kube $helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
+        $kube $helm repo update vm 2>/dev/null || true
+    else
+        victoria_traces_helm_path=$OFFLINE_HELMCHART_VICTORIA_TRACES
+    fi
+
+    $kube $helm install victoria-traces $victoria_traces_helm_path -n $NAMESPACE -f victoria-traces.yaml --wait
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}VictoriaTraces installed${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error installing VictoriaTraces${NOCOLOR}"
+        exit 1
+    fi
+
+    echo -e "${ORANGE}Installing Jaeger...${NOCOLOR}"
+    cat >jaeger.yaml <<"EOF"
+fullnameOverride: jaeger
+userconfig:
+  service:
+    extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [jaeger_storage_exporter]
+  extensions:
+    healthcheckv2:
+      use_v2: true
+      http:
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      base_path: /infra/jaeger
+      storage:
+        traces: main_store
+    jaeger_storage:
+      backends:
+        main_store:
+          memory:
+            max_traces: 100000
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  processors:
+    batch: {}
+  exporters:
+    jaeger_storage_exporter:
+      trace_storage: main_store
+EOF
+
+    jaeger_helm_path=jaegertracing/jaeger
+    if [ "$OFFLINE" = false ]; then
+        $kube $helm repo add jaegertracing https://jaegertracing.github.io/helm-charts 2>/dev/null || true
+        $kube $helm repo update jaegertracing 2>/dev/null || true
+    else
+        jaeger_helm_path=$OFFLINE_HELMCHART_JAEGER
+    fi
+
+    $kube $helm install jaeger $jaeger_helm_path -n $NAMESPACE -f jaeger.yaml --wait
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}Jaeger installed${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error installing Jaeger${NOCOLOR}"
+        exit 1
+    fi
+
+    echo -e "${ORANGE}Installing OTel Collector...${NOCOLOR}"
+    cat >otel-collector.yaml <<"EOF"
+mode: deployment
+fullnameOverride: otel-collector
+image:
+  repository: otel/opentelemetry-collector-contrib
+config:
+  exporters:
+    otlphttp/jaeger:
+      traces_endpoint: http://jaeger:4318/v1/traces
+      tls:
+        insecure: true
+    otlphttp/victoriatraces:
+      traces_endpoint: http://victoria-traces:10428/insert/opentelemetry/v1/traces
+      tls:
+        insecure: true
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlphttp/jaeger, otlphttp/victoriatraces]
+EOF
+
+    otel_collector_helm_path=open-telemetry/opentelemetry-collector
+    if [ "$OFFLINE" = false ]; then
+        $kube $helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
+        $kube $helm repo update open-telemetry 2>/dev/null || true
+    else
+        otel_collector_helm_path=$OFFLINE_HELMCHART_OTEL_COLLECTOR
+    fi
+
+    $kube $helm install otel-collector $otel_collector_helm_path -n $NAMESPACE -f otel-collector.yaml --wait
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}OTel Collector installed${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error installing OTel Collector${NOCOLOR}"
+        exit 1
     fi
 }
 

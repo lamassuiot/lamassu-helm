@@ -54,3 +54,20 @@ data:
     {{ range $.Values.services.ca.domains }}
       - "{{ . }}/api/va"
     {{ end }}
+{{ if .Values.observability.enabled }}
+    otel:
+      traces:
+        enabled: true
+        hostname: {{ .Values.observability.traces.hostname }}
+        port: {{ .Values.observability.traces.port }}
+        scheme: {{ .Values.observability.traces.scheme }}
+        base_path: "{{ .Values.observability.traces.basePath }}"
+      logging:
+        enabled: true
+        hostname: {{ .Values.observability.logs.hostname }}
+        port: {{ .Values.observability.logs.port }}
+        scheme: {{ .Values.observability.logs.scheme }}
+        base_path: "{{ .Values.observability.logs.basePath }}"
+      metrics:
+        enabled: false
+{{ end }}

@@ -39,5 +39,22 @@ data:
       migrate_keys_format: false
       log_level: "trace"
       default_id: {{ .Values.services.kms.cryptoEngines.defaultEngineID }}
-      engines:      
+      engines:
         {{ .Values.services.kms.cryptoEngines.engines | toYaml | indent 4 | nindent 4 | trim  }}
+{{ if .Values.observability.enabled }}
+    otel:
+      traces:
+        enabled: true
+        hostname: {{ .Values.observability.traces.hostname }}
+        port: {{ .Values.observability.traces.port }}
+        scheme: {{ .Values.observability.traces.scheme }}
+        base_path: "{{ .Values.observability.traces.basePath }}"
+      logging:
+        enabled: true
+        hostname: {{ .Values.observability.logs.hostname }}
+        port: {{ .Values.observability.logs.port }}
+        scheme: {{ .Values.observability.logs.scheme }}
+        base_path: "{{ .Values.observability.logs.basePath }}"
+      metrics:
+        enabled: false
+{{ end }}
