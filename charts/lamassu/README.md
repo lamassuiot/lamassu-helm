@@ -52,13 +52,13 @@ PKI for Industrial IoT for Kubernetes
 | auth.authorization.rolesClaim | string | `"realm_access.roles"` | JWT claim to extract user roles from |
 | auth.authorization.roles.admin | string | `"pki-admin"` | Role for Lamassu admin users |
 | **Service Images** | | | |
-| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:4.2.0"` | Docker image for UI component |
-| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:3.7.0"` | Docker image for CA component |
-| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:3.7.0"` | Docker image for VA component |
-| services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.7.0"` | Docker image for KMS component |
-| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.7.0"` | Docker image for Device Manager component |
-| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.7.0"` | Docker image for DMS Manager component |
-| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.7.0"` | Docker image for Alerts component |
+| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:4.3.0"` | Docker image for UI component |
+| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:3.8.0"` | Docker image for CA component |
+| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:3.8.0"` | Docker image for VA component |
+| services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.8.0"` | Docker image for KMS component |
+| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.0"` | Docker image for Device Manager component |
+| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0"` | Docker image for DMS Manager component |
+| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.0"` | Docker image for Alerts component |
 | **CA Service Configuration** | | | |
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domains for signing/generating CAs and certificates |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | CA health check frequency (CRON syntax, can include seconds) |
@@ -82,6 +82,7 @@ PKI for Industrial IoT for Kubernetes
 | services.alerts.smtp_server.insecure | bool | `false` | Skip TLS certificate verification |
 | **Toolbox & Migrations** | | | |
 | toolbox.image | string | `"ghcr.io/lamassuiot/toolbox:2.2.0"` | Docker image for toolbox utility |
-| migrations.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.7.0"` | Docker image for database migrations |
-| migrations.databases | list | `["auth", "alerts", "ca", "va", "cloudproxy", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
+| migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0"` | Docker image for database migrations |
+| migrations.db.databases | list | `["alerts", "ca", "va", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
+| migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0"` | Docker image for the CA-to-KMS migration tool |
 
