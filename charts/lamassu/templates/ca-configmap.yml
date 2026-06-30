@@ -24,15 +24,6 @@ data:
       protocol: http
       hostname: authz
       port: 8085
-      # Compatibility block for newer CA builds that expect nested HTTP client settings.
-      http_client:
-        log_level: debug
-        auth_mode: noauth
-        http_connection:
-          protocol: http
-          basic_connection:
-            hostname: authz
-            port: 8085
         
     certificate_monitoring_job:
       enabled: true
