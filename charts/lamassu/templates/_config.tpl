@@ -74,14 +74,6 @@ authz_client:
   protocol: http
   hostname: authz
   port: 8085
-  http_client:
-    log_level: debug
-    auth_mode: noauth
-    http_connection:
-      protocol: http
-      basic_connection:
-        hostname: authz
-        port: 8085
 {{- end -}}
 
 {{/* OTel traces/logging block, guarded by observability.enabled. Context: chart root ($) */}}

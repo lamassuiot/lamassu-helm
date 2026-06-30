@@ -47,8 +47,6 @@ data:
       password: "{{ .Values.postgres.password }}"
       database: {{ .Values.services.authz.database }}
 
-    {{- include "lamassu.config.authzClient" $ | nindent 4 }}
-
     {{- if .Values.services.authz.credentials }}
     credentials:
       {{- range .Values.services.authz.credentials }}
