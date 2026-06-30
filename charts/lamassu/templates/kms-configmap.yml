@@ -44,14 +44,6 @@ data:
       protocol: http
       hostname: authz
       port: 8085
-      http_client:
-        log_level: debug
-        auth_mode: noauth
-        http_connection:
-          protocol: http
-          basic_connection:
-            hostname: authz
-            port: 8085
 
     crypto_engines:
       migrate_keys_format: false
