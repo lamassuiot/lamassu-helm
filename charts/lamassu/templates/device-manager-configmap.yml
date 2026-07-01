@@ -15,6 +15,11 @@ data:
       port: 8085
       protocol: "http" #http | https
 
+    sse_enabled: true
+
+    openapi:
+      enabled: true
+
     subscriber_event_bus:
       log_level: "debug"
       enabled: true

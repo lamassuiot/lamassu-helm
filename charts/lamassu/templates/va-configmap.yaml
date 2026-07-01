@@ -13,7 +13,10 @@ data:
       listen_address: "0.0.0.0"
       port: 8085
       protocol: "http" #http | https
-      
+
+    openapi:
+      enabled: true
+   
     filesystem_storage:
       id: "{{ .Values.services.va.fileStore.id }}"
       type: "{{ .Values.services.va.fileStore.type }}"

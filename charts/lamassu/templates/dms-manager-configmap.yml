@@ -62,6 +62,9 @@ data:
       port: 8085
       protocol: "http" #http | https
 
+    openapi:
+      enabled: true
+
     publisher_event_bus:
       log_level: "debug"
       enabled: true
