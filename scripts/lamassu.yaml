@@ -1,0 +1,65 @@
+postgres:
+  hostname: "postgresql"
+  port: 5432
+  username: "admin"
+  password: "oRyZjSUC0JkZpLFUUyWBc1nsBisSKr"
+amqp:
+  hostname: "rabbitmq"
+  port: 5672
+  username: "admin"
+  password: "XAXmb8BITTPQkxzd1sRz8RMdQD5mRT"
+  tls: false
+services:
+  ca:
+    cryptoEngines:
+      defaultEngineID: fs-1
+      engines:
+        - id: fs-1
+          type: filesystem
+          storage_directory: /crypto/fs
+    domains:
+      - pki.hlab
+auth:
+  oidc:
+    apiGateway:
+      jwks:
+        - name: oidc-authn
+          uri: http://auth-keycloak.lamassu-dev/auth/realms/lamassu/protocol/openid-connect/certs
+gateway:
+  extraRouting:
+    - path: /auth
+      name: auth
+      target:
+        host: auth-keycloak
+        port: 80 # If no sidecar is used
+  addresses:
+    - 172.23.30.203
+    - 172.22.0.1
+    - 172.24.0.1
+    - 172.25.0.1
+    - 172.19.0.1
+    - 172.21.0.1
+    - 172.20.0.1
+    - 172.17.0.1
+    - 172.18.0.1
+    - 10.1.171.0
+  ports:
+    https: 443
+    http: 80
+tls:
+  type: certManager
+  certManagerOptions:
+    issuer: downstream-ca-selfsigned-issuer
+    certSpec:
+      commonName: pki.hlab
+      addresses:
+        - 172.23.30.203
+        - 172.22.0.1
+        - 172.24.0.1
+        - 172.25.0.1
+        - 172.19.0.1
+        - 172.21.0.1
+        - 172.20.0.1
+        - 172.17.0.1
+        - 172.18.0.1
+        - 10.1.171.0

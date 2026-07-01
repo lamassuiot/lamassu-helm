@@ -1,0 +1,81 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: authz-config
+  namespace: {{.Release.Namespace}}
+data:
+  config: |
+    logs:
+      level: "debug"
+
+    server:
+      log_level: "debug"
+      health_check: false
+      listen_address: "0.0.0.0"
+      port: 8085
+      protocol: "http" #http | https
+
+    subscriber_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+
+    publisher_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+
+    authz_db:
+      provider: "postgres"
+      hostname: {{ .Values.postgres.hostname }}
+      port: {{ .Values.postgres.port }}
+      username: "{{ .Values.postgres.username }}"
+      password: "{{ .Values.postgres.password }}"
+      database: {{ .Values.services.authz.database }}
+
+
+    {{- if .Values.services.authz.credentials }}
+    credentials:
+      {{- range .Values.services.authz.credentials }}
+      {{ .schema }}:
+        provider: "postgres"
+        hostname: {{ $.Values.postgres.hostname }}
+        port: {{ $.Values.postgres.port }}
+        username: "{{ $.Values.postgres.username }}"
+        password: "{{ $.Values.postgres.password }}"
+        database: {{ .database }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.services.authz.schemas }}
+    schemas:
+      {{- range .Values.services.authz.schemas }}
+      {{ . }}: /etc/lamassuiot/authz/schemas/{{ . }}.json
+      {{- end }}
+    {{- end }}
+
+    http_schemas:
+    - /etc/lamassuiot/authz/schemas/http-wfx.json
+
+    {{- if .Values.services.authz.preloadDir }}
+    preload_dir: {{ .Values.services.authz.preloadDir }}
+    {{- end }}
+
+    {{- if .Values.services.authz.bootstrap }}
+    bootstrap:
+      {{ .Values.services.authz.bootstrap | toYaml | nindent 6 | trim }}
+    {{- end }}

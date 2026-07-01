@@ -52,40 +52,18 @@ spec:
     name: eg
   tls:
     maxVersion: "1.3"
-    # we are not adding clientValidation for the following reasons:
-    # 1. it is required defining a set of trusted CA certificates to be used for client certificate validation
-    # 2. in the TLS handshake, the server sends a CertificateRequest message setting the CA's Distinguished Names field, limiting to some HTTPS clients what certs can be sent
-    # 3. an EnvoyPatchPolicy is added to fully customize the TLS configuration with Request (but not enforce) client certificate as well as accept untrusted certificates
+    clientValidation: 
+      optional: true
+      mode: Request
   headers:
+    earlyRequestHeaders:
+      remove:
+      - X-Principal-Id
+      - X-Lms-Source
+      - X-Forwarded-Cert
+      - Ssl-Client-Cert
+      - X-Amzn-Mtls-Clientcert
     xForwardedClientCert:
       mode: AppendForward
       certDetailsToAdd: 
       - Chain
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyPatchPolicy
-metadata:
-  name: mtls-accept-untrusted
-  namespace: {{ .Release.Namespace }}
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: eg
-  type: JSONPatch
-  jsonPatches:
-    - name: {{ .Release.Namespace }}/eg/https
-      type: "type.googleapis.com/envoy.config.listener.v3.Listener"
-      operation:
-        op: add
-        jsonPath: "filter_chains[0].transport_socket.typed_config"
-        path: "require_client_certificate"
-        value: true
-    - name: {{ .Release.Namespace }}/eg/https
-      type: "type.googleapis.com/envoy.config.listener.v3.Listener"
-      operation:
-        op: add
-        jsonPath: "filter_chains[0].transport_socket.typed_config.common_tls_context"
-        path: "validation_context"
-        value:
-          trust_chain_verification: ACCEPT_UNTRUSTED
