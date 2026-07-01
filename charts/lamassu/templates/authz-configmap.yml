@@ -71,7 +71,6 @@ data:
     http_schemas:
     - /etc/lamassuiot/authz/schemas/http-wfx.json
 
-
     {{- if .Values.services.authz.preloadDir }}
     preload_dir: {{ .Values.services.authz.preloadDir }}
     {{- end }}
