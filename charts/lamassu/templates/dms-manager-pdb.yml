@@ -1,0 +1,12 @@
+{{- if gt (int (ternary .Values.services.dmsManager.autoscaling.minReplicas .Values.services.dmsManager.replicaCount .Values.services.dmsManager.autoscaling.enabled)) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dms-manager
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: dms-manager
+{{- end }}

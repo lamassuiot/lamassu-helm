@@ -1,0 +1,12 @@
+{{- if gt (int (ternary .Values.services.deviceManager.autoscaling.minReplicas .Values.services.deviceManager.replicaCount .Values.services.deviceManager.autoscaling.enabled)) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: device-manager
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: device-manager
+{{- end }}

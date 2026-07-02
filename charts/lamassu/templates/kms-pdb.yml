@@ -1,0 +1,12 @@
+{{- if gt (int (ternary .Values.services.kms.autoscaling.minReplicas .Values.services.kms.replicaCount .Values.services.kms.autoscaling.enabled)) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kms
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: kms
+{{- end }}

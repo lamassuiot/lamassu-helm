@@ -1,0 +1,12 @@
+{{- if gt (int (ternary .Values.services.va.autoscaling.minReplicas .Values.services.va.replicaCount .Values.services.va.autoscaling.enabled)) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: va
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: va
+{{- end }}
