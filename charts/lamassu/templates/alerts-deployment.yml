@@ -8,7 +8,9 @@ metadata:
   labels:
     app: alerts
 spec:
-  replicas: 1
+  {{- if not .Values.services.alerts.autoscaling.enabled }}
+  replicas: {{ .Values.services.alerts.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app: alerts

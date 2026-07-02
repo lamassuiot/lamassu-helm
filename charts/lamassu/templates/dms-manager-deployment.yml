@@ -8,7 +8,9 @@ metadata:
   labels:
     app: dms-manager
 spec:
-  replicas: 1
+  {{- if not .Values.services.dmsManager.autoscaling.enabled }}
+  replicas: {{ .Values.services.dmsManager.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app: dms-manager

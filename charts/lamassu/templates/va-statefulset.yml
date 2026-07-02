@@ -8,7 +8,9 @@ metadata:
   labels:
     app: va
 spec:
-  replicas: 1
+  {{- if not .Values.services.va.autoscaling.enabled }}
+  replicas: {{ .Values.services.va.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app: va

@@ -1,0 +1,37 @@
+{{ range $instance := $.Values.services.connectors }}
+{{- if eq $instance.type "awsiot" }}
+{{- if dig "autoscaling" "enabled" false $instance }}
+{{ $instanceID := $instance.id | replace "aws." "" }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aws-connector-{{ $instanceID }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aws-connector-{{ $instanceID }}
+  minReplicas: {{ dig "autoscaling" "minReplicas" 1 $instance }}
+  maxReplicas: {{ dig "autoscaling" "maxReplicas" 3 $instance }}
+  metrics:
+    {{- if dig "autoscaling" "targetCPUUtilizationPercentage" 0 $instance }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ dig "autoscaling" "targetCPUUtilizationPercentage" 80 $instance }}
+    {{- end }}
+    {{- if dig "autoscaling" "targetMemoryUtilizationPercentage" 0 $instance }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ dig "autoscaling" "targetMemoryUtilizationPercentage" 0 $instance }}
+    {{- end }}
+---
+{{- end }}
+{{- end }}
+{{- end }}

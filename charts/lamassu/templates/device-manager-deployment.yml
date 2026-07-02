@@ -8,7 +8,9 @@ metadata:
   labels:
     app: device-manager
 spec:
-  replicas: 1
+  {{- if not .Values.services.deviceManager.autoscaling.enabled }}
+  replicas: {{ .Values.services.deviceManager.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app: device-manager

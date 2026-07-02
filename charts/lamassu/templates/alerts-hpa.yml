@@ -1,0 +1,31 @@
+{{- if .Values.services.alerts.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: alerts
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: alerts
+  minReplicas: {{ .Values.services.alerts.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.services.alerts.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.services.alerts.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.services.alerts.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.services.alerts.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.services.alerts.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

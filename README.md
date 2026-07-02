@@ -107,6 +107,51 @@ Lamassu requires the following external services:
 
 You can deploy these dependencies independently or let the Lamassu chart handle them.
 
+### High Availability & Autoscaling
+
+Each Lamassu service supports configurable replica counts and optional HorizontalPodAutoscaler (HPA) via `replicaCount` and `autoscaling` blocks in `values.yaml`.
+
+**Static replicas** (no HPA):
+
+```yaml
+services:
+  ca:
+    replicaCount: 2
+  dmsManager:
+    replicaCount: 3
+```
+
+**HPA-managed replicas** (replicas field is omitted from the Deployment, fully managed by Kubernetes):
+
+```yaml
+services:
+  ca:
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 80
+      # targetMemoryUtilizationPercentage: 75  # optional
+```
+
+The same `autoscaling` block is supported per AWS connector instance:
+
+```yaml
+services:
+  connectors:
+    - id: aws.myconnector
+      type: awsiot
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 4
+        targetCPUUtilizationPercentage: 80
+```
+
+> **KMS constraint:** `replicaCount > 1` and `autoscaling.enabled: true` are blocked when the `filesystem` crypto engine is configured (it uses a `ReadWriteOnce` PVC). Use an external engine (`hashicorp_vault`, `aws_kms`, `aws_secrets_manager`, `pkcs11`) to scale KMS.
+>
+> **VA constraint:** `replicaCount > 1` requires `services.va.fileStore.type` to be changed from `local` to a shared backend (e.g., S3), otherwise CRL files are not shared across replicas.
+
 ## Upgrading
 
 ### Version Migration Guides

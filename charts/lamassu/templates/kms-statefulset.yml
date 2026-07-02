@@ -1,4 +1,10 @@
 {{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
+{{- if and $hasFilesystemEngine (gt (int .Values.services.kms.replicaCount) 1) -}}
+  {{ fail "KMS replicaCount > 1 is not supported with the filesystem crypto engine. Switch to an external engine (hashicorp_vault, aws_kms, aws_secrets_manager, pkcs11) to enable multiple replicas." }}
+{{- end -}}
+{{- if and $hasFilesystemEngine .Values.services.kms.autoscaling.enabled -}}
+  {{ fail "KMS autoscaling is not supported with the filesystem crypto engine. Switch to an external engine to enable autoscaling." }}
+{{- end -}}
 apiVersion: apps/v1
 {{- if $hasFilesystemEngine }}
 kind: StatefulSet
@@ -13,7 +19,9 @@ metadata:
   labels:
     app: kms
 spec:
-  replicas: 1
+  {{- if not .Values.services.kms.autoscaling.enabled }}
+  replicas: {{ .Values.services.kms.replicaCount }}
+  {{- end }}
 {{- if $hasFilesystemEngine }}
   serviceName: "kms"
 {{- end }}

@@ -59,6 +59,24 @@ PKI for Industrial IoT for Kubernetes
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.0"` | Docker image for Device Manager component |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0"` | Docker image for DMS Manager component |
 | services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.0"` | Docker image for Alerts component |
+| **Replicas & Autoscaling** | | | |
+| services.\<svc\>.replicaCount | int | `1` | Number of replicas for the service. Ignored when `autoscaling.enabled` is `true`. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the service. When `true`, the `replicas` field is omitted from the Deployment/StatefulSet and managed by the HPA |
+| services.\<svc\>.autoscaling.minReplicas | int | `1` | Minimum number of replicas for the HPA |
+| services.\<svc\>.autoscaling.maxReplicas | int | `5` | Maximum number of replicas for the HPA |
+| services.\<svc\>.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for HPA scaling |
+| services.\<svc\>.autoscaling.targetMemoryUtilizationPercentage | int | `""` | Target memory utilization percentage for HPA scaling. Optional; omit to disable memory-based scaling |
+| **⚠️ KMS HA Constraint** | | | |
+| — | — | — | `services.kms.replicaCount > 1` and `services.kms.autoscaling.enabled: true` are both blocked when the `filesystem` crypto engine is configured (uses a `ReadWriteOnce` PVC). Switch to an external engine (`hashicorp_vault`, `aws_kms`, `aws_secrets_manager`, `pkcs11`) to enable multiple KMS replicas |
+| **⚠️ VA HA Constraint** | | | |
+| — | — | — | `services.va.replicaCount > 1` requires `fileStore.type` to be changed from `local` to a shared backend (e.g., S3). With `local`, each replica has its own volume and CRL files are not shared across replicas |
+| **AWS Connector Replicas & Autoscaling** | | | |
+| services.connectors[\*].replicaCount | int | `1` | Number of replicas for a connector instance. Ignored when `autoscaling.enabled` is `true` |
+| services.connectors[\*].autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the connector instance |
+| services.connectors[\*].autoscaling.minReplicas | int | `1` | Minimum number of replicas for the connector HPA |
+| services.connectors[\*].autoscaling.maxReplicas | int | `3` | Maximum number of replicas for the connector HPA |
+| services.connectors[\*].autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for connector HPA scaling |
+| services.connectors[\*].autoscaling.targetMemoryUtilizationPercentage | int | `""` | Target memory utilization percentage for connector HPA scaling. Optional |
 | **CA Service Configuration** | | | |
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domains for signing/generating CAs and certificates |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | CA health check frequency (CRON syntax, can include seconds) |

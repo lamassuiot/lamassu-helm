@@ -11,7 +11,9 @@ metadata:
   labels:
     app: aws-connector-{{ $instanceID }}
 spec:
-  replicas: 1
+  {{- if not (dig "autoscaling" "enabled" false $instance) }}
+  replicas: {{ $instance.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       app: aws-connector-{{ $instanceID }}
