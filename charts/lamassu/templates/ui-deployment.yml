@@ -29,6 +29,12 @@ spec:
               port: 80
             initialDelaySeconds: 3
             periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 3
           env:
             - name: CHART_VERSION
               value: {{.Chart.Version}}

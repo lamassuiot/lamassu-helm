@@ -27,6 +27,18 @@ spec:
           image: {{ $instance.image }}
           imagePullPolicy: {{ $.Values.global.imagePullPolicy | quote }}
           tty: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            initialDelaySeconds: 3
+            periodSeconds: 3
           volumeMounts:
             - name: config
               mountPath: /etc/lamassuiot/config.yml

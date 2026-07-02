@@ -47,6 +47,12 @@ spec:
               port: 8085
             initialDelaySeconds: 3
             periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            initialDelaySeconds: 3
+            periodSeconds: 3
           volumeMounts:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
