@@ -122,6 +122,13 @@ services:
       minReplicas: 1
       maxReplicas: 5
       targetCPUUtilizationPercentage: 80
+    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+    affinity: {}
+    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+    topologySpreadConstraints: []
+    pdb:
+      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+      minAvailable: 1
   va:
     # -- Docker image for the VA component
     image: ghcr.io/lamassuiot/lamassu-va:3.8.0
@@ -132,6 +139,13 @@ services:
       minReplicas: 1
       maxReplicas: 3
       targetCPUUtilizationPercentage: 80
+    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+    affinity: {}
+    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+    topologySpreadConstraints: []
+    pdb:
+      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+      minAvailable: 1
     fileStore:
       id: "local-1"
       type: "local"
@@ -153,6 +167,13 @@ services:
       minReplicas: 1
       maxReplicas: 5
       targetCPUUtilizationPercentage: 80
+    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+    affinity: {}
+    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+    topologySpreadConstraints: []
+    pdb:
+      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+      minAvailable: 1
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
@@ -166,6 +187,13 @@ services:
       minReplicas: 1
       maxReplicas: 3
       targetCPUUtilizationPercentage: 80
+    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+    affinity: {}
+    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+    topologySpreadConstraints: []
+    pdb:
+      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+      minAvailable: 1
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
@@ -186,6 +214,13 @@ services:
       minReplicas: 1
       maxReplicas: 5
       targetCPUUtilizationPercentage: 80
+    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+    affinity: {}
+    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+    topologySpreadConstraints: []
+    pdb:
+      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+      minAvailable: 1
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
@@ -196,6 +231,13 @@ services:
       minReplicas: 1
       maxReplicas: 5
       targetCPUUtilizationPercentage: 80
+    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+    affinity: {}
+    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+    topologySpreadConstraints: []
+    pdb:
+      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+      minAvailable: 1
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
@@ -206,6 +248,13 @@ services:
       minReplicas: 1
       maxReplicas: 3
       targetCPUUtilizationPercentage: 80
+    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+    affinity: {}
+    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+    topologySpreadConstraints: []
+    pdb:
+      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+      minAvailable: 1
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""

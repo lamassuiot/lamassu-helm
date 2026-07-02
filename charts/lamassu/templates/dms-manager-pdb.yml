@@ -5,7 +5,7 @@ metadata:
   name: dms-manager
   namespace: {{ .Release.Namespace }}
 spec:
-  minAvailable: 1
+  minAvailable: {{ .Values.services.dmsManager.pdb.minAvailable }}
   selector:
     matchLabels:
       app: dms-manager

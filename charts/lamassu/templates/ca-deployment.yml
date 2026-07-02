@@ -43,6 +43,38 @@ spec:
           ports:
             - containerPort: 8085
       restartPolicy: Always
+      {{- if .Values.services.ca.affinity }}
+      affinity:
+        {{- toYaml .Values.services.ca.affinity | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: ca
+                topologyKey: kubernetes.io/hostname
+      {{- end }}
+      {{- if .Values.services.ca.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml .Values.services.ca.topologySpreadConstraints | nindent 8 }}
+      {{- else }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: ca
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: ca
+      {{- end }}
       volumes:
         - name: api-config
           configMap:  

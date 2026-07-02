@@ -5,7 +5,7 @@ metadata:
   name: ca
   namespace: {{ .Release.Namespace }}
 spec:
-  minAvailable: 1
+  minAvailable: {{ .Values.services.ca.pdb.minAvailable }}
   selector:
     matchLabels:
       app: ca

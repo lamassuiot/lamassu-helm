@@ -5,7 +5,7 @@ metadata:
   name: alerts
   namespace: {{ .Release.Namespace }}
 spec:
-  minAvailable: 1
+  minAvailable: {{ .Values.services.alerts.pdb.minAvailable }}
   selector:
     matchLabels:
       app: alerts

@@ -5,7 +5,7 @@ metadata:
   name: ui
   namespace: {{ .Release.Namespace }}
 spec:
-  minAvailable: 1
+  minAvailable: {{ .Values.services.ui.pdb.minAvailable }}
   selector:
     matchLabels:
       app: ui

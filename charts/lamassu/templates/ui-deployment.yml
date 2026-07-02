@@ -56,3 +56,35 @@ spec:
           ports:
             - containerPort: 80
       restartPolicy: Always
+      {{- if .Values.services.ui.affinity }}
+      affinity:
+        {{- toYaml .Values.services.ui.affinity | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: ui
+                topologyKey: kubernetes.io/hostname
+      {{- end }}
+      {{- if .Values.services.ui.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml .Values.services.ui.topologySpreadConstraints | nindent 8 }}
+      {{- else }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: ui
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: ui
+      {{- end }}

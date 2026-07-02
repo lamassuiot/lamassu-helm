@@ -5,7 +5,7 @@ metadata:
   name: kms
   namespace: {{ .Release.Namespace }}
 spec:
-  minAvailable: 1
+  minAvailable: {{ .Values.services.kms.pdb.minAvailable }}
   selector:
     matchLabels:
       app: kms
