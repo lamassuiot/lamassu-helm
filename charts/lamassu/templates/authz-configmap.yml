@@ -53,32 +53,30 @@ data:
 
     {{- if .Values.services.authz.credentials }}
     credentials:
-      {{- range .Values.services.authz.credentials }}
-      {{ .schema }}:
+      {{- range $schema, $cred := .Values.services.authz.credentials }}
+      {{ $schema }}:
         provider: "postgres"
         hostname: {{ $.Values.postgres.hostname }}
         port: {{ $.Values.postgres.port }}
         username: "{{ $.Values.postgres.username }}"
         password: "{{ $.Values.postgres.password }}"
-        database: {{ .database }}
+        database: {{ $cred.database }}
       {{- end }}
-    {{- end }}
-
-    {{- if .Values.services.authz.schemas }}
-    schemas:
-      {{- range .Values.services.authz.schemas }}
-      {{ . }}: /etc/lamassuiot/authz/schemas/{{ . }}.json
-      {{- end }}
-    {{- end }}
-
-    http_schemas:
-    - /etc/lamassuiot/authz/schemas/http-wfx.json
-
-    {{- if .Values.services.authz.preloadDir }}
-    preload_dir: {{ .Values.services.authz.preloadDir }}
     {{- end }}
 
     {{- if .Values.services.authz.bootstrap }}
     bootstrap:
       {{ .Values.services.authz.bootstrap | toYaml | nindent 6 | trim }}
     {{- end }}
+
+    preload_dir: /etc/lamassuiot/authz/preload
+
+    jwks_url: {{ (index .Values.auth.oidc.apiGateway.jwks 0).uri }}
+    enable_jwt_validation: true
+
+    schemas:
+      pki: /etc/lamassuiot/authz/schemas/pki.json
+      authz: /etc/lamassuiot/authz/schemas/authz.json
+
+    http_schemas:
+    - /etc/lamassuiot/authz/schemas/http-wfx.json

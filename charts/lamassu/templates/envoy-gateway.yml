@@ -60,6 +60,7 @@ spec:
       remove:
       - X-Principal-Id
       - X-Lms-Source
+      - X-Forwarded-Client-Cert
       - X-Forwarded-Cert
       - Ssl-Client-Cert
       - X-Amzn-Mtls-Clientcert

@@ -3,8 +3,7 @@ kind: HTTPRoute
 metadata:
   name: api-dms-manager
   namespace: {{ .Release.Namespace }}
-  labels:
-    auth: "private"
+
 spec:
   parentRefs:
     - name: eg

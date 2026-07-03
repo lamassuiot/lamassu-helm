@@ -4,6 +4,7 @@ dist=
 kube=
 kubectl="kubectl"
 helm="helm"
+KUBE_CONTEXT=""
 
 DOMAIN=dev.lamassu.io
 DOMAIN_OVERRIDE=false
@@ -14,6 +15,7 @@ NON_INTERACTIVE=false
 OTEL=false
 HTTPS_PORT=443
 HTTP_PORT=80
+GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 
@@ -55,6 +57,9 @@ function main() {
     detect_distribution
     if [ $dist == "microk8s" ]; then
         kube="microk8s"
+    elif [ "$KUBE_CONTEXT" != "" ]; then
+        kubectl="kubectl --context $KUBE_CONTEXT"
+        helm="helm --kube-context $KUBE_CONTEXT"
     fi
 
     if [ "$OFFLINE" = true ]; then
@@ -127,6 +132,7 @@ function usage() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
     echo " -h, --help                   Display this help message"
+    echo " -c, --context                Kubernetes context to use (kubectl/helm)"
     echo " -n, --non-interactive        Enable non-interactive mode. Credentials for Keycloak, Postgres and RabbitMQ will be auto generated"
     echo " -ns, --namespace             Kubernetes Namespace where LAMASSU will be deployed"
     echo " -d, --domain                 Domain to be set while deploying LAMASSU"
@@ -141,6 +147,7 @@ function usage() {
     echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
     echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
     echo " -l, --local-chart-path       Path to the local chart folder"
+    echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
     echo " --helm-chart-victoria-logs   (Only needed while using --offline with --otel) Path to the victoria-logs-single helm chart (.tgz format)"
     echo " --helm-chart-victoria-traces (Only needed while using --offline with --otel) Path to the victoria-traces-single helm chart (.tgz format)"
@@ -162,6 +169,16 @@ function process_flags() {
         -h | --help)
             usage
             exit 0
+            ;;
+        -c | --context*)
+            if ! has_argument $@; then
+                echo -e "\n${RED}Context not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            KUBE_CONTEXT=$(extract_argument $@)
+
+            shift
             ;;
         --offline)
             OFFLINE=true
@@ -296,6 +313,16 @@ function process_flags() {
 
             shift
             ;;
+        -ip | --gateway-ip*)
+            if ! has_argument $@; then
+                echo -e "\n${RED}Gateway IP not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            GATEWAY_IP=$(extract_argument $@)
+
+            shift
+            ;;
         --otel)
             OTEL=true
             ;;
@@ -385,13 +412,32 @@ services:
       - id: fs-1
         type: filesystem
         storage_directory: /crypto/fs
-
-auth:
-  oidc:
-    apiGateway:
-      jwks:
-        - name: oidc-authn
-          uri: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
+  authz:
+    credentials:
+      pki:
+        database: pki
+        hostname: "postgresql"
+        port: 5432
+        username: ""
+        password: ""
+      authz:  
+        database: authz
+        hostname: "postgresql"
+        port: 5432
+        username: ""
+        password: ""
+    bootstrap: 
+    - principal_id: "oidc:lamassu"
+      principal_name: "lamassu"
+      principal_type: "oidc"
+      policy_ids:
+        - "lamassu.a6811b60-5f89-4ce7-badb-78ea234794d3"
+      auth_config:
+        claims:
+          - claim: "preferred_username"
+            operator: "equals"
+            value: "lamassu"
+    jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
 
 gateway:
   extraRouting:
@@ -405,7 +451,11 @@ EOF
 export DOMAIN=$DOMAIN
 yq -i '.services.ca.domains = [env(DOMAIN)]' lamassu.yaml
 
-export IP_LIST="$(hostname -I)"
+if [ -n "$GATEWAY_IP" ]; then
+    export IP_LIST="$GATEWAY_IP"
+else
+    export IP_LIST="$(hostname -I)"
+fi
 export HTTPS_PORT=$HTTPS_PORT
 export HTTP_PORT=$HTTP_PORT
 
@@ -414,8 +464,6 @@ yq -i '.gateway.ports.https = env(HTTPS_PORT)' lamassu.yaml
 yq -i '.gateway.ports.http = env(HTTP_PORT)' lamassu.yaml
 
 export NAMESPACE=$NAMESPACE
-yq -i '.auth.oidc.apiGateway.jwks[0].uri = "http://auth-keycloak." + env(NAMESPACE) + "/auth/realms/lamassu/protocol/openid-connect/certs"' lamassu.yaml
-
 # Check if TLS_CRT and TLS_KEY are not empty
 if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
     echo -e "${ORANGE}Deploying Lamassu with EXTERNAL TLS Certificates${NOCOLOR}"
@@ -447,6 +495,11 @@ fi
 
     yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
     yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
+    yq -i '.services.authz.credentials.pki.username = (env(POSTGRES_USER))' lamassu.yaml
+    yq -i '.services.authz.credentials.pki.password = (env(POSTGRES_PWD))' lamassu.yaml
+    yq -i '.services.authz.credentials.authz.username = (env(POSTGRES_USER))' lamassu.yaml
+    yq -i '.services.authz.credentials.authz.password = (env(POSTGRES_PWD))' lamassu.yaml
+
     yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
     yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
 
@@ -662,16 +715,20 @@ auth:
 initdb:
   scripts:
     init.sql: |
+    init.sql: |
       CREATE DATABASE auth;
-      CREATE DATABASE alerts;
-      CREATE DATABASE ca;
-      CREATE DATABASE va;
-      CREATE DATABASE devicemanager;
-      CREATE DATABASE dmsmanager;
-      CREATE DATABASE kms;
       CREATE DATABASE pki;
       CREATE DATABASE authz;
       CREATE DATABASE wfx;
+
+      \connect pki
+
+      CREATE SCHEMA IF NOT EXISTS alerts;
+      CREATE SCHEMA IF NOT EXISTS ca;
+      CREATE SCHEMA IF NOT EXISTS va;
+      CREATE SCHEMA IF NOT EXISTS devicemanager;
+      CREATE SCHEMA IF NOT EXISTS dmsmanager;
+      CREATE SCHEMA IF NOT EXISTS kms;
 EOF
 
     export POSTGRES_USER=$POSTGRES_USER
@@ -814,16 +871,34 @@ function detect_distribution() {
         echo -e "${GREEN}Kind detected - USE IT ONLY FOR TESTING${NOCOLOR}"
         return 0
     fi
-    echo -e "${RED}No kubernetes distribution found${NOCOLOR}"
+
+    is_command_installed "kubectl"
+    if [ $? -eq 0 ]; then
+        dist="kubectl"
+        echo -e "${GREEN}kubectl detected (using kubeconfig context)${NOCOLOR}"
+        return 0
+    fi
+
+    echo -e "${RED}No kubernetes distribution found (microk8s, k3s, kind) and kubectl is not installed${NOCOLOR}"
     exit 1
 }
 
 function check_dependencies() {
     exit_if_command_not_installed yq
-    exit_if_command_not_installed $dist
-    if [ $dist == "k3s" ]; then
+    if [ $dist == "microk8s" ]; then
+        exit_if_command_not_installed $dist
+    else
         exit_if_command_not_installed $kubectl
         exit_if_command_not_installed $helm
+
+        if [ "$KUBE_CONTEXT" != "" ]; then
+            if kubectl config get-contexts -o name | grep -Fxq "$KUBE_CONTEXT"; then
+                echo "✅ context $KUBE_CONTEXT"
+            else
+                echo "Context '$KUBE_CONTEXT' not found in kubeconfig. Exiting"
+                exit 1
+            fi
+        fi
     fi
 
     if [ $dist == "microk8s" ]; then
@@ -925,11 +1000,11 @@ function check_envoy_gateway_helm() {
     fi
 
     # 3. Check/Create GatewayClass
-    if $kube kubectl get gatewayclass eg >/dev/null 2>&1; then
+    if $kube $kubectl get gatewayclass eg >/dev/null 2>&1; then
         echo "✅ GatewayClass 'eg' already exists"
     else
         echo "Missing GatewayClass 'eg'. Applying now..."
-        cat <<EOF | $kube kubectl apply -f -
+        cat <<EOF | $kube $kubectl apply -f -
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
