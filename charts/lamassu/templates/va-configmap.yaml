@@ -17,10 +17,17 @@ data:
     openapi:
       enabled: true
    
+    {{- if eq .Values.services.va.fileStore.type "local" }}
     filesystem_storage:
       id: "{{ .Values.services.va.fileStore.id }}"
       type: "{{ .Values.services.va.fileStore.type }}"
-      storage_directory: "{{ .Values.services.va.fileStore.storageDirectory }}"
+      storage_directory: "{{ .Values.services.va.fileStore.local.storageDirectory }}"
+    {{- else if eq .Values.services.va.fileStore.type "s3" }}
+    filesystem_storage:
+      id: "{{ .Values.services.va.fileStore.id }}"
+      type: "{{ .Values.services.va.fileStore.type }}"
+      {{- toYaml (.Values.services.va.fileStore.s3 | default dict) | nindent 6 }}
+    {{- end }}
     
     crl_monitoring_job:
       enabled: true

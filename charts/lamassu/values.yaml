@@ -163,9 +163,15 @@ services:
         cpu: 500m
         memory: 1Gi
     fileStore:
+      # -- Unique identifier for this storage engine instance
       id: "local-1"
+      # -- Storage backend type  Allowed values: local | s3
       type: "local"
-      storageDirectory: "/data/crl"
+      # -- Config for type=local. Maps to localfs.FilesystemEngineConfig (storage_directory)
+      local:
+        storageDirectory: "/data/crl"
+      # -- Config for type=s3. Free-form map whose keys map directly to s3.AWSS3FilesystemConfig
+      s3:
     job:
       crl:
         # -- Frequency to launch the CRL computation job

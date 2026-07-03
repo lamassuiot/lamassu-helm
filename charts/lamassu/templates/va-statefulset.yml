@@ -41,14 +41,14 @@ spec:
             periodSeconds: 3
           env:
             - name: TMPDIR
-              value: /data/crl
+              value: {{ .Values.services.va.fileStore.local.storageDirectory | default "/data/crl" }}
           volumeMounts:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
             {{- if eq .Values.services.va.fileStore.type "local" }}
             - name: local-crl-file-storage
-              mountPath: /data/crl
+              mountPath: {{ .Values.services.va.fileStore.local.storageDirectory }}
             {{- end }}
           ports:
             - containerPort: 8085
