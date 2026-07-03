@@ -66,6 +66,16 @@ PKI for Industrial IoT for Kubernetes
 | services.\<svc\>.autoscaling.maxReplicas | int | `5` | Maximum number of replicas for the HPA |
 | services.\<svc\>.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for HPA scaling |
 | services.\<svc\>.autoscaling.targetMemoryUtilizationPercentage | int | `""` | Target memory utilization percentage for HPA scaling. Optional; omit to disable memory-based scaling |
+| **PodDisruptionBudget** | | | |
+| services.\<svc\>.pdb.minAvailable | int | `1` | Minimum number of pods that must remain available during node drains and rolling upgrades. PDB is only created when the effective replica count is greater than 1. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| **Pod Affinity & Topology Spread** | | | |
+| services.\<svc\>.affinity | object | `{}` | Pod affinity override. `{}` uses the chart default: soft (`preferredDuringScheduling`) pod anti-affinity on `kubernetes.io/hostname`, spreading replicas across nodes. Provide a full [affinity spec](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) to replace it. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.topologySpreadConstraints | list | `[]` | Topology spread constraints override. `[]` uses the chart defaults: two `ScheduleAnyway` constraints spreading pods across `topology.kubernetes.io/zone` and `kubernetes.io/hostname`. Provide a list of [TopologySpreadConstraint](https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/) objects to replace them. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| **Resource Requests & Limits** | | | |
+| services.\<svc\>.resources.requests.cpu | string | `"100m"` | CPU request. Used by the scheduler for pod placement and required for HPA CPU-based scaling. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.resources.requests.memory | string | `"256Mi"` | Memory request. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.resources.limits.cpu | string | `"500m"` | CPU limit (0.5 vCPU). Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.resources.limits.memory | string | `"1Gi"` | Memory limit (1 GiB). Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
 | **⚠️ KMS HA Constraint** | | | |
 | — | — | — | `services.kms.replicaCount > 1` and `services.kms.autoscaling.enabled: true` are both blocked when the `filesystem` crypto engine is configured (uses a `ReadWriteOnce` PVC). Switch to an external engine (`hashicorp_vault`, `aws_kms`, `aws_secrets_manager`, `pkcs11`) to enable multiple KMS replicas |
 | **⚠️ VA HA Constraint** | | | |
@@ -81,9 +91,10 @@ PKI for Industrial IoT for Kubernetes
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domains for signing/generating CAs and certificates |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | CA health check frequency (CRON syntax, can include seconds) |
 | **VA Service Configuration** | | | |
-| services.va.fileStore.id | string | `"local-1"` | File store ID for VA |
-| services.va.fileStore.type | string | `"local"` | File store type |
-| services.va.fileStore.storageDirectory | string | `"/data/crl"` | Storage directory for CRLs |
+| services.va.fileStore.id | string | `"local-1"` | Unique identifier for the file storage engine instance |
+| services.va.fileStore.type | string | `"local"` | Storage backend type. Allowed values: `local`, `s3`. Must be `s3` (or another shared backend) when `replicaCount > 1` |
+| services.va.fileStore.local.storageDirectory | string | `"/data/crl"` | Directory on the pod filesystem where CRL files are stored. Only used when `fileStore.type: local`. Backed by a `ReadWriteOnce` PVC — incompatible with `replicaCount > 1` |
+| services.va.fileStore.s3 | object | `{}` | Free-form map of S3 config keys injected directly into the `filesystem_storage` config block. Only used when `fileStore.type: s3`. Keys map to `s3.AWSS3FilesystemConfig` + `sharedAWS.AWSSDKConfig` mapstructure field names (e.g. `bucket_name`, `auth_method`, `region`, `access_key_id`, `role_arn`). |
 | services.va.job.crl.frequency | string | `"* * * * *"` | CRL computation job frequency (CRON syntax) |
 | **KMS Service Configuration** | | | |
 | services.kms.cryptoEngines.defaultEngineID | string | `"filesystem-1"` | Default crypto engine ID to use |
