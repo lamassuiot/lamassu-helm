@@ -55,6 +55,8 @@ spec:
 
           ports:
             - containerPort: 80
+          resources:
+            {{- toYaml .Values.services.ui.resources | nindent 12 }}
       restartPolicy: Always
       {{- if .Values.services.ui.affinity }}
       affinity:

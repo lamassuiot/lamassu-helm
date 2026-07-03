@@ -61,6 +61,8 @@ spec:
               mountPath: /shared
           ports:
             - containerPort: 8085
+          resources:
+            {{- toYaml .Values.services.dmsManager.resources | nindent 12 }}
       restartPolicy: Always
       {{- if .Values.services.dmsManager.affinity }}
       affinity:

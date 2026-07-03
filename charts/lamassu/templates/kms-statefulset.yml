@@ -69,6 +69,8 @@ spec:
               mountPath: /crypto/fs
           ports:
             - containerPort: 8085
+          resources:
+            {{- toYaml .Values.services.kms.resources | nindent 12 }}
       restartPolicy: Always
       {{- if .Values.services.kms.affinity }}
       affinity:

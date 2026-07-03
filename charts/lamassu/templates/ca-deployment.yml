@@ -42,6 +42,8 @@ spec:
               subPath: config
           ports:
             - containerPort: 8085
+          resources:
+            {{- toYaml .Values.services.ca.resources | nindent 12 }}
       restartPolicy: Always
       {{- if .Values.services.ca.affinity }}
       affinity:

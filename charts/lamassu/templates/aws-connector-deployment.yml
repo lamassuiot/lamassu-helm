@@ -45,6 +45,10 @@ spec:
               subPath: config
           ports:
             - containerPort: 8085
+          {{- if $instance.resources }}
+          resources:
+            {{- toYaml $instance.resources | nindent 12 }}
+          {{- end }}
       restartPolicy: Always
       volumes:
         - name: config

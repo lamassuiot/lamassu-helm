@@ -129,6 +129,14 @@ services:
     pdb:
       # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
       minAvailable: 1
+    # -- Container resource requests and limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
   va:
     # -- Docker image for the VA component
     image: ghcr.io/lamassuiot/lamassu-va:3.8.0
@@ -146,6 +154,14 @@ services:
     pdb:
       # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
       minAvailable: 1
+    # -- Container resource requests and limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
     fileStore:
       id: "local-1"
       type: "local"
@@ -174,6 +190,14 @@ services:
     pdb:
       # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
       minAvailable: 1
+    # -- Container resource requests and limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
@@ -194,6 +218,14 @@ services:
     pdb:
       # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
       minAvailable: 1
+    # -- Container resource requests and limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
@@ -221,6 +253,14 @@ services:
     pdb:
       # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
       minAvailable: 1
+    # -- Container resource requests and limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
@@ -238,6 +278,14 @@ services:
     pdb:
       # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
       minAvailable: 1
+    # -- Container resource requests and limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
@@ -255,6 +303,14 @@ services:
     pdb:
       # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
       minAvailable: 1
+    # -- Container resource requests and limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""
