@@ -2,6 +2,7 @@
 {{- if eq $instance.type "awsiot" }}
 {{- if dig "autoscaling" "enabled" false $instance }}
 {{ $instanceID := $instance.id | replace "aws." "" }}
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -31,7 +32,6 @@ spec:
           type: Utilization
           averageUtilization: {{ dig "autoscaling" "targetMemoryUtilizationPercentage" 0 $instance }}
     {{- end }}
----
 {{- end }}
 {{- end }}
 {{- end }}
