@@ -20,7 +20,7 @@ spec:
         urlRewrite:
           path:
             type: ReplacePrefixMatch
-            replacePrefixMatch: {{ .Values.services.wfx.routing.rewritePath | quote }}
+            replacePrefixMatch: {{ default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteSbiPath | quote }}
       backendRefs:
         - name: wfx
           port: {{ .Values.services.wfx.clientPort }}
@@ -46,7 +46,7 @@ spec:
         urlRewrite:
           path:
             type: ReplacePrefixMatch
-            replacePrefixMatch: {{ .Values.services.wfx.routing.rewritePath | quote }}
+            replacePrefixMatch: {{ default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteNbiPath | quote }}
       backendRefs:
         - name: wfx
           port: {{ .Values.services.wfx.managementPort }}

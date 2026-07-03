@@ -21,7 +21,8 @@ spec:
               host={{ $.Values.postgres.hostname }}
               user={{ $.Values.postgres.username }}
               password={{ $.Values.postgres.password }}
-              dbname={{ $dbName }}
+              dbname=pki
+              search_path={{ $dbName }}
               port={{ $.Values.postgres.port }}
               sslmode=disable
             - "up"
