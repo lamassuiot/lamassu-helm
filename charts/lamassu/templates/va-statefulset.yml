@@ -4,6 +4,9 @@
 {{- if and .Values.services.va.autoscaling.enabled (eq .Values.services.va.fileStore.type "local") }}
   {{ fail "VA autoscaling is not supported with fileStore.type=local (ReadWriteOnce PVC). The HPA would scale up pods that cannot bind the same PVC. Use s3 or a ReadWriteMany volume." }}
 {{- end }}
+{{- if and (eq .Values.services.va.fileStore.type "s3") (not .Values.services.va.fileStore.s3) }}
+  {{ fail "VA fileStore.type is set to s3 but fileStore.s3 is empty. Provide at least bucket_name, auth_method and region under services.va.fileStore.s3." }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:  
