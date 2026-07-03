@@ -1,6 +1,9 @@
 {{- if and (gt (int .Values.services.va.replicaCount) 1) (eq .Values.services.va.fileStore.type "local") }}
   {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
 {{- end }}
+{{- if and .Values.services.va.autoscaling.enabled (eq .Values.services.va.fileStore.type "local") }}
+  {{ fail "VA autoscaling is not supported with fileStore.type=local (ReadWriteOnce PVC). The HPA would scale up pods that cannot bind the same PVC. Use s3 or a ReadWriteMany volume." }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:  
