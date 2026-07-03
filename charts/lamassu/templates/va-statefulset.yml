@@ -1,3 +1,6 @@
+{{- if and (gt (int .Values.services.va.replicaCount) 1) (eq .Values.services.va.fileStore.type "local") }}
+  {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:  
@@ -43,8 +46,10 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+            {{- if eq .Values.services.va.fileStore.type "local" }}
             - name: local-crl-file-storage
               mountPath: /data/crl
+            {{- end }}
           ports:
             - containerPort: 8085
           resources:
@@ -86,8 +91,8 @@ spec:
         - name: api-config
           configMap:  
             name: va-config
+  {{- if eq .Values.services.va.fileStore.type "local" }}
   volumeClaimTemplates:
-  # If no FileSystem engine is defined, the PVC wont be used
   - metadata:
       name: local-crl-file-storage
     spec:
@@ -96,3 +101,4 @@ spec:
       resources:
         requests:
           storage: 1Gi
+  {{- end }}
