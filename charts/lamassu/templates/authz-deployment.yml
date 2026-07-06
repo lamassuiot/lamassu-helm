@@ -32,11 +32,6 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
-            {{- range $schemaName, $_ := .Values.services.authz.schemas }}
-            - name: api-config
-              mountPath: /etc/lamassuiot/schemas/{{ $schemaName }}.json
-              subPath: schema-{{ $schemaName }}.json
-            {{- end }}
           ports:
             - containerPort: 8085
       restartPolicy: Always
