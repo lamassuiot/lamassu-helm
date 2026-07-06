@@ -78,5 +78,7 @@ data:
       pki: /etc/lamassuiot/authz/schemas/pki.json
       authz: /etc/lamassuiot/authz/schemas/authz.json
 
+    {{- if .Values.services.wfx.enabled }}
     http_schemas:
     - /etc/lamassuiot/authz/schemas/http-wfx.json
+    {{- end }}
