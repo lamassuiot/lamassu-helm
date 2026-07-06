@@ -23,4 +23,3 @@ spec:
       backendRefs:
         - name: va
           port: 8085
-          

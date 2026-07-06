@@ -3,7 +3,6 @@ kind: HTTPRoute
 metadata:
   name: api-ca
   namespace: {{ .Release.Namespace }}
-
 spec:
   parentRefs:
     - name: eg
