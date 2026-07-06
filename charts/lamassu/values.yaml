@@ -28,17 +28,6 @@ gateway:
   ports:
     http: 80
     https: 443
-  responseOverride:
-    # -- Rewrite 401 responses with a custom body
-    unauthorized:
-      enabled: true
-      contentType: application/json
-      body: '{"error": "Unauthorized"}'
-    # -- Rewrite 403 responses with a custom body
-    forbidden:
-      enabled: true
-      contentType: application/json
-      body: '{"error": "Forbidden"}'
 postgres:
   # -- Hostname for the PostgreSQL server
   hostname: ""
