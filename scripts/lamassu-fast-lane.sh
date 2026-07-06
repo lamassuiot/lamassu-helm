@@ -715,7 +715,6 @@ auth:
 initdb:
   scripts:
     init.sql: |
-    init.sql: |
       CREATE DATABASE auth;
       CREATE DATABASE pki;
       CREATE DATABASE authz;

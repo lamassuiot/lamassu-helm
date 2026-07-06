@@ -229,6 +229,8 @@ services:
   authz:
     # -- Docker image for the Authz connector component
     image: ghcr.io/lamassuiot/lamassu-authz:dev
+    # -- JWKS endpoint used by authz to validate JWTs
+    jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
     # -- PostgreSQL database name for authz principals, grants, and policies
     database: authz
     # -- Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials.

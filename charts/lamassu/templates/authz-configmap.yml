@@ -71,7 +71,7 @@ data:
 
     preload_dir: /etc/lamassuiot/authz/preload
 
-    jwks_url: {{ (index .Values.auth.oidc.apiGateway.jwks 0).uri }}
+    jwks_url: {{ .Values.services.authz.jwkUrl }}
     enable_jwt_validation: true
 
     schemas:

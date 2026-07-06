@@ -47,12 +47,10 @@ PKI for Industrial IoT for Kubernetes
 | **Authentication & Authorization** | | | |
 | auth.oidc.frontend.clientId | string | `"frontend"` | OIDC client ID for the frontend |
 | auth.oidc.frontend.authority | string | `"https://${window.location.host}/auth/realms/lamassu"` | OIDC provider base URL (can be a JS expression) |
-| auth.oidc.apiGateway.jwks[0].name | string | `"oidc-authn"` | Name for the JWKS provider |
-| auth.oidc.apiGateway.jwks[0].uri | string | `"http://keycloak/..."` | URI to fetch the public key set for JWT validation |
 | auth.externalAuthorization.enabled | bool | `true` | Protect routes labeled `auth=external` with Envoy Gateway external authorization |
 | auth.externalAuthorization.serviceName | string | `"authz"` | Kubernetes Service name for the external authorization endpoint |
 | auth.externalAuthorization.servicePort | int | `8085` | Kubernetes Service port for the external authorization endpoint |
-| auth.externalAuthorization.pathOverride | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+ |
+| auth.externalAuthorization.path | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+ |
 | auth.externalAuthorization.failOpen | bool | `false` | Allow traffic when the external authorization service cannot be reached |
 | **Service Images** | | | |
 | services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:4.3.0"` | Docker image for UI component |
@@ -61,6 +59,7 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.8.0"` | Docker image for KMS component |
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.0"` | Docker image for Device Manager component |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0"` | Docker image for DMS Manager component |
+| services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
 | services.wfx.enabled | bool | `true` | Enable the Siemens WFX workflow service |
 | services.wfx.image | string | `"ghcr.io/siemens/wfx:latest"` | Docker image for WFX component |
 | services.wfx.replicas | int | `1` | Number of WFX replicas |
