@@ -36,5 +36,5 @@
   "kind" (ternary "StatefulSet" "Deployment" $hasFilesystemEngine)
   "serviceName" (ternary "kms" "" $hasFilesystemEngine)
   "env" (include "lamassu.kms.extraEnv" $)
-  "volumeMounts" "- name: golang-engine-storage\n  mountPath: /crypto/fs"
+  "volumeMounts" (ternary "- name: golang-engine-storage\n  mountPath: /crypto/fs" "" $hasFilesystemEngine)
   "volumeClaimTemplates" (ternary (include "lamassu.kms.volumeClaimTemplates" $) "" $hasFilesystemEngine)) }}

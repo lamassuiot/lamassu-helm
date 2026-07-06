@@ -57,7 +57,7 @@ data:
       port: {{ .Values.services.alerts.smtp_server.port }}
       username: {{ .Values.services.alerts.smtp_server.username }}
       password: {{ .Values.services.alerts.smtp_server.password }}
-      ssl: {{ .Values.services.alerts.smtp_server.ssl }}
+      ssl: {{ .Values.services.alerts.smtp_server.enable_ssl }}
       insecure: {{ .Values.services.alerts.smtp_server.insecure }}
 {{ if .Values.observability.enabled }}
     otel:
