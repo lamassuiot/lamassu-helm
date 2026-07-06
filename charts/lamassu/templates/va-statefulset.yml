@@ -7,104 +7,24 @@
 {{- if and (eq .Values.services.va.fileStore.type "s3") (not .Values.services.va.fileStore.s3) }}
   {{ fail "VA fileStore.type is set to s3 but fileStore.s3 is empty. Provide at least bucket_name, auth_method and region under services.va.fileStore.s3." }}
 {{- end }}
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:  
-  name: va
-  namespace: {{.Release.Namespace}}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: va
-spec:
-  {{- if not .Values.services.va.autoscaling.enabled }}
-  replicas: {{ .Values.services.va.replicaCount }}
-  {{- end }}
-  selector:
-    matchLabels:
-      app: va
-  template:
-    metadata:
-      labels:
-        app: va
-    spec:     
-      containers:
-        - name: va
-          image: {{.Values.services.va.image}}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-          tty: true
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8085
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8085
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          env:
-            - name: TMPDIR
-              value: {{ .Values.services.va.fileStore.local.storageDirectory | default "/data/crl" }}
-          volumeMounts:
-            - name: api-config
-              mountPath: /etc/lamassuiot/config.yml
-              subPath: config
-            {{- if eq .Values.services.va.fileStore.type "local" }}
-            - name: local-crl-file-storage
-              mountPath: {{ .Values.services.va.fileStore.local.storageDirectory }}
-            {{- end }}
-          ports:
-            - containerPort: 8085
-          resources:
-            {{- toYaml .Values.services.va.resources | nindent 12 }}
-      restartPolicy: Always
-      {{- if .Values.services.va.affinity }}
-      affinity:
-        {{- toYaml .Values.services.va.affinity | nindent 8 }}
-      {{- else }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: va
-                topologyKey: kubernetes.io/hostname
-      {{- end }}
-      {{- if .Values.services.va.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- toYaml .Values.services.va.topologySpreadConstraints | nindent 8 }}
-      {{- else }}
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: va
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: va
-      {{- end }}
-      volumes:
-        - name: api-config
-          configMap:  
-            name: va-config
-  {{- if eq .Values.services.va.fileStore.type "local" }}
-  volumeClaimTemplates:
-  - metadata:
-      name: local-crl-file-storage
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: null
-      resources:
-        requests:
-          storage: 1Gi
-  {{- end }}
+{{- define "lamassu.va.volumeClaimTemplates" -}}
+- metadata:
+    name: local-crl-file-storage
+  spec:
+    accessModes: [ "ReadWriteOnce" ]
+    storageClassName: null
+    resources:
+      requests:
+        storage: 1Gi
+{{- end -}}
+
+{{- $vaIsLocal := eq .Values.services.va.fileStore.type "local" -}}
+{{- $vaStorageDir := .Values.services.va.fileStore.local.storageDirectory | default "/data/crl" -}}
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" "va"
+  "svcKey" "va"
+  "kind" "StatefulSet"
+  "env" (printf "- name: TMPDIR\n  value: %s" $vaStorageDir)
+  "volumeMounts" (ternary (printf "- name: local-crl-file-storage\n  mountPath: %s" $vaStorageDir) "" $vaIsLocal)
+  "volumeClaimTemplates" (ternary (include "lamassu.va.volumeClaimTemplates" $) "" $vaIsLocal)) }}

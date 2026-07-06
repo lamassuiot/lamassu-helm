@@ -1,25 +1,2 @@
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: HTTPRoute
-metadata:
-  name: api-alerts
-  namespace: {{ .Release.Namespace }}
-  labels:
-    auth: "private"
-spec:
-  parentRefs:
-    - name: eg
-      sectionName: https  # The specific listener
-  rules:
-    - matches:
-      - path:
-          type: PathPrefix
-          value: /api/alerts/
-      filters:
-      - type: URLRewrite
-        urlRewrite:
-          path:
-            type: ReplacePrefixMatch
-            replacePrefixMatch: "/"
-      backendRefs:
-        - name: alerts
-          port: 8085
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "alerts") | fromYaml -}}
+{{ include "lamassu.httproute" (dict "root" $ "name" "api-alerts" "backend" "alerts" "port" $svc.port "path" "/api/alerts/" "rewrite" "/" "authLabel" "private") }}

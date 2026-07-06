@@ -1,92 +1,26 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:  
-  name: ui
-  namespace: {{.Release.Namespace}}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: ui
-spec:
-  {{- if not .Values.services.ui.autoscaling.enabled }}
-  replicas: {{ .Values.services.ui.replicaCount }}
-  {{- end }}
-  selector:
-    matchLabels:
-      app: ui
-  template:
-    metadata:
-      labels:
-        app: ui
-    spec:     
-      containers:
-        - name: ui
-          image: {{.Values.services.ui.image}}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 80
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 80
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          env:
-            - name: CHART_VERSION
-              value: {{.Chart.Version}}
-            - name: HELM_REVISION
-              value: "{{.Release.Revision}}"
-            - name: LAMASSU_API
-              value: "https://${window.location.host}/api"
-            - name: OIDC_ENABLED
-              value: "true"
-            - name: OIDC_AUTHORITY
-              value: {{.Values.auth.oidc.frontend.authority}}
-            - name: OIDC_CLIENT_ID
-              value: {{.Values.auth.oidc.frontend.clientId}}
-            - name: CLOUD_CONNECTORS
-              value: "[{{- range $index, $element := .Values.services.connectors -}}{{- if $index }}, {{ end }}\"{{ $element.id }}\"{{- end }}]"
-            - name: UI_FOOTER_ENABLED
-              value: "false"
+{{- define "lamassu.ui.env" -}}
+- name: CHART_VERSION
+  value: {{ .Chart.Version }}
+- name: HELM_REVISION
+  value: "{{ .Release.Revision }}"
+- name: LAMASSU_API
+  value: "https://${window.location.host}/api"
+- name: OIDC_ENABLED
+  value: "true"
+- name: OIDC_AUTHORITY
+  value: {{ .Values.auth.oidc.frontend.authority }}
+- name: OIDC_CLIENT_ID
+  value: {{ .Values.auth.oidc.frontend.clientId }}
+- name: CLOUD_CONNECTORS
+  value: "[{{- range $index, $element := .Values.services.connectors -}}{{- if $index }}, {{ end }}\"{{ $element.id }}\"{{- end }}]"
+- name: UI_FOOTER_ENABLED
+  value: "false"
+{{- end -}}
 
-          ports:
-            - containerPort: 80
-          resources:
-            {{- toYaml .Values.services.ui.resources | nindent 12 }}
-      restartPolicy: Always
-      {{- if .Values.services.ui.affinity }}
-      affinity:
-        {{- toYaml .Values.services.ui.affinity | nindent 8 }}
-      {{- else }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: ui
-                topologyKey: kubernetes.io/hostname
-      {{- end }}
-      {{- if .Values.services.ui.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- toYaml .Values.services.ui.topologySpreadConstraints | nindent 8 }}
-      {{- else }}
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: ui
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: ui
-      {{- end }}
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" "ui"
+  "svcKey" "ui"
+  "tty" false
+  "configMapName" ""
+  "env" (include "lamassu.ui.env" $)) }}
