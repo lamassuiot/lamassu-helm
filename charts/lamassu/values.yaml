@@ -122,8 +122,15 @@ serviceDefaults:
   port: 8085
   # -- Number of replicas. Ignored when autoscaling is enabled.
   replicaCount: 1
-  # -- Container resource requests/limits
-  resources: {}
+  # -- Container resource requests/limits. CPU and memory requests are required
+  # for utilization-based HPA metrics.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
   # -- Extra annotations for the Deployment/StatefulSet
   annotations: {}
   # -- Extra labels for the Deployment/StatefulSet and its pods (added next to the `app` label)
@@ -154,6 +161,7 @@ serviceDefaults:
     enabled: false
     minReplicas: 1
     maxReplicas: 5
+    targetMemoryUtilizationPercentage: 80
     targetCPUUtilizationPercentage: 80
   # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
   affinity: {}
@@ -185,7 +193,7 @@ services:
     job:
       crl:
         # -- Frequency to launch the CRL computation job
-        frequency: "* * * * *"
+        frequency: "0 * * * *"
   ca:
     # -- Domain to be used while signing/generating new CAs and certificates
     domains:
