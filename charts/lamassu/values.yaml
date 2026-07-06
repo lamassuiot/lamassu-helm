@@ -33,6 +33,8 @@ postgres:
   hostname: ""
   # -- Port for the PostgreSQL server
   port: 5432
+  # -- Log level used by components that connect to PostgreSQL for their storage layer
+  logLevel: "info"
   # -- Username to be used to authenticate with the PostgreSQL server
   username: ""
   # -- Password to be used to authenticate with the PostgreSQL server
@@ -99,18 +101,17 @@ auth:
       clientId: "frontend"
       # -- URL pointing to the OIDC provider's base path to build the OIDC well-known URL (This is the complete URL preceding the "/.well-known/openid-configuration" URL). Can be a JS expression
       authority: https://${window.location.host}/auth/realms/lamassu
-    apiGateway:
-      # -- URL pointing to the issuer's public key set to validate the JWT tokens.
-      jwks:
-        - name: oidc-authn
-          # -- URI to use to fetch the public key set
-          uri: http://keycloak/auth/realms/lamassu/protocol/openid-connect/certs
-  authorization:
-    # -- Claim to use to find and filter the user's roles
-    rolesClaim: realm_access.roles
-    roles:
-      # -- Role association to be used to authorize the user as LAMASSU's admin
-      admin: pki-admin
+  externalAuthorization:
+    # -- Protect routes labeled auth=external with Envoy Gateway external authorization.
+    enabled: true
+    # -- Kubernetes Service name for the external authorization endpoint.
+    serviceName: authz
+    # -- Kubernetes Service port for the external authorization endpoint.
+    servicePort: 8085
+    # -- HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+.
+    path: /v1/ext_authz/check
+    # -- Allow traffic when the external authorization service cannot be reached.
+    failOpen: false
 services:
   ui:
     # -- Docker image for the UI component
@@ -154,6 +155,48 @@ services:
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
+  wfx:
+    # -- Enable the Siemens WFX workflow service
+    enabled: true
+    # -- Docker image for the WFX component
+    image: ghcr.io/siemens/wfx:latest
+    # -- Number of WFX replicas.
+    replicas: 1
+    # -- WFX southbound/client API port.
+    clientPort: 9080
+    # -- WFX northbound/management API port.
+    managementPort: 9081
+    logs:
+      # -- WFX log format.
+      format: json
+      # -- WFX log level.
+      level: debug
+    postgres:
+      # -- PostgreSQL database name for WFX.
+      database: wfx
+      # -- PostgreSQL SSL mode for WFX.
+      sslmode: disable
+      iamAuth:
+        # -- Enable AWS RDS IAM authentication for PostgreSQL.
+        enabled: false
+        # -- AWS region used for PostgreSQL IAM authentication.
+        region: ""
+    routing:
+      # -- Expose WFX through the Lamassu Gateway.
+      enabled: true
+      # -- Gateway path for the WFX southbound/client API.
+      sbiPath: /api/wfx/sbi/
+      # -- Explicit rewrite path for WFX southbound/client API.
+      rewriteSbiPath: /api/wfx/
+      # -- Gateway path for the WFX northbound/management API.
+      nbiPath: /api/wfx/nbi/
+      # -- Explicit rewrite path for WFX northbound/management API.
+      rewriteNbiPath: /api/wfx/
+      # -- Path used when rewriting Gateway routes to WFX.
+      rewritePath: /api/wfx/
+    extraEnv: []
+    # -- Additional command line arguments for the WFX container.
+    extraArgs: []
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
@@ -172,6 +215,18 @@ services:
       host: ""
       # -- SMTP server port
       port: 25
+  authz:
+    # -- Docker image for the Authz connector component
+    image: ghcr.io/lamassuiot/lamassu-authz:3.8.0
+    # -- JWKS endpoint used by authz to validate JWTs
+    jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
+    # -- PostgreSQL database name for authz principals, grants, and policies
+    database: authz
+    # -- Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials.
+      # e.g. credentials: { pki: { database: pki_db } }
+    credentials: {}
+    # -- Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids}
+    bootstrap: []
   connectors:
 toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0

@@ -47,10 +47,11 @@ PKI for Industrial IoT for Kubernetes
 | **Authentication & Authorization** | | | |
 | auth.oidc.frontend.clientId | string | `"frontend"` | OIDC client ID for the frontend |
 | auth.oidc.frontend.authority | string | `"https://${window.location.host}/auth/realms/lamassu"` | OIDC provider base URL (can be a JS expression) |
-| auth.oidc.apiGateway.jwks[0].name | string | `"oidc-authn"` | Name for the JWKS provider |
-| auth.oidc.apiGateway.jwks[0].uri | string | `"http://keycloak/..."` | URI to fetch the public key set for JWT validation |
-| auth.authorization.rolesClaim | string | `"realm_access.roles"` | JWT claim to extract user roles from |
-| auth.authorization.roles.admin | string | `"pki-admin"` | Role for Lamassu admin users |
+| auth.externalAuthorization.enabled | bool | `true` | Protect routes labeled `auth=external` with Envoy Gateway external authorization |
+| auth.externalAuthorization.serviceName | string | `"authz"` | Kubernetes Service name for the external authorization endpoint |
+| auth.externalAuthorization.servicePort | int | `8085` | Kubernetes Service port for the external authorization endpoint |
+| auth.externalAuthorization.path | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+ |
+| auth.externalAuthorization.failOpen | bool | `false` | Allow traffic when the external authorization service cannot be reached |
 | **Service Images** | | | |
 | services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:4.3.0"` | Docker image for UI component |
 | services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:3.8.0"` | Docker image for CA component |
@@ -58,6 +59,24 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.8.0"` | Docker image for KMS component |
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.0"` | Docker image for Device Manager component |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0"` | Docker image for DMS Manager component |
+| services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
+| services.wfx.enabled | bool | `true` | Enable the Siemens WFX workflow service |
+| services.wfx.image | string | `"ghcr.io/siemens/wfx:latest"` | Docker image for WFX component |
+| services.wfx.replicas | int | `1` | Number of WFX replicas |
+| services.wfx.clientPort | int | `9080` | WFX southbound/client API port |
+| services.wfx.managementPort | int | `9081` | WFX northbound/management API port |
+| services.wfx.logs.format | string | `"json"` | WFX log format |
+| services.wfx.logs.level | string | `"debug"` | WFX log level |
+| services.wfx.postgres.database | string | `"wfx"` | PostgreSQL database name for WFX |
+| services.wfx.postgres.sslmode | string | `"disable"` | PostgreSQL SSL mode for WFX |
+| services.wfx.postgres.iamAuth.enabled | bool | `false` | Enable AWS RDS IAM authentication for PostgreSQL |
+| services.wfx.postgres.iamAuth.region | string | `""` | AWS region used for PostgreSQL IAM authentication |
+| services.wfx.routing.enabled | bool | `true` | Expose WFX through the Lamassu Gateway |
+| services.wfx.routing.sbiPath | string | `"/api/wfx/sbi/"` | Gateway path for the WFX southbound/client API |
+| services.wfx.routing.nbiPath | string | `"/api/wfx/nbi/"` | Gateway path for the WFX northbound/management API |
+| services.wfx.routing.rewritePath | string | `"/api/wfx/"` | Path used when rewriting Gateway routes to WFX |
+| services.wfx.extraEnv | list | `[]` | Additional WFX container environment variables |
+| services.wfx.extraArgs | list | `[]` | Additional WFX command line arguments |
 | services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.0"` | Docker image for Alerts component |
 | **CA Service Configuration** | | | |
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domains for signing/generating CAs and certificates |
@@ -85,4 +104,3 @@ PKI for Industrial IoT for Kubernetes
 | migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0"` | Docker image for database migrations |
 | migrations.db.databases | list | `["alerts", "ca", "va", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
 | migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0"` | Docker image for the CA-to-KMS migration tool |
-

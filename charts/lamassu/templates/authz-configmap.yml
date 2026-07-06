@@ -1,0 +1,84 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: authz-config
+  namespace: {{.Release.Namespace}}
+data:
+  config: |
+    logs:
+      level: "debug"
+
+    server:
+      log_level: "debug"
+      health_check: false
+      listen_address: "0.0.0.0"
+      port: 8085
+      protocol: "http" #http | https
+
+    openapi:
+      enabled: true
+  
+    subscriber_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+
+    publisher_event_bus:
+      log_level: "debug"
+      enabled: true
+      provider: amqp
+      protocol: amqp #amqp | amqps
+      hostname: {{ .Values.amqp.hostname }}
+      port: {{ .Values.amqp.port }}
+      basic_auth:
+        enabled: true
+        username: "{{ .Values.amqp.username }}"
+        password: "{{ .Values.amqp.password }}"
+
+    authz_db:
+      provider: "postgres"
+      hostname: {{ .Values.postgres.hostname }}
+      port: {{ .Values.postgres.port }}
+      username: "{{ .Values.postgres.username }}"
+      password: "{{ .Values.postgres.password }}"
+      database: {{ .Values.services.authz.database }}
+
+
+    {{- if .Values.services.authz.credentials }}
+    credentials:
+      {{- range $schema, $cred := .Values.services.authz.credentials }}
+      {{ $schema }}:
+        provider: "postgres"
+        hostname: {{ $.Values.postgres.hostname }}
+        port: {{ $.Values.postgres.port }}
+        username: "{{ $.Values.postgres.username }}"
+        password: "{{ $.Values.postgres.password }}"
+        database: {{ $cred.database }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.services.authz.bootstrap }}
+    bootstrap:
+      {{ .Values.services.authz.bootstrap | toYaml | nindent 6 | trim }}
+    {{- end }}
+
+    preload_dir: /etc/lamassuiot/authz/preload
+
+    jwks_url: {{ .Values.services.authz.jwkUrl }}
+    enable_jwt_validation: true
+
+    schemas:
+      pki: /etc/lamassuiot/authz/schemas/pki.json
+      authz: /etc/lamassuiot/authz/schemas/authz.json
+
+    {{- if .Values.services.wfx.enabled }}
+    http_schemas:
+    - /etc/lamassuiot/authz/schemas/http-wfx.json
+    {{- end }}

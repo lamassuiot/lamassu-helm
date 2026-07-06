@@ -31,7 +31,7 @@ data:
         password: {{ $.Values.amqp.password }}
 
     storage:
-      log_level: "info"
+      log_level: "{{ $.Values.postgres.logLevel }}"
       provider: "postgres" #couch_db | postgres | dynamo_db
       hostname: {{ $.Values.postgres.hostname }}
       port: {{ $.Values.postgres.port }}
@@ -43,6 +43,13 @@ data:
       auth_mode: noauth
       protocol: http
       hostname: kms
+      port: 8085
+
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
       port: 8085
         
     certificate_monitoring_job:
