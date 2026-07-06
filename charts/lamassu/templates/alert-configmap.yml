@@ -5,52 +5,14 @@ metadata:
   namespace: {{.Release.Namespace}}
 data:
   config: |
-    logs:
-      level: "debug"
+    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false) | nindent 4 }}
 
-    server:
-      log_level: "debug"
-      health_check: false
-      listen_address: "0.0.0.0"
-      port: 8085
-      protocol: "http" #http | https
+    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_event_bus") | nindent 4 }}
 
-    openapi:
-      enabled: true
+    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_dlq_event_bus" "dlq" true) | nindent 4 }}
 
-    subscriber_event_bus:
-      log_level: "debug"
-      enabled: true
-      provider: amqp
-      protocol: amqp #amqp | amqps
-      hostname: {{ .Values.amqp.hostname }}
-      port: {{ .Values.amqp.port }}
-      basic_auth:
-        enabled: true
-        username: "{{ .Values.amqp.username }}"
-        password: "{{ .Values.amqp.password }}"
+    {{- include "lamassu.config.storage" $ | nindent 4 }}
 
-    subscriber_dlq_event_bus:
-      log_level: "debug"
-      enabled: true
-      provider: amqp
-      protocol: amqp #amqp | amqps
-      hostname: {{ .Values.amqp.hostname }}
-      port: {{ .Values.amqp.port }}
-      exchange: lamassu-dlq
-      basic_auth:
-        enabled: true
-        username: "{{ .Values.amqp.username }}"
-        password: "{{ .Values.amqp.password }}"
-
-    storage:
-      log_level: "info"
-      provider: "postgres" #couch_db | postgres | dynamo_db
-      hostname: {{ $.Values.postgres.hostname }}
-      port: {{ $.Values.postgres.port }}
-      username: "{{ $.Values.postgres.username }}"
-      password: "{{ $.Values.postgres.password }}"
-    
     smtp_server:
       from: {{ .Values.services.alerts.smtp_server.from }}
       host: {{ .Values.services.alerts.smtp_server.host }}
@@ -59,20 +21,4 @@ data:
       password: {{ .Values.services.alerts.smtp_server.password }}
       ssl: {{ .Values.services.alerts.smtp_server.enable_ssl }}
       insecure: {{ .Values.services.alerts.smtp_server.insecure }}
-{{ if .Values.observability.enabled }}
-    otel:
-      traces:
-        enabled: true
-        hostname: {{ .Values.observability.traces.hostname }}
-        port: {{ .Values.observability.traces.port }}
-        scheme: {{ .Values.observability.traces.scheme }}
-        base_path: "{{ .Values.observability.traces.basePath }}"
-      logging:
-        enabled: true
-        hostname: {{ .Values.observability.logs.hostname }}
-        port: {{ .Values.observability.logs.port }}
-        scheme: {{ .Values.observability.logs.scheme }}
-        base_path: "{{ .Values.observability.logs.basePath }}"
-      metrics:
-        enabled: false
-{{ end }}
+    {{- include "lamassu.config.otel" $ | nindent 4 }}

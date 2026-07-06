@@ -17,7 +17,7 @@ data:
 
     # The output root certificate file
     ROOT_CA_CRT_FILE=/shared/root.crt
-    
+
     touch $BUNDLE_CRT_FILE
 
     echo -e "${BLUE}Bundling certificates...${NOCOLOR}"
@@ -40,7 +40,7 @@ data:
 
     echo -e "${BLUE}Extracting root (lowest hierarchy cert in bundle)...${NOCOLOR}"
     touch $ROOT_CA_CRT_FILE
-  
+
     # Count the number of certificates in the bundle
     CERT_COUNT=$(grep -c 'END CERTIFICATE' $BUNDLE_CRT_FILE)
 
@@ -52,68 +52,25 @@ data:
     cat $ROOT_CA_CRT_FILE
 
   config: |
-    logs:
-      level: "trace"
+    {{- include "lamassu.config.header" (dict "logsLevel" "trace" "healthCheck" false) | nindent 4 }}
 
-    server:
-      log_level: "debug"
-      health_check: false
-      listen_address: "0.0.0.0"
-      port: 8085
-      protocol: "http" #http | https
+    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "publisher_event_bus") | nindent 4 }}
 
-    openapi:
-      enabled: true
+    {{- include "lamassu.config.storage" $ | nindent 4 }}
 
-    publisher_event_bus:
-      log_level: "debug"
-      enabled: true
-      provider: amqp
-      protocol: amqp #amqp | amqps
-      hostname: {{ .Values.amqp.hostname }}
-      port: {{ .Values.amqp.port }}
-      basic_auth:
-        enabled: true
-        username: "{{ .Values.amqp.username }}"
-        password: "{{ .Values.amqp.password }}"
-
-    storage:
-      log_level: "info"
-      provider: "postgres" #couch_db | postgres | dynamo_db
-      hostname: {{ $.Values.postgres.hostname }}
-      port: {{ $.Values.postgres.port }}
-      username: "{{ $.Values.postgres.username }}"
-      password: "{{ $.Values.postgres.password }}"
-    
     device_manager_client:
       log_level: debug
       auth_mode: noauth
       protocol: http
       hostname: device-manager
       port: 8085
-    
+
     ca_client:
       log_level: debug
       auth_mode: noauth
       protocol: http
       hostname: ca
       port: 8085
-    
+
     downstream_cert_file: /shared/root.crt
-{{ if .Values.observability.enabled }}
-    otel:
-      traces:
-        enabled: true
-        hostname: {{ .Values.observability.traces.hostname }}
-        port: {{ .Values.observability.traces.port }}
-        scheme: {{ .Values.observability.traces.scheme }}
-        base_path: "{{ .Values.observability.traces.basePath }}"
-      logging:
-        enabled: true
-        hostname: {{ .Values.observability.logs.hostname }}
-        port: {{ .Values.observability.logs.port }}
-        scheme: {{ .Values.observability.logs.scheme }}
-        base_path: "{{ .Values.observability.logs.basePath }}"
-      metrics:
-        enabled: false
-{{ end }}
+    {{- include "lamassu.config.otel" $ | nindent 4 }}
