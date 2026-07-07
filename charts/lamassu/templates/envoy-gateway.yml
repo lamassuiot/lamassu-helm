@@ -58,12 +58,12 @@ spec:
   headers:
     earlyRequestHeaders:
       remove:
-      - X-Principal-Id
-      - X-Lms-Source
-      - X-Forwarded-Client-Cert
-      - X-Forwarded-Cert
-      - Ssl-Client-Cert
-      - X-Amzn-Mtls-Clientcert
+      - x-principal-id
+      - x-lms-source
+      - x-forwarded-client-cert
+      - x-forwarded-cert
+      - ssl-client-cert
+      - x-amzn-mtls-clientcert
     xForwardedClientCert:
       mode: AppendForward
       certDetailsToAdd: 
