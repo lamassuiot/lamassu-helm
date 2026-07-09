@@ -2,8 +2,9 @@
 
 dist=
 kube=
-kubectl="kubectl"
-helm="helm"
+KUBE_CONTEXT=""
+KUBECTL_CONTEXT_ARGS=()
+HELM_CONTEXT_ARGS=()
 
 DOMAIN=dev.lamassu.io
 DOMAIN_OVERRIDE=false
@@ -14,6 +15,7 @@ NON_INTERACTIVE=false
 OTEL=false
 HTTPS_PORT=443
 HTTP_PORT=80
+GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 
@@ -53,7 +55,12 @@ function main() {
     process_flags "$@"
 
     detect_distribution
-    if [ $dist == "microk8s" ]; then
+    if [ "$KUBE_CONTEXT" != "" ]; then
+        # Explicit context must take precedence over local microk8s auto-detection.
+        dist="kubectl"
+        KUBECTL_CONTEXT_ARGS=(--context "$KUBE_CONTEXT")
+        HELM_CONTEXT_ARGS=(--kube-context "$KUBE_CONTEXT")
+    elif [ "$dist" == "microk8s" ]; then
         kube="microk8s"
     fi
 
@@ -127,6 +134,7 @@ function usage() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
     echo " -h, --help                   Display this help message"
+    echo " -c, --context                Kubernetes context to use (kubectl/helm)"
     echo " -n, --non-interactive        Enable non-interactive mode. Credentials for Keycloak, Postgres and RabbitMQ will be auto generated"
     echo " -ns, --namespace             Kubernetes Namespace where LAMASSU will be deployed"
     echo " -d, --domain                 Domain to be set while deploying LAMASSU"
@@ -141,6 +149,7 @@ function usage() {
     echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
     echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
     echo " -l, --local-chart-path       Path to the local chart folder"
+    echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
     echo " --helm-chart-victoria-logs   (Only needed while using --offline with --otel) Path to the victoria-logs-single helm chart (.tgz format)"
     echo " --helm-chart-victoria-traces (Only needed while using --offline with --otel) Path to the victoria-traces-single helm chart (.tgz format)"
@@ -162,6 +171,16 @@ function process_flags() {
         -h | --help)
             usage
             exit 0
+            ;;
+        -c | --context*)
+            if ! has_argument $@; then
+                echo -e "\n${RED}Context not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            KUBE_CONTEXT=$(extract_argument $@)
+
+            shift
             ;;
         --offline)
             OFFLINE=true
@@ -296,6 +315,16 @@ function process_flags() {
 
             shift
             ;;
+        -ip | --gateway-ip*)
+            if ! has_argument $@; then
+                echo -e "\n${RED}Gateway IP not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            GATEWAY_IP=$(extract_argument $@)
+
+            shift
+            ;;
         --otel)
             OTEL=true
             ;;
@@ -405,7 +434,11 @@ EOF
 export DOMAIN=$DOMAIN
 yq -i '.services.ca.domains = [env(DOMAIN)]' lamassu.yaml
 
-export IP_LIST="$(hostname -I)"
+if [ -n "$GATEWAY_IP" ]; then
+    export IP_LIST="$GATEWAY_IP"
+else
+    export IP_LIST="$(hostname -I)"
+fi
 export HTTPS_PORT=$HTTPS_PORT
 export HTTP_PORT=$HTTP_PORT
 
@@ -414,13 +447,11 @@ yq -i '.gateway.ports.https = env(HTTPS_PORT)' lamassu.yaml
 yq -i '.gateway.ports.http = env(HTTP_PORT)' lamassu.yaml
 
 export NAMESPACE=$NAMESPACE
-yq -i '.auth.oidc.apiGateway.jwks[0].uri = "http://auth-keycloak." + env(NAMESPACE) + "/auth/realms/lamassu/protocol/openid-connect/certs"' lamassu.yaml
-
 # Check if TLS_CRT and TLS_KEY are not empty
 if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
     echo -e "${ORANGE}Deploying Lamassu with EXTERNAL TLS Certificates${NOCOLOR}"
 
-    $kube $kubectl create secret tls downstream-provided-crt --cert=$TLS_CRT --key=$TLS_KEY -n $NAMESPACE
+    run_kubectl create secret tls downstream-provided-crt --cert=$TLS_CRT --key=$TLS_KEY -n $NAMESPACE
 
     cat >tls.yaml <<"EOF"
 tls:
@@ -447,6 +478,7 @@ fi
 
     yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
     yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
+
     yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
     yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
 
@@ -457,7 +489,7 @@ fi
     helm_path=$LAMASSU_CHART_PATH
     if [ "$OFFLINE" = false ]; then
       if [ "$LAMASSU_USE_LOCAL_PATH" = false ]; then
-        $kube $helm repo add lamassuiot http://www.lamassu.io/lamassu-helm/
+        run_helm repo add lamassuiot http://www.lamassu.io/lamassu-helm/
       else
         echo -e "${ORANGE}Using local chart path ${LAMASSU_CHART_PATH} ${NOCOLOR}"
       fi
@@ -476,7 +508,7 @@ EOF
         helm_version="--version $VERSION"
     fi
 
-    $kube $helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait
+    run_helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait
 
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Lamassu IoT installed${NOCOLOR}"
@@ -511,7 +543,7 @@ EOF
         helm_path=$OFFLINE_HELMCHART_RABBITMQ
     fi
    
-   $kube $helm install rabbitmq $helm_path --version 0.21.4 -n $NAMESPACE -f rabbitmq.yaml --wait
+    run_helm install rabbitmq $helm_path --version 0.21.4 -n $NAMESPACE -f rabbitmq.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}RabbitMQ installed${NOCOLOR}"
     else
@@ -640,7 +672,7 @@ EOF
         helm_path=$OFFLINE_HELMCHART_KEYCLOAK
     fi
 
-    $kube $helm install auth $helm_path --version 0.21.9 -n $NAMESPACE --wait -f keycloak.yaml
+    run_helm install auth $helm_path --version 0.21.9 -n $NAMESPACE --wait -f keycloak.yaml
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Keycloak installed${NOCOLOR}"
     else
@@ -682,7 +714,7 @@ EOF
         helm_path=$OFFLINE_HELMCHART_POSTGRES
     fi
 
-    $kube $helm install postgres $helm_path -n $NAMESPACE --version 0.19.5 -f postgres.yaml --wait
+    run_helm install postgres $helm_path -n $NAMESPACE --version 0.19.5 -f postgres.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}PostgreSQL installed${NOCOLOR}"
     else
@@ -693,11 +725,11 @@ EOF
 
 function create_kubernetes_namespace() {
     # Check if the namespace exists
-    if $kube $kubectl get ns "$NAMESPACE" &> /dev/null; then
+    if run_kubectl get ns "$NAMESPACE" &> /dev/null; then
         echo -e "\n${GREEN}Namespace $NAMESPACE already exists${NOCOLOR}"
     else
         # If the namespace doesn't exist, create it
-        $kube $kubectl create ns $NAMESPACE
+        run_kubectl create ns $NAMESPACE
         echo "Namespace $NAMESPACE created."
         if [ $? -eq 0 ]; then
             echo -e "\n${GREEN}Namespace $NAMESPACE created${NOCOLOR}"
@@ -812,22 +844,42 @@ function detect_distribution() {
         echo -e "${GREEN}Kind detected - USE IT ONLY FOR TESTING${NOCOLOR}"
         return 0
     fi
-    echo -e "${RED}No kubernetes distribution found${NOCOLOR}"
+
+    is_command_installed "kubectl"
+    if [ $? -eq 0 ]; then
+        dist="kubectl"
+        echo -e "${GREEN}kubectl detected (using kubeconfig context)${NOCOLOR}"
+        return 0
+    fi
+
+    echo -e "${RED}No kubernetes distribution found (microk8s, k3s, kind) and kubectl is not installed${NOCOLOR}"
     exit 1
 }
 
 function check_dependencies() {
     exit_if_command_not_installed yq
-    exit_if_command_not_installed $dist
-    if [ $dist == "k3s" ]; then
-        exit_if_command_not_installed $kubectl
-        exit_if_command_not_installed $helm
+    if [ $dist == "microk8s" ]; then
+        exit_if_command_not_installed $dist
+    else
+        exit_if_command_not_installed kubectl
+        exit_if_command_not_installed helm
+
+        if [ "$KUBE_CONTEXT" != "" ]; then
+            if kubectl config get-contexts -o name | grep -Fxq "$KUBE_CONTEXT"; then
+                echo "✅ context $KUBE_CONTEXT"
+            else
+                echo "Context '$KUBE_CONTEXT' not found in kubeconfig. Exiting"
+                exit 1
+            fi
+        fi
     fi
 
     if [ $dist == "microk8s" ]; then
-        exit_if_kube_command_not_installed $kubectl
-        exit_if_kube_command_not_installed $helm
+        exit_if_kube_command_not_installed kubectl
+        exit_if_kube_command_not_installed helm
         check_microk8s_minimum_requirements
+    else
+        check_envoy_gateway_helm
     fi
 
 }
@@ -846,6 +898,22 @@ function init() {
     ORANGE='\033[0;33m'
     GREEN='\033[0;32m'
     NOCOLOR='\033[0m'
+}
+
+function run_kubectl() {
+    if [ "$kube" == "microk8s" ]; then
+        microk8s kubectl "${KUBECTL_CONTEXT_ARGS[@]}" "$@"
+    else
+        kubectl "${KUBECTL_CONTEXT_ARGS[@]}" "$@"
+    fi
+}
+
+function run_helm() {
+    if [ "$kube" == "microk8s" ]; then
+        microk8s helm "${HELM_CONTEXT_ARGS[@]}" "$@"
+    else
+        helm "${HELM_CONTEXT_ARGS[@]}" "$@"
+    fi
 }
 
 function is_command_installed() {
@@ -885,13 +953,36 @@ function is_microk8s_addon_enabled() {
 }
 
 function check_envoy_gateway_helm() {
-    # 1. Check Helm Release
-    if $kube $helm list -n envoy-gateway-system | grep -q "^eg\s"; then
+    envoy_gateway_version="v1.8.0"
+
+    # 1. Apply/upgrade Envoy Gateway and Gateway API CRDs before starting the controller.
+    echo "Applying Envoy Gateway CRDs ${envoy_gateway_version}..."
+    if run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+        --version "${envoy_gateway_version}" \
+        --set crds.gatewayAPI.enabled=true \
+        --set crds.gatewayAPI.channel=experimental \
+        --set crds.envoyGateway.enabled=true \
+        | run_kubectl apply --server-side --force-conflicts -f -; then
+        echo "✅ Envoy Gateway CRDs applied successfully"
+    else
+        echo "❌ Failed to apply Envoy Gateway CRDs. Please check Helm/Kubernetes output and try again."
+        exit 1
+    fi
+
+    # 2. Check Helm Release
+    if run_helm list -n envoy-gateway-system | grep -q "^eg\s"; then
         echo "✅ Envoy Gateway (eg) Helm release found"
+        echo "Upgrading Envoy Gateway to ${envoy_gateway_version}..."
+        if run_helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system; then
+            echo "✅ Envoy Gateway Helm chart 'eg' upgraded successfully"
+        else
+            echo "❌ Failed to upgrade Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
+            exit 1
+        fi
     else
         echo "❌ Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
-        echo "Installing Envoy Gateway v1.3.0..."
-        if $kube $helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace; then
+        echo "Installing Envoy Gateway ${envoy_gateway_version}..."
+        if run_helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace; then
             echo "✅ Envoy Gateway Helm chart 'eg' installed successfully"
         else
             echo "❌ Failed to install Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
@@ -899,12 +990,12 @@ function check_envoy_gateway_helm() {
         fi
     fi
 
-    # 2. Check/Create GatewayClass
-    if $kube kubectl get gatewayclass eg >/dev/null 2>&1; then
+    # 3. Check/Create GatewayClass
+    if run_kubectl get gatewayclass eg >/dev/null 2>&1; then
         echo "✅ GatewayClass 'eg' already exists"
     else
         echo "Missing GatewayClass 'eg'. Applying now..."
-        cat <<EOF | $kube kubectl apply -f -
+        cat <<EOF | run_kubectl apply -f -
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -933,13 +1024,13 @@ EOF
 
     victoria_logs_helm_path=vm/victoria-logs-single
     if [ "$OFFLINE" = false ]; then
-        $kube $helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
-        $kube $helm repo update vm 2>/dev/null || true
+        run_helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
+        run_helm repo update vm 2>/dev/null || true
     else
         victoria_logs_helm_path=$OFFLINE_HELMCHART_VICTORIA_LOGS
     fi
 
-    $kube $helm install victoria-logs $victoria_logs_helm_path -n $NAMESPACE -f victoria-logs.yaml --wait
+    run_helm install victoria-logs $victoria_logs_helm_path -n $NAMESPACE -f victoria-logs.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Victoria Logs installed${NOCOLOR}"
     else
@@ -957,13 +1048,13 @@ EOF
 
     victoria_traces_helm_path=vm/victoria-traces-single
     if [ "$OFFLINE" = false ]; then
-        $kube $helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
-        $kube $helm repo update vm 2>/dev/null || true
+        run_helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
+        run_helm repo update vm 2>/dev/null || true
     else
         victoria_traces_helm_path=$OFFLINE_HELMCHART_VICTORIA_TRACES
     fi
 
-    $kube $helm install victoria-traces $victoria_traces_helm_path -n $NAMESPACE -f victoria-traces.yaml --wait
+    run_helm install victoria-traces $victoria_traces_helm_path -n $NAMESPACE -f victoria-traces.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}VictoriaTraces installed${NOCOLOR}"
     else
@@ -1012,13 +1103,13 @@ EOF
 
     jaeger_helm_path=jaegertracing/jaeger
     if [ "$OFFLINE" = false ]; then
-        $kube $helm repo add jaegertracing https://jaegertracing.github.io/helm-charts 2>/dev/null || true
-        $kube $helm repo update jaegertracing 2>/dev/null || true
+        run_helm repo add jaegertracing https://jaegertracing.github.io/helm-charts 2>/dev/null || true
+        run_helm repo update jaegertracing 2>/dev/null || true
     else
         jaeger_helm_path=$OFFLINE_HELMCHART_JAEGER
     fi
 
-    $kube $helm install jaeger $jaeger_helm_path -n $NAMESPACE -f jaeger.yaml --wait
+    run_helm install jaeger $jaeger_helm_path -n $NAMESPACE -f jaeger.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Jaeger installed${NOCOLOR}"
     else
@@ -1052,13 +1143,13 @@ EOF
 
     otel_collector_helm_path=open-telemetry/opentelemetry-collector
     if [ "$OFFLINE" = false ]; then
-        $kube $helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
-        $kube $helm repo update open-telemetry 2>/dev/null || true
+        run_helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
+        run_helm repo update open-telemetry 2>/dev/null || true
     else
         otel_collector_helm_path=$OFFLINE_HELMCHART_OTEL_COLLECTOR
     fi
 
-    $kube $helm install otel-collector $otel_collector_helm_path -n $NAMESPACE -f otel-collector.yaml --wait
+    run_helm install otel-collector $otel_collector_helm_path -n $NAMESPACE -f otel-collector.yaml --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}OTel Collector installed${NOCOLOR}"
     else
