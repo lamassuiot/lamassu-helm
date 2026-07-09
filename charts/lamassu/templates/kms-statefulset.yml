@@ -95,6 +95,9 @@
 {{- if and $hasFilesystemEngine $kms.autoscaling.enabled -}}
   {{ fail "KMS autoscaling is not supported with the filesystem crypto engine. Switch to an external engine to enable autoscaling." }}
 {{- end -}}
+{{- if and .Values.services.kms.pkcs11Sidecar.enabled (empty .Values.services.kms.pkcs11Sidecar.image) -}}
+  {{ fail "services.kms.pkcs11Sidecar.image is required when services.kms.pkcs11Sidecar.enabled=true" }}
+{{- end -}}
 {{ include "lamassu.workload" (dict
   "root" $
   "name" "kms"

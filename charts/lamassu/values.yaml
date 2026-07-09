@@ -226,7 +226,8 @@ services:
     # -- Optional arguments override for the KMS container
     args: []
     pkcs11Sidecar:
-      # -- Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS
+      # -- Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS.
+      # -- Requires Kubernetes 1.29+ due to native sidecar initContainer semantics.
       enabled: false
       # -- Sidecar image used to create the forwarded PKCS#11 socket
       image: ""

@@ -23,6 +23,9 @@ By default, this chart exposes PKCS#11 over TCP on port `5657`. With release nam
 This chart always exposes an internal SSH port so a KMS sidecar can forward
 `/run/p11-kit/pkcs11` from this pod over `ssh -L`.
 
+For security, no default SSH public key is installed. Set `ssh.authorizedKeys`
+to your own key(s) before using SSH tunneling.
+
 ## Values
 
 | Key | Type | Default | Description |

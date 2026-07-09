@@ -9,4 +9,5 @@ hsm:
   label: lamassuHSM
 ssh:
   port: 22
-  authorizedKeys: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJl2/mh/g6W2M2MILVxkgZF2txCOiXgbfdGm9oXkU5tU"
+  # Set one or more SSH public keys to allow in-cluster SSH tunneling to SoftHSM. Use "ssh-ed25519 XXXXXXXXXXXXXXXX" style
+  authorizedKeys: ""

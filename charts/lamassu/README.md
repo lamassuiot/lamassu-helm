@@ -122,7 +122,7 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.cryptoEngines.engines[0].storage_directory | string | `"/crypto/fs"` | Storage directory for filesystem engine |
 | services.kms.command | list | `[]` | Optional command override for the KMS container, useful for waiting on a forwarded PKCS#11 socket before launch |
 | services.kms.args | list | `[]` | Optional arguments override for the KMS container |
-| services.kms.pkcs11Sidecar.enabled | bool | `false` | Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS |
+| services.kms.pkcs11Sidecar.enabled | bool | `false` | Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS. Requires Kubernetes 1.29+ |
 | services.kms.pkcs11Sidecar.image | string | `""` | Sidecar image used to create the forwarded PKCS#11 socket |
 | services.kms.pkcs11Sidecar.imagePullPolicy | string | `"IfNotPresent"` | Image pull policy for the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory where the sidecar should create the PKCS#11 socket |
@@ -236,6 +236,8 @@ ssh -N \
 
 Notes:
 
+- Kubernetes 1.29 or newer is required when `services.kms.pkcs11Sidecar.enabled=true`.
+  This feature relies on native sidecar initContainer semantics (`restartPolicy: Always`).
 - The HSM Service can stay `ClusterIP`; no KMS-side SSH Service is required.
 - The HSM pod must accept the sidecar's SSH public key and expose port `22`
   internally.

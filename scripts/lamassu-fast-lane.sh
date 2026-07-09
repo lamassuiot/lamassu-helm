@@ -20,6 +20,8 @@ LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 SOFTHSM_CHART_PATH="./charts/softhsm"
 WITH_SOFTHSM=false
+SOFTHSM_SSH_PRIVATE_KEY_FILE=""
+SOFTHSM_SSH_PUBLIC_KEY=""
 
 TLS_CRT=
 TLS_KEY=
@@ -117,6 +119,10 @@ function main() {
     check_dependencies
     echo -e "\n${BLUE}2) Provide minimal config info${NOCOLOR}"
     request_config_data
+    if [ "$WITH_SOFTHSM" = true ]; then
+        echo -e "\n${BLUE}2.1) Prepare SoftHSM SSH credentials${NOCOLOR}"
+        prepare_softhsm_ssh_keypair
+    fi
     echo -e "\n${BLUE}3) Create ${NAMESPACE} namespace${NOCOLOR}"
     create_kubernetes_namespace
     echo -e "\n${BLUE}4) Install PostgreSQL${NOCOLOR}"
@@ -426,8 +432,19 @@ function final_instructions() {
     echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
     echo -e "${BLUE}Use the provided Keycloak credentials ${KEYCLOAK_USER}/${KEYCLOAK_PWD}${NOCOLOR}"
     if [ "$WITH_SOFTHSM" = true ]; then
-        echo -e "${BLUE}SoftHSM endpoint configured for PKCS#11: tcp://hsm-softhsm:5657${NOCOLOR}"
+                echo -e "${BLUE}SoftHSM endpoint configured for PKCS#11 via p11-kit socket forwarding${NOCOLOR}"
     fi
+}
+
+function prepare_softhsm_ssh_keypair() {
+        if [ -n "$SOFTHSM_SSH_PUBLIC_KEY" ] && [ -n "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
+                return 0
+        fi
+
+        SOFTHSM_SSH_PRIVATE_KEY_FILE=$(mktemp /tmp/lamassu-kms-pkcs11-ssh-key-XXXXXX)
+        ssh-keygen -q -t ed25519 -N "" -f "$SOFTHSM_SSH_PRIVATE_KEY_FILE" -C "lamassu-fastlane-pkcs11" >/dev/null
+        chmod 600 "$SOFTHSM_SSH_PRIVATE_KEY_FILE"
+        SOFTHSM_SSH_PUBLIC_KEY=$(cat "$SOFTHSM_SSH_PRIVATE_KEY_FILE.pub")
 }
 
 function create_softhsm_kms_override_file() {
@@ -435,6 +452,38 @@ target_file="$1"
 cat >"$target_file" <<"EOF"
 services:
     kms:
+                command:
+                        - /bin/sh
+                args:
+                        - -ec
+                        - |
+                            until [ -S /run/p11-kit/pkcs11 ]; do
+                                echo "Waiting for PKCS#11 SSH tunnel..."
+                                sleep 1
+                            done
+                            exec /bin/lamassu-kms
+                pkcs11Sidecar:
+                        enabled: true
+                        image: ghcr.io/lamassuiot/p11-kit-ssh-proxy:latest
+                        imagePullPolicy: IfNotPresent
+                        socketDir: /run/p11-kit
+                        env:
+                                - name: SSH_DESTINATION
+                                    value: root@hsm-softhsm
+                                - name: SSH_IDENTITY_FILE
+                                    value: /etc/p11-kit-ssh/.key
+                                - name: P11_LOCAL_SOCKET
+                                    value: /run/p11-kit/pkcs11
+                                - name: P11_REMOTE_SOCKET
+                                    value: /run/p11-kit/pkcs11
+                        volumeMounts:
+                                - name: kms-pkcs11-ssh-key
+                                    mountPath: /etc/p11-kit-ssh
+                                    readOnly: true
+                        volumes:
+                                - name: kms-pkcs11-ssh-key
+                                    secret:
+                                        secretName: kms-pkcs11-sidecar-ssh-key
         cryptoEngines:
             defaultEngineID: "pkcs11-1"
             engines:
@@ -442,10 +491,10 @@ services:
                   type: "pkcs11"
                   token: "lamassuHSM"
                   pin: "1234"
-                  module_path: "/usr/local/lib/libpkcs11-proxy.so"
+                                    module_path: "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"
                   module_extra_options:
                     env:
-                      PKCS11_PROXY_SOCKET: "tcp://hsm-softhsm:5657"
+                                            P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
                 - id: "filesystem-1"
                   type: "filesystem"
                   storage_directory: "/crypto/fs"
@@ -555,6 +604,14 @@ else
 fi
 
 if [ "$WITH_SOFTHSM" = true ]; then
+        if [ -z "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
+            echo -e "\n${RED}SoftHSM SSH private key is not prepared.${NOCOLOR}"
+            exit 1
+        fi
+        $kube $kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
+            --from-file=.key="$SOFTHSM_SSH_PRIVATE_KEY_FILE" \
+            -n "$NAMESPACE" \
+            --dry-run=client -o yaml | $kube $kubectl apply -f -
         create_softhsm_kms_override_file softhsm-kms.yaml
         yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml softhsm-kms.yaml -i
         rm softhsm-kms.yaml
@@ -840,12 +897,17 @@ function create_kubernetes_namespace() {
 }
 
 function install_softhsm() {
+    if [ -z "$SOFTHSM_SSH_PUBLIC_KEY" ]; then
+        echo -e "\n${RED}SoftHSM SSH public key is not prepared.${NOCOLOR}"
+        exit 1
+    fi
+
     helm_path="$SOFTHSM_CHART_PATH"
     if [ "$OFFLINE" = true ]; then
         helm_path="$OFFLINE_HELMCHART_SOFTHSM"
     fi
 
-    $kube $helm install hsm "$helm_path" -n "$NAMESPACE" --wait
+    $kube $helm install hsm "$helm_path" -n "$NAMESPACE" --set-string ssh.authorizedKeys="$SOFTHSM_SSH_PUBLIC_KEY" --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
     else
@@ -986,6 +1048,9 @@ function check_dependencies() {
                 exit 1
             fi
         fi
+    fi
+    if [ "$WITH_SOFTHSM" = true ]; then
+        exit_if_command_not_installed ssh-keygen
     fi
 
     if [ $dist == "microk8s" ]; then
