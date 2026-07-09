@@ -412,32 +412,13 @@ services:
       - id: fs-1
         type: filesystem
         storage_directory: /crypto/fs
-  authz:
-    credentials:
-      pki:
-        database: pki
-        hostname: "postgresql"
-        port: 5432
-        username: ""
-        password: ""
-      authz:  
-        database: authz
-        hostname: "postgresql"
-        port: 5432
-        username: ""
-        password: ""
-    bootstrap: 
-    - principal_id: "oidc:lamassu"
-      principal_name: "lamassu"
-      principal_type: "oidc"
-      policy_ids:
-        - "lamassu.a6811b60-5f89-4ce7-badb-78ea234794d3"
-      auth_config:
-        claims:
-          - claim: "preferred_username"
-            operator: "equals"
-            value: "lamassu"
-    jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
+
+auth:
+  oidc:
+    apiGateway:
+      jwks:
+        - name: oidc-authn
+          uri: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
 
 gateway:
   extraRouting:
@@ -495,10 +476,6 @@ fi
 
     yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
     yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
-    yq -i '.services.authz.credentials.pki.username = (env(POSTGRES_USER))' lamassu.yaml
-    yq -i '.services.authz.credentials.pki.password = (env(POSTGRES_PWD))' lamassu.yaml
-    yq -i '.services.authz.credentials.authz.username = (env(POSTGRES_USER))' lamassu.yaml
-    yq -i '.services.authz.credentials.authz.password = (env(POSTGRES_PWD))' lamassu.yaml
 
     yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
     yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
@@ -716,18 +693,13 @@ initdb:
   scripts:
     init.sql: |
       CREATE DATABASE auth;
-      CREATE DATABASE pki;
-      CREATE DATABASE authz;
-      CREATE DATABASE wfx;
-
-      \connect pki
-
-      CREATE SCHEMA IF NOT EXISTS alerts;
-      CREATE SCHEMA IF NOT EXISTS ca;
-      CREATE SCHEMA IF NOT EXISTS va;
-      CREATE SCHEMA IF NOT EXISTS devicemanager;
-      CREATE SCHEMA IF NOT EXISTS dmsmanager;
-      CREATE SCHEMA IF NOT EXISTS kms;
+      CREATE DATABASE alerts;
+      CREATE DATABASE ca;
+      CREATE DATABASE va;
+      CREATE DATABASE cloudproxy;
+      CREATE DATABASE devicemanager;
+      CREATE DATABASE dmsmanager;
+      CREATE DATABASE kms;
 EOF
 
     export POSTGRES_USER=$POSTGRES_USER
