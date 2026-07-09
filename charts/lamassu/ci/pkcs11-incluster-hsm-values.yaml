@@ -12,7 +12,7 @@ services:
         exec /bin/lamassu-kms
     pkcs11Sidecar:
       enabled: true
-      image: ghcr.io/lamassuiot/p11-kit-ssh-proxy:latest
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
       imagePullPolicy: IfNotPresent
       socketDir: /run/p11-kit
       env:

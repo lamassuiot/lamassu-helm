@@ -452,53 +452,43 @@ function create_softhsm_kms_override_file() {
 target_file="$1"
 cat >"$target_file" <<"EOF"
 services:
-    kms:
-                command:
-                        - /bin/sh
-                args:
-                        - -ec
-                        - |
-                            until [ -S /run/p11-kit/pkcs11 ]; do
-                                echo "Waiting for PKCS#11 SSH tunnel..."
-                                sleep 1
-                            done
-                            exec /bin/lamassu-kms
-                pkcs11Sidecar:
-                        enabled: true
-                        image: ghcr.io/lamassuiot/p11-kit-ssh-proxy:latest
-                        imagePullPolicy: IfNotPresent
-                        socketDir: /run/p11-kit
-                        env:
-                                - name: SSH_DESTINATION
-                                    value: root@hsm-softhsm
-                                - name: SSH_IDENTITY_FILE
-                                    value: /etc/p11-kit-ssh/.key
-                                - name: P11_LOCAL_SOCKET
-                                    value: /run/p11-kit/pkcs11
-                                - name: P11_REMOTE_SOCKET
-                                    value: /run/p11-kit/pkcs11
-                        volumeMounts:
-                                - name: kms-pkcs11-ssh-key
-                                    mountPath: /etc/p11-kit-ssh
-                                    readOnly: true
-                        volumes:
-                                - name: kms-pkcs11-ssh-key
-                                    secret:
-                                        secretName: kms-pkcs11-sidecar-ssh-key
-        cryptoEngines:
-            defaultEngineID: "pkcs11-1"
-            engines:
-                - id: "pkcs11-1"
-                  type: "pkcs11"
-                  token: "lamassuHSM"
-                  pin: "1234"
-                                    module_path: "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"
-                  module_extra_options:
-                    env:
-                                            P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
-                - id: "filesystem-1"
-                  type: "filesystem"
-                  storage_directory: "/crypto/fs"
+  kms:
+    pkcs11Sidecar:
+      enabled: true
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+      imagePullPolicy: IfNotPresent
+      socketDir: /run/p11-kit
+      env:
+        - name: SSH_DESTINATION
+          value: root@hsm-softhsm
+        - name: SSH_IDENTITY_FILE
+          value: /etc/p11-kit-ssh/.key
+        - name: P11_LOCAL_SOCKET
+          value: /run/p11-kit/pkcs11
+        - name: P11_REMOTE_SOCKET
+          value: /run/p11-kit/pkcs11
+      volumeMounts:
+        - name: kms-pkcs11-ssh-key
+          mountPath: /etc/p11-kit-ssh
+          readOnly: true
+      volumes:
+        - name: kms-pkcs11-ssh-key
+          secret:
+            secretName: kms-pkcs11-sidecar-ssh-key
+    cryptoEngines:
+      defaultEngineID: "pkcs11-1"
+      engines:
+        - id: "pkcs11-1"
+          type: "pkcs11"
+          token: "lamassuHSM"
+          pin: "1234"
+          module_path: "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"
+          module_extra_options:
+            env:
+              P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
+        - id: "filesystem-1"
+          type: "filesystem"
+          storage_directory: "/crypto/fs"
 EOF
 }
 
@@ -605,17 +595,17 @@ else
 fi
 
 if [ "$WITH_SOFTHSM" = true ]; then
-        if [ -z "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
-            echo -e "\n${RED}SoftHSM SSH private key is not prepared.${NOCOLOR}"
-            exit 1
-        fi
-        run_kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
-            --from-file=.key="$SOFTHSM_SSH_PRIVATE_KEY_FILE" \
-            -n "$NAMESPACE" \
-            --dry-run=client -o yaml | run_kubectl apply -f -
-        create_softhsm_kms_override_file softhsm-kms.yaml
-        yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml softhsm-kms.yaml -i
-        rm softhsm-kms.yaml
+    if [ -z "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
+        echo -e "\n${RED}SoftHSM SSH private key is not prepared.${NOCOLOR}"
+        exit 1
+    fi
+    run_kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
+        --from-file=.key="$SOFTHSM_SSH_PRIVATE_KEY_FILE" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | run_kubectl apply -f -
+    create_softhsm_kms_override_file softhsm-kms.yaml
+    yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml softhsm-kms.yaml -i
+    rm softhsm-kms.yaml
 fi
 
 
