@@ -125,28 +125,35 @@ function main() {
     fi
     echo -e "\n${BLUE}3) Create ${NAMESPACE} namespace${NOCOLOR}"
     create_kubernetes_namespace
+    STEP_START_TIME=$(date +%s)
     echo -e "\n${BLUE}4) Install PostgreSQL${NOCOLOR}"
     install_postgresql
+    checkpoint "PostgreSQL"
     echo -e "\n${BLUE}5) Install Auth - Keycloak${NOCOLOR}"
     install_keycloak
+    checkpoint "Keycloak"
     echo -e "\n${BLUE}6) Install RabbitMQ${NOCOLOR}"
     install_rabbitmq
+    checkpoint "RabbitMQ"
 
     next_step=7
     if [ "$OTEL" = true ]; then
         echo -e "\n${BLUE}${next_step}) Install Observability Stack (Victoria Logs + VictoriaTraces + Jaeger + OTel Collector)${NOCOLOR}"
         install_observability
+        checkpoint "Observability Stack"
         next_step=$((next_step + 1))
     fi
 
     if [ "$WITH_SOFTHSM" = true ]; then
         echo -e "\n${BLUE}${next_step}) Install SoftHSM${NOCOLOR}"
         install_softhsm
+        checkpoint "SoftHSM"
         next_step=$((next_step + 1))
     fi
 
     echo -e "\n${BLUE}${next_step}) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
     install_lamassu
+    checkpoint "Lamassu IoT"
 
     final_instructions
 }
@@ -427,6 +434,7 @@ function process_flags() {
 
 function final_instructions() {
     echo -e "${GREEN}=== Lamassu IoT has been installed in your Kubernetes instance ===${NOCOLOR}"
+    echo -e "${GREEN}Total installation time: $(format_duration $(($(date +%s) - SCRIPT_START_TIME)))${NOCOLOR}"
     echo -e "${BLUE}Please connect to https://${DOMAIN} using default user lamassu/lamassu ${NOCOLOR}"
     echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
     echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
@@ -456,7 +464,7 @@ services:
     pkcs11Sidecar:
       enabled: true
       image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
-      imagePullPolicy: IfNotPresent
+      imagePullPolicy: Always
       socketDir: /run/p11-kit
       env:
         - name: SSH_DESTINATION
@@ -986,6 +994,7 @@ function request_keycloak_pwd() {
 
 function request_namespace() {
     echo -n "Kubernetes namespace ($NAMESPACE): "
+
     read req
     if [ "$req" != "" ]; then
         NAMESPACE=$req
@@ -1068,6 +1077,33 @@ function init() {
     ORANGE='\033[0;33m'
     GREEN='\033[0;32m'
     NOCOLOR='\033[0m'
+
+    SCRIPT_START_TIME=$(date +%s)
+    STEP_START_TIME=$SCRIPT_START_TIME
+}
+
+function format_duration() {
+    local total=$1
+    local h=$((total / 3600))
+    local m=$(((total % 3600) / 60))
+    local s=$((total % 60))
+    if [ "$h" -gt 0 ]; then
+        printf '%dh %dm %ds' "$h" "$m" "$s"
+    elif [ "$m" -gt 0 ]; then
+        printf '%dm %ds' "$m" "$s"
+    else
+        printf '%ds' "$s"
+    fi
+}
+
+function checkpoint() {
+    local label="$1"
+    local now
+    now=$(date +%s)
+    local step_elapsed=$((now - STEP_START_TIME))
+    local total_elapsed=$((now - SCRIPT_START_TIME))
+    echo -e "${GREEN}⏱  Checkpoint [${label}]: took $(format_duration "$step_elapsed") (total elapsed: $(format_duration "$total_elapsed"))${NOCOLOR}"
+    STEP_START_TIME=$now
 }
 
 function run_kubectl() {

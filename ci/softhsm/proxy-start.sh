@@ -16,7 +16,15 @@ SSH_RUNTIME_IDENTITY_FILE="${SSH_RUNTIME_IDENTITY_FILE:-/tmp/p11-kit-ssh-key}"
 SSH_HOME_DIR="${HOME:-/tmp}"
 P11_LOCAL_SOCKET_DIR="$(dirname "$P11_LOCAL_SOCKET")"
 
-mkdir -p "$SSH_HOME_DIR/.ssh" "$P11_LOCAL_SOCKET_DIR"
+# The container may run under an arbitrary uid (e.g. restricted PodSecurity), in
+# which case $HOME may point to a directory we cannot write to. Fall back to a
+# writable temporary HOME so ssh has a usable state directory.
+if ! mkdir -p "$SSH_HOME_DIR/.ssh" 2>/dev/null; then
+    SSH_HOME_DIR="$(mktemp -d)"
+    export HOME="$SSH_HOME_DIR"
+    mkdir -p "$SSH_HOME_DIR/.ssh"
+fi
+mkdir -p "$P11_LOCAL_SOCKET_DIR"
 chmod 700 "$SSH_HOME_DIR/.ssh"
 
 # The shared socket directory may come from a pod volume owned by another user.
