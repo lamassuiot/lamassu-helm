@@ -1347,6 +1347,7 @@ function request_keycloak_pwd() {
 
 function request_namespace() {
     echo -n "Kubernetes namespace ($NAMESPACE): "
+
     read req
     if [ "$req" != "" ]; then
         NAMESPACE=$req
