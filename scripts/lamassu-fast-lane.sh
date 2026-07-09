@@ -441,9 +441,10 @@ function prepare_softhsm_ssh_keypair() {
                 return 0
         fi
 
-        SOFTHSM_SSH_PRIVATE_KEY_FILE=$(mktemp /tmp/lamassu-kms-pkcs11-ssh-key-XXXXXX)
+        local key_dir
+        key_dir=$(mktemp -d /tmp/lamassu-kms-pkcs11-XXXXXX)
+        SOFTHSM_SSH_PRIVATE_KEY_FILE="$key_dir/ssh-key"
         ssh-keygen -q -t ed25519 -N "" -f "$SOFTHSM_SSH_PRIVATE_KEY_FILE" -C "lamassu-fastlane-pkcs11" >/dev/null
-        chmod 600 "$SOFTHSM_SSH_PRIVATE_KEY_FILE"
         SOFTHSM_SSH_PUBLIC_KEY=$(cat "$SOFTHSM_SSH_PRIVATE_KEY_FILE.pub")
 }
 
@@ -608,10 +609,10 @@ if [ "$WITH_SOFTHSM" = true ]; then
             echo -e "\n${RED}SoftHSM SSH private key is not prepared.${NOCOLOR}"
             exit 1
         fi
-        $kube $kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
+        run_kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
             --from-file=.key="$SOFTHSM_SSH_PRIVATE_KEY_FILE" \
             -n "$NAMESPACE" \
-            --dry-run=client -o yaml | $kube $kubectl apply -f -
+            --dry-run=client -o yaml | run_kubectl apply -f -
         create_softhsm_kms_override_file softhsm-kms.yaml
         yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml softhsm-kms.yaml -i
         rm softhsm-kms.yaml
@@ -907,7 +908,7 @@ function install_softhsm() {
         helm_path="$OFFLINE_HELMCHART_SOFTHSM"
     fi
 
-    $kube $helm install hsm "$helm_path" -n "$NAMESPACE" --set-string ssh.authorizedKeys="$SOFTHSM_SSH_PUBLIC_KEY" --wait
+    run_helm install hsm "$helm_path" -n "$NAMESPACE" --set-string ssh.authorizedKeys="$SOFTHSM_SSH_PUBLIC_KEY" --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
     else
