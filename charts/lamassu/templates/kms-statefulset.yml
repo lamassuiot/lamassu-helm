@@ -1,122 +1,40 @@
+{{- define "lamassu.kms.extraEnv" -}}
+{{- range .Values.services.kms.cryptoEngines.engines }}
+{{- if eq .type "pkcs11" }}
+{{- range $key, $value := (dig "module_extra_options" "env" dict .) }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "lamassu.kms.volumeClaimTemplates" -}}
+# Filesystem engine is configured, using PVC for persistent storage
+- metadata:
+    name: golang-engine-storage
+  spec:
+    accessModes: [ "ReadWriteOnce" ]
+    storageClassName: null
+    resources:
+      requests:
+        storage: 1Gi
+{{- end -}}
+
 {{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
-{{- if and $hasFilesystemEngine (gt (int .Values.services.kms.replicaCount) 1) -}}
+{{- $kms := include "lamassu.svc.merged" (dict "root" $ "svcKey" "kms") | fromYaml -}}
+{{- if and $hasFilesystemEngine (gt (int $kms.replicaCount) 1) -}}
   {{ fail "KMS replicaCount > 1 is not supported with the filesystem crypto engine. Switch to an external engine (hashicorp_vault, aws_kms, aws_secrets_manager, pkcs11) to enable multiple replicas." }}
 {{- end -}}
-{{- if and $hasFilesystemEngine .Values.services.kms.autoscaling.enabled -}}
+{{- if and $hasFilesystemEngine $kms.autoscaling.enabled -}}
   {{ fail "KMS autoscaling is not supported with the filesystem crypto engine. Switch to an external engine to enable autoscaling." }}
 {{- end -}}
-apiVersion: apps/v1
-{{- if $hasFilesystemEngine }}
-kind: StatefulSet
-{{- else }}
-kind: Deployment
-{{- end }}
-metadata:  
-  name: kms
-  namespace: {{.Release.Namespace}}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: kms
-spec:
-  {{- if not .Values.services.kms.autoscaling.enabled }}
-  replicas: {{ .Values.services.kms.replicaCount }}
-  {{- end }}
-{{- if $hasFilesystemEngine }}
-  serviceName: "kms"
-{{- end }}
-  selector:
-    matchLabels:
-      app: kms
-  template:
-    metadata:
-      labels:
-        app: kms
-    spec:
-      containers:
-        - name: kms
-          image: {{ .Values.services.kms.image }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-          tty: true
-          env:
-            {{- range .Values.services.kms.cryptoEngines.engines }}
-            {{- if eq .type "pkcs11" }}
-            {{- if .module_extra_options.env }}
-            {{- range $key, $value := .module_extra_options.env }}
-            - name: {{ $key }}
-              value: {{ $value | quote }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8085
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8085
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          volumeMounts:
-            - name: api-config
-              mountPath: /etc/lamassuiot/config.yml
-              subPath: config
-            - name: golang-engine-storage
-              mountPath: /crypto/fs
-          ports:
-            - containerPort: 8085
-          resources:
-            {{- toYaml .Values.services.kms.resources | nindent 12 }}
-      restartPolicy: Always
-      {{- if .Values.services.kms.affinity }}
-      affinity:
-        {{- toYaml .Values.services.kms.affinity | nindent 8 }}
-      {{- else }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: kms
-                topologyKey: kubernetes.io/hostname
-      {{- end }}
-      {{- if .Values.services.kms.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- toYaml .Values.services.kms.topologySpreadConstraints | nindent 8 }}
-      {{- else }}
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: kms
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: kms
-      {{- end }}
-      volumes:
-        - name: api-config
-          configMap:  
-            name: kms-config
-{{- if $hasFilesystemEngine }}
-  volumeClaimTemplates:
-  # Filesystem engine is configured, using PVC for persistent storage
-  - metadata:
-      name: golang-engine-storage
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: null
-      resources:
-        requests:
-          storage: 1Gi
-{{- end }}
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" "kms"
+  "svcKey" "kms"
+  "kind" (ternary "StatefulSet" "Deployment" $hasFilesystemEngine)
+  "serviceName" (ternary "kms" "" $hasFilesystemEngine)
+  "env" (include "lamassu.kms.extraEnv" $)
+  "volumeMounts" (ternary "- name: golang-engine-storage\n  mountPath: /crypto/fs" "" $hasFilesystemEngine)
+  "volumeClaimTemplates" (ternary (include "lamassu.kms.volumeClaimTemplates" $) "" $hasFilesystemEngine)) }}

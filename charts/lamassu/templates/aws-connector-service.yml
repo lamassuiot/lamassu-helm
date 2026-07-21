@@ -1,20 +1,7 @@
 {{ range $instance := $.Values.services.connectors }}
 {{- if eq $instance.type "awsiot" }}
-{{ $instanceID := $instance.id | replace "aws." "" }}
-apiVersion: v1
-kind: Service
-metadata:
-  name: aws-connector-{{ $instanceID }}
-  namespace: {{ $.Release.Namespace}}
-spec:
-  selector:
-    app: aws-connector-{{ $instanceID }}
-  type: ClusterIP
-  ports:
-  - name: http
-    port: 8085
-    targetPort: 8085
-    protocol: TCP
+{{- $instanceID := $instance.id | replace "aws." "" }}
+{{ include "lamassu.service" (dict "root" $ "name" (printf "aws-connector-%s" $instanceID) "svc" $instance) }}
 ---
 {{- end -}}
 {{- end -}}

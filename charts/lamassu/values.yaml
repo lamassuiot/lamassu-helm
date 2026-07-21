@@ -111,57 +111,75 @@ auth:
     roles:
       # -- Role association to be used to authorize the user as LAMASSU's admin
       admin: pki-admin
+# -- Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts,
+# deviceManager, dmsManager and aws connector instances). Any key here can be
+# overridden per service under `services.<name>` — the per-service block is
+# deep-merged on top of these defaults. Maps are merged key by key; lists
+# (tolerations, topologySpreadConstraints, extraEnv, ...) replace the default
+# wholesale.
+serviceDefaults:
+  # -- HTTP port the service listens on (also used for Service, probes and gateway routes)
+  port: 8085
+  # -- Number of replicas. Ignored when autoscaling is enabled.
+  replicaCount: 1
+  # -- Container resource requests/limits. CPU and memory requests are required
+  # for utilization-based HPA metrics.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # -- Extra annotations for the Deployment/StatefulSet
+  annotations: {}
+  # -- Extra labels for the Deployment/StatefulSet and its pods (added next to the `app` label)
+  labels: {}
+  # -- Extra labels for the pods only
+  podLabels: {}
+  # -- Extra annotations for the pods
+  podAnnotations: {}
+  # -- Node selector for pod scheduling
+  nodeSelector: {}
+  # -- Tolerations for pod scheduling
+  tolerations: []
+  # -- Image pull secrets for the pods
+  imagePullSecrets: []
+  # -- Pod-level security context
+  podSecurityContext: {}
+  # -- Container-level security context
+  securityContext: {}
+  # -- Extra environment variables for the service container
+  extraEnv: []
+  probes:
+    # -- Path used by the liveness/readiness probes
+    path: /health
+    initialDelaySeconds: 3
+    periodSeconds: 3
+  autoscaling:
+    # -- Enable a HorizontalPodAutoscaler for the service
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetMemoryUtilizationPercentage: 80
+    targetCPUUtilizationPercentage: 80
+  # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+  affinity: {}
+  # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+  topologySpreadConstraints: []
+  pdb:
+    # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+    minAvailable: 1
 services:
   ui:
     # -- Docker image for the UI component
     image: "ghcr.io/lamassuiot/lamassu-ui:4.3.0"
-    # -- Number of UI replicas
-    replicaCount: 1
-    autoscaling:
-      enabled: false
-      minReplicas: 1
-      maxReplicas: 5
-      targetCPUUtilizationPercentage: 80
-    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
-    affinity: {}
-    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
-    topologySpreadConstraints: []
-    pdb:
-      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
-      minAvailable: 1
-    # -- Container resource requests and limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
+    port: 80
   va:
-    # -- Docker image for the VA component
+    # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
     image: ghcr.io/lamassuiot/lamassu-va:3.8.0
-    # -- Number of VA replicas. Must be 1 when fileStore.type is "local" (ReadWriteOnce PVC).
-    replicaCount: 1
     autoscaling:
-      enabled: false
-      minReplicas: 1
       maxReplicas: 3
-      targetCPUUtilizationPercentage: 80
-    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
-    affinity: {}
-    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
-    topologySpreadConstraints: []
-    pdb:
-      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
-      minAvailable: 1
-    # -- Container resource requests and limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
     fileStore:
       # -- Unique identifier for this storage engine instance
       id: "local-1"
@@ -175,63 +193,21 @@ services:
     job:
       crl:
         # -- Frequency to launch the CRL computation job
-        frequency: "* * * * *"
+        frequency: "0 * * * *"
   ca:
     # -- Domain to be used while signing/generating new CAs and certificates
     domains:
       - dev.lamassu.io
     # -- Docker image for the CA component
     image: ghcr.io/lamassuiot/lamassu-ca:3.8.0
-    # -- Number of CA replicas
-    replicaCount: 1
-    autoscaling:
-      enabled: false
-      minReplicas: 1
-      maxReplicas: 5
-      targetCPUUtilizationPercentage: 80
-    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
-    affinity: {}
-    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
-    topologySpreadConstraints: []
-    pdb:
-      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
-      minAvailable: 1
-    # -- Container resource requests and limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
   kms:
-    # -- Docker image for the KMS component
+    # -- Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC).
     image: ghcr.io/lamassuiot/lamassu-kms:3.8.0
-    # -- Number of KMS replicas. Must be 1 when the filesystem crypto engine is configured (ReadWriteOnce PVC).
-    replicaCount: 1
     autoscaling:
-      enabled: false
-      minReplicas: 1
       maxReplicas: 3
-      targetCPUUtilizationPercentage: 80
-    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
-    affinity: {}
-    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
-    topologySpreadConstraints: []
-    pdb:
-      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
-      minAvailable: 1
-    # -- Container resource requests and limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
@@ -245,78 +221,14 @@ services:
   deviceManager:
     # -- Docker image for the Device Manager component
     image: ghcr.io/lamassuiot/lamassu-devmanager:3.8.0
-    # -- Number of Device Manager replicas
-    replicaCount: 1
-    autoscaling:
-      enabled: false
-      minReplicas: 1
-      maxReplicas: 5
-      targetCPUUtilizationPercentage: 80
-    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
-    affinity: {}
-    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
-    topologySpreadConstraints: []
-    pdb:
-      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
-      minAvailable: 1
-    # -- Container resource requests and limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
-    # -- Number of DMS Manager replicas
-    replicaCount: 1
-    autoscaling:
-      enabled: false
-      minReplicas: 1
-      maxReplicas: 5
-      targetCPUUtilizationPercentage: 80
-    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
-    affinity: {}
-    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
-    topologySpreadConstraints: []
-    pdb:
-      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
-      minAvailable: 1
-    # -- Container resource requests and limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
-    # -- Number of Alerts replicas
-    replicaCount: 1
     autoscaling:
-      enabled: false
-      minReplicas: 1
       maxReplicas: 3
-      targetCPUUtilizationPercentage: 80
-    # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
-    affinity: {}
-    # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
-    topologySpreadConstraints: []
-    pdb:
-      # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
-      minAvailable: 1
-    # -- Container resource requests and limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""

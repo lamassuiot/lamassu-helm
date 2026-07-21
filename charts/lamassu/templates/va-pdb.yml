@@ -1,12 +1,1 @@
-{{- if gt (int (ternary .Values.services.va.autoscaling.minReplicas .Values.services.va.replicaCount .Values.services.va.autoscaling.enabled)) 1 }}
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: va
-  namespace: {{ .Release.Namespace }}
-spec:
-  minAvailable: {{ .Values.services.va.pdb.minAvailable }}
-  selector:
-    matchLabels:
-      app: va
-{{- end }}
+{{ include "lamassu.pdb" (dict "root" $ "name" "va" "svcKey" "va") }}

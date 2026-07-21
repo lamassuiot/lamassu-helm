@@ -1,107 +1,34 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:  
-  name: dms-manager
-  namespace: {{.Release.Namespace}}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: dms-manager
-spec:
-  {{- if not .Values.services.dmsManager.autoscaling.enabled }}
-  replicas: {{ .Values.services.dmsManager.replicaCount }}
-  {{- end }}
-  selector:
-    matchLabels:
-      app: dms-manager
-  template:
-    metadata:
-      labels:
-        app: dms-manager
-    spec:
-      initContainers:
-        - name: init-tls-certs
-          image: {{ .Values.toolbox.image }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-          command: ["/bin/bash", "/docker-entrypoint.sh"]
-          volumeMounts:
-            - name: downstream-tls-certificate
-              mountPath: /certs/downstream.crt
-              subPath: tls.crt
-            - name: downstream-tls-certificate
-              mountPath: /certs/downstream-ca.crt
-              subPath: ca.crt
-            - name: api-config
-              mountPath: /docker-entrypoint.sh   
-              subPath: init.sh
-            - name: shared
-              mountPath: /shared
-      containers:
-        - name: dms-manager
-          image: {{ .Values.services.dmsManager.image }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-          tty: true
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8085
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8085
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          volumeMounts:
-            - name: api-config
-              mountPath: /etc/lamassuiot/config.yml
-              subPath: config
-            - name: shared
-              mountPath: /shared
-          ports:
-            - containerPort: 8085
-          resources:
-            {{- toYaml .Values.services.dmsManager.resources | nindent 12 }}
-      restartPolicy: Always
-      {{- if .Values.services.dmsManager.affinity }}
-      affinity:
-        {{- toYaml .Values.services.dmsManager.affinity | nindent 8 }}
-      {{- else }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: dms-manager
-                topologyKey: kubernetes.io/hostname
-      {{- end }}
-      {{- if .Values.services.dmsManager.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- toYaml .Values.services.dmsManager.topologySpreadConstraints | nindent 8 }}
-      {{- else }}
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: dms-manager
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: dms-manager
-      {{- end }}
-      volumes:
-        - name: api-config
-          configMap:  
-            name: dms-manager-config
-        - name: downstream-tls-certificate
-          secret:
-            secretName:  {{ ternary .Values.tls.externalOptions.secretName  "downstream-cert" (eq .Values.tls.type "external") }}
-        - name: shared
-          emptyDir: {}
+{{- define "lamassu.dmsManager.initContainers" -}}
+- name: init-tls-certs
+  image: {{ .Values.toolbox.image }}
+  imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+  command: ["/bin/bash", "/docker-entrypoint.sh"]
+  volumeMounts:
+    - name: downstream-tls-certificate
+      mountPath: /certs/downstream.crt
+      subPath: tls.crt
+    - name: downstream-tls-certificate
+      mountPath: /certs/downstream-ca.crt
+      subPath: ca.crt
+    - name: api-config
+      mountPath: /docker-entrypoint.sh
+      subPath: init.sh
+    - name: shared
+      mountPath: /shared
+{{- end -}}
+
+{{- define "lamassu.dmsManager.volumes" -}}
+- name: downstream-tls-certificate
+  secret:
+    secretName: {{ ternary .Values.tls.externalOptions.secretName "downstream-cert" (eq .Values.tls.type "external") }}
+- name: shared
+  emptyDir: {}
+{{- end -}}
+
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" "dms-manager"
+  "svcKey" "dmsManager"
+  "initContainers" (include "lamassu.dmsManager.initContainers" $)
+  "volumeMounts" "- name: shared\n  mountPath: /shared"
+  "volumes" (include "lamassu.dmsManager.volumes" $)) }}
