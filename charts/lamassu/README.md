@@ -196,7 +196,7 @@ services:
         exec /bin/lamassu-kms
     pkcs11Sidecar:
       enabled: true
-      image: ghcr.io/lamassuiot/p11-kit-ssh-proxy:latest
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
       env:
         - name: SSH_DESTINATION
           value: root@hsm-softhsm
