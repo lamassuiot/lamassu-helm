@@ -107,6 +107,109 @@ Lamassu requires the following external services:
 
 You can deploy these dependencies independently or let the Lamassu chart handle them.
 
+### High Availability & Autoscaling
+
+Each Lamassu service supports configurable replica counts and optional HorizontalPodAutoscaler (HPA) via `replicaCount` and `autoscaling` blocks in `values.yaml`.
+
+**Static replicas** (no HPA):
+
+```yaml
+services:
+  ca:
+    replicaCount: 2
+  dmsManager:
+    replicaCount: 3
+```
+
+**HPA-managed replicas** (replicas field is omitted from the Deployment, fully managed by Kubernetes):
+
+```yaml
+services:
+  ca:
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 80
+      # targetMemoryUtilizationPercentage: 75  # optional
+```
+
+The same `autoscaling` block is supported per AWS connector instance:
+
+```yaml
+services:
+  connectors:
+    - id: aws.myconnector
+      type: awsiot
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 4
+        targetCPUUtilizationPercentage: 80
+```
+
+**PodDisruptionBudget:**
+
+A PodDisruptionBudget is automatically created for each service when `replicaCount > 1`, preventing all pods from being terminated simultaneously during node drains or rolling upgrades. The minimum available pods is configurable:
+
+```yaml
+services:
+  ca:
+    replicaCount: 2
+    pdb:
+      minAvailable: 1
+```
+
+**Resource requests and limits:**
+
+Each service has default resource requests (`100m` CPU / `256Mi` memory) and limits (`500m` CPU / `1Gi` memory). These are required for HPA CPU/memory-based scaling and can be overridden per service:
+
+```yaml
+services:
+  ca:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+```
+
+**Pod anti-affinity and topology spread:**
+
+By default the chart applies soft pod anti-affinity (spread across nodes) and two `ScheduleAnyway` topology spread constraints (zone and hostname). These can be overridden per service:
+
+```yaml
+services:
+  ca:
+    # Override affinity (empty map = use chart default)
+    affinity: {}
+    # Override topology spread (empty list = use chart defaults)
+    topologySpreadConstraints: []
+```
+
+**VA CRL storage for multi-replica deployments:**
+
+The VA uses a local PVC (`fileStore.type: local`) by default. This is a `ReadWriteOnce` volume — incompatible with `replicaCount > 1`. For HA deployments, switch to S3:
+
+```yaml
+services:
+  va:
+    replicaCount: 2
+    fileStore:
+      id: "s3-1"
+      type: "s3"
+      s3:
+        bucket_name: "my-crl-bucket"
+        auth_method: "default"   # static | default | role
+        region: "us-east-1"
+```
+
+> **KMS constraint:** `replicaCount > 1` and `autoscaling.enabled: true` are blocked when the `filesystem` crypto engine is configured (it uses a `ReadWriteOnce` PVC). Use an external engine (`hashicorp_vault`, `aws_kms`, `aws_secrets_manager`, `pkcs11`) to scale KMS.
+>
+> **VA constraint:** `replicaCount > 1` requires `services.va.fileStore.type` to be changed from `local` to a shared backend (e.g., S3), otherwise CRL files are not shared across replicas.
+
 ## Upgrading
 
 ### Version Migration Guides

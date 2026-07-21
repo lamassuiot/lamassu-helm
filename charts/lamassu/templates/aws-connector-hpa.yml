@@ -1,7 +1,7 @@
 {{ range $instance := $.Values.services.connectors }}
 {{- if eq $instance.type "awsiot" }}
 {{- $instanceID := $instance.id | replace "aws." "" }}
-{{ include "lamassu.service" (dict "root" $ "name" (printf "aws-connector-%s" $instanceID) "svc" $instance) }}
+{{ include "lamassu.hpa" (dict "root" $ "name" (printf "aws-connector-%s" $instanceID) "svc" $instance) }}
 ---
-{{- end -}}
-{{- end -}}
+{{- end }}
+{{- end }}

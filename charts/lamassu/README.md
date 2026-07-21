@@ -59,13 +59,42 @@ PKI for Industrial IoT for Kubernetes
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.0"` | Docker image for Device Manager component |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0"` | Docker image for DMS Manager component |
 | services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.0"` | Docker image for Alerts component |
+| **Replicas & Autoscaling** | | | |
+| services.\<svc\>.replicaCount | int | `1` | Number of replicas for the service. Ignored when `autoscaling.enabled` is `true`. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the service. When `true`, the `replicas` field is omitted from the Deployment/StatefulSet and managed by the HPA |
+| services.\<svc\>.autoscaling.minReplicas | int | `1` | Minimum number of replicas for the HPA |
+| services.\<svc\>.autoscaling.maxReplicas | int | `5` | Maximum number of replicas for the HPA |
+| services.\<svc\>.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for HPA scaling |
+| services.\<svc\>.autoscaling.targetMemoryUtilizationPercentage | int | `80` | Target memory utilization percentage for HPA scaling |
+| **PodDisruptionBudget** | | | |
+| services.\<svc\>.pdb.minAvailable | int | `1` | Minimum number of pods that must remain available during node drains and rolling upgrades. PDB is only created when the effective replica count is greater than 1. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| **Pod Affinity & Topology Spread** | | | |
+| services.\<svc\>.affinity | object | `{}` | Pod affinity override. `{}` uses the chart default: soft (`preferredDuringScheduling`) pod anti-affinity on `kubernetes.io/hostname`, spreading replicas across nodes. Provide a full [affinity spec](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) to replace it. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.topologySpreadConstraints | list | `[]` | Topology spread constraints override. `[]` uses the chart defaults: two `ScheduleAnyway` constraints spreading pods across `topology.kubernetes.io/zone` and `kubernetes.io/hostname`. Provide a list of [TopologySpreadConstraint](https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/) objects to replace them. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| **Resource Requests & Limits** | | | |
+| services.\<svc\>.resources.requests.cpu | string | `"100m"` | Default CPU request used by pods and utilization-based HPA metrics |
+| services.\<svc\>.resources.requests.memory | string | `"128Mi"` | Default memory request used by pods and utilization-based HPA metrics |
+| services.\<svc\>.resources.limits.cpu | string | `"500m"` | Default CPU limit for service containers |
+| services.\<svc\>.resources.limits.memory | string | `"512Mi"` | Default memory limit for service containers |
+| **⚠️ KMS HA Constraint** | | | |
+| — | — | — | `services.kms.replicaCount > 1` and `services.kms.autoscaling.enabled: true` are both blocked when the `filesystem` crypto engine is configured (uses a `ReadWriteOnce` PVC). Switch to an external engine (`hashicorp_vault`, `aws_kms`, `aws_secrets_manager`, `pkcs11`) to enable multiple KMS replicas |
+| **⚠️ VA HA Constraint** | | | |
+| — | — | — | `services.va.replicaCount > 1` requires `fileStore.type` to be changed from `local` to a shared backend (e.g., S3). With `local`, each replica has its own volume and CRL files are not shared across replicas |
+| **AWS Connector Replicas & Autoscaling** | | | |
+| services.connectors[\*].replicaCount | int | `1` | Number of replicas for a connector instance. Ignored when `autoscaling.enabled` is `true` |
+| services.connectors[\*].autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the connector instance |
+| services.connectors[\*].autoscaling.minReplicas | int | `1` | Minimum number of replicas for the connector HPA |
+| services.connectors[\*].autoscaling.maxReplicas | int | `3` | Maximum number of replicas for the connector HPA |
+| services.connectors[\*].autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for connector HPA scaling |
+| services.connectors[\*].autoscaling.targetMemoryUtilizationPercentage | int | `""` | Target memory utilization percentage for connector HPA scaling. Optional |
 | **CA Service Configuration** | | | |
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domains for signing/generating CAs and certificates |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | CA health check frequency (CRON syntax, can include seconds) |
 | **VA Service Configuration** | | | |
-| services.va.fileStore.id | string | `"local-1"` | File store ID for VA |
-| services.va.fileStore.type | string | `"local"` | File store type |
-| services.va.fileStore.storageDirectory | string | `"/data/crl"` | Storage directory for CRLs |
+| services.va.fileStore.id | string | `"local-1"` | Unique identifier for the file storage engine instance |
+| services.va.fileStore.type | string | `"local"` | Storage backend type. Allowed values: `local`, `s3`. Must be `s3` (or another shared backend) when `replicaCount > 1` |
+| services.va.fileStore.local.storageDirectory | string | `"/data/crl"` | Directory on the pod filesystem where CRL files are stored. Only used when `fileStore.type: local`. Backed by a `ReadWriteOnce` PVC — incompatible with `replicaCount > 1` |
+| services.va.fileStore.s3 | object | `{}` | Free-form map of S3 config keys injected directly into the `filesystem_storage` config block. Only used when `fileStore.type: s3`. Keys map to `s3.AWSS3FilesystemConfig` + `sharedAWS.AWSSDKConfig` mapstructure field names (e.g. `bucket_name`, `auth_method`, `region`, `access_key_id`, `role_arn`). |
 | services.va.job.crl.frequency | string | `"* * * * *"` | CRL computation job frequency (CRON syntax) |
 | **KMS Service Configuration** | | | |
 | services.kms.cryptoEngines.defaultEngineID | string | `"filesystem-1"` | Default crypto engine ID to use |
@@ -85,4 +114,3 @@ PKI for Industrial IoT for Kubernetes
 | migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0"` | Docker image for database migrations |
 | migrations.db.databases | list | `["alerts", "ca", "va", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
 | migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0"` | Docker image for the CA-to-KMS migration tool |
-

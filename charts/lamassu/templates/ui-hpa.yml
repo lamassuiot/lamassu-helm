@@ -1,0 +1,1 @@
+{{ include "lamassu.hpa" (dict "root" $ "name" "ui" "svcKey" "ui") }}

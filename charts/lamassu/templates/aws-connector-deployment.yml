@@ -1,41 +1,11 @@
 {{ range $instance := $.Values.services.connectors }}
 {{- if eq $instance.type "awsiot" }}
-{{ $instanceID := $instance.id | replace "aws." "" }}
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: aws-connector-{{ $instanceID }}
-  namespace: {{ $.Release.Namespace}}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: aws-connector-{{ $instanceID }}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: aws-connector-{{ $instanceID }}
-  template:
-    metadata:
-      labels:
-        app: aws-connector-{{ $instanceID }}
-    spec:
-      containers:
-        - name: aws-connector-{{ $instanceID }}
-          image: {{ $instance.image }}
-          imagePullPolicy: {{ $.Values.global.imagePullPolicy | quote }}
-          tty: true
-          volumeMounts:
-            - name: config
-              mountPath: /etc/lamassuiot/config.yml
-              subPath: config
-          ports:
-            - containerPort: 8085
-      restartPolicy: Always
-      volumes:
-        - name: config
-          configMap:
-            name: aws-connector-config-{{ $instanceID }}
+{{- $instanceID := $instance.id | replace "aws." "" }}
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" (printf "aws-connector-%s" $instanceID)
+  "svc" $instance
+  "configMapName" (printf "aws-connector-config-%s" $instanceID)) }}
 ---
 {{- end -}}
 {{- end -}}

@@ -1,19 +1,2 @@
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: HTTPRoute
-metadata:
-  name: global-est
-  namespace: {{ .Release.Namespace }}
-  labels:
-    auth: "public"
-spec:
-  parentRefs:
-    - name: eg
-      sectionName: https  # The specific listener
-  rules:
-    - matches:
-      - path:
-          type: PathPrefix
-          value: /.well-known/est
-      backendRefs:
-        - name: dms-manager
-          port: 8085
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "dmsManager") | fromYaml -}}
+{{ include "lamassu.httproute" (dict "root" $ "name" "global-est" "backend" "dms-manager" "port" $svc.port "path" "/.well-known/est" "authLabel" "public") }}
