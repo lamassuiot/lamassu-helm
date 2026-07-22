@@ -26,6 +26,14 @@ All templates take a dict context with:
   volumeMounts          pre-rendered YAML string of extra volumeMount list items
   volumes               pre-rendered YAML string of extra volume list items
   volumeClaimTemplates  pre-rendered YAML string of volumeClaimTemplate items
+  ports                 pre-rendered YAML string of container port list items.
+                        Defaults to a single `containerPort: $svc.port`.
+  livenessProbe         pre-rendered YAML string replacing the default httpGet probe
+  readinessProbe        pre-rendered YAML string replacing the default httpGet probe
+
+"lamassu.service" additionally accepts:
+  ports         pre-rendered YAML string of Service port list items.
+                Defaults to a single named "http" port at $svc.port.
 
 "lamassu.hpa" additionally accepts:
   kind          scaleTargetRef kind: Deployment (default) | StatefulSet
@@ -129,17 +137,25 @@ spec:
             {{- end }}
           {{- end }}
           livenessProbe:
+            {{- with .livenessProbe }}
+            {{- . | nindent 12 }}
+            {{- else }}
             httpGet:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
             initialDelaySeconds: {{ $svc.probes.initialDelaySeconds }}
             periodSeconds: {{ $svc.probes.periodSeconds }}
+            {{- end }}
           readinessProbe:
+            {{- with .readinessProbe }}
+            {{- . | nindent 12 }}
+            {{- else }}
             httpGet:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
             initialDelaySeconds: {{ $svc.probes.initialDelaySeconds }}
             periodSeconds: {{ $svc.probes.periodSeconds }}
+            {{- end }}
           {{- with $svc.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -156,7 +172,11 @@ spec:
             {{- end }}
           {{- end }}
           ports:
+            {{- with .ports }}
+            {{- . | nindent 12 }}
+            {{- else }}
             - containerPort: {{ $svc.port }}
+            {{- end }}
       {{- with .sidecars }}
       {{- . | nindent 8 }}
       {{- end }}
@@ -230,10 +250,14 @@ spec:
     app: {{ .name }}
   type: ClusterIP
   ports:
+  {{- with .ports }}
+  {{- . | nindent 2 }}
+  {{- else }}
   - name: http
     port: {{ $svc.port }}
     targetPort: {{ $svc.port }}
     protocol: TCP
+  {{- end }}
 {{- end -}}
 
 {{- define "lamassu.hpa" -}}

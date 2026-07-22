@@ -62,7 +62,6 @@ PKI for Industrial IoT for Kubernetes
 | services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
 | services.wfx.enabled | bool | `true` | Enable the Siemens WFX workflow service |
 | services.wfx.image | string | `"ghcr.io/siemens/wfx:latest"` | Docker image for WFX component |
-| services.wfx.replicas | int | `1` | Number of WFX replicas |
 | services.wfx.clientPort | int | `9080` | WFX southbound/client API port |
 | services.wfx.managementPort | int | `9081` | WFX northbound/management API port |
 | services.wfx.logs.format | string | `"json"` | WFX log format |
@@ -76,20 +75,20 @@ PKI for Industrial IoT for Kubernetes
 | services.wfx.routing.nbiPath | string | `"/api/wfx/nbi/"` | Gateway path for the WFX northbound/management API |
 | services.wfx.routing.rewritePath | string | `"/api/wfx/"` | Path used when rewriting Gateway routes to WFX |
 | services.wfx.extraEnv | list | `[]` | Additional WFX container environment variables |
-| services.wfx.extraArgs | list | `[]` | Additional WFX command line arguments |
+| services.wfx.args | list | `[]` | Additional WFX command line arguments |
 | services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.0"` | Docker image for Alerts component |
 | **Replicas & Autoscaling** | | | |
-| services.\<svc\>.replicaCount | int | `1` | Number of replicas for the service. Ignored when `autoscaling.enabled` is `true`. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.replicaCount | int | `1` | Number of replicas for the service. Ignored when `autoscaling.enabled` is `true`. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts`, `authz`, `wfx` |
 | services.\<svc\>.autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the service. When `true`, the `replicas` field is omitted from the Deployment/StatefulSet and managed by the HPA |
 | services.\<svc\>.autoscaling.minReplicas | int | `1` | Minimum number of replicas for the HPA |
 | services.\<svc\>.autoscaling.maxReplicas | int | `5` | Maximum number of replicas for the HPA |
 | services.\<svc\>.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for HPA scaling |
 | services.\<svc\>.autoscaling.targetMemoryUtilizationPercentage | int | `80` | Target memory utilization percentage for HPA scaling |
 | **PodDisruptionBudget** | | | |
-| services.\<svc\>.pdb.minAvailable | int | `1` | Minimum number of pods that must remain available during node drains and rolling upgrades. PDB is only created when the effective replica count is greater than 1. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.pdb.minAvailable | int | `1` | Minimum number of pods that must remain available during node drains and rolling upgrades. PDB is only created when the effective replica count is greater than 1. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts`, `authz`, `wfx` |
 | **Pod Affinity & Topology Spread** | | | |
-| services.\<svc\>.affinity | object | `{}` | Pod affinity override. `{}` uses the chart default: soft (`preferredDuringScheduling`) pod anti-affinity on `kubernetes.io/hostname`, spreading replicas across nodes. Provide a full [affinity spec](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) to replace it. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
-| services.\<svc\>.topologySpreadConstraints | list | `[]` | Topology spread constraints override. `[]` uses the chart defaults: two `ScheduleAnyway` constraints spreading pods across `topology.kubernetes.io/zone` and `kubernetes.io/hostname`. Provide a list of [TopologySpreadConstraint](https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/) objects to replace them. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.affinity | object | `{}` | Pod affinity override. `{}` uses the chart default: soft (`preferredDuringScheduling`) pod anti-affinity on `kubernetes.io/hostname`, spreading replicas across nodes. Provide a full [affinity spec](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) to replace it. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts`, `authz`, `wfx` |
+| services.\<svc\>.topologySpreadConstraints | list | `[]` | Topology spread constraints override. `[]` uses the chart defaults: two `ScheduleAnyway` constraints spreading pods across `topology.kubernetes.io/zone` and `kubernetes.io/hostname`. Provide a list of [TopologySpreadConstraint](https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/) objects to replace them. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts`, `authz`, `wfx` |
 | **Resource Requests & Limits** | | | |
 | services.\<svc\>.resources.requests.cpu | string | `"100m"` | Default CPU request used by pods and utilization-based HPA metrics |
 | services.\<svc\>.resources.requests.memory | string | `"128Mi"` | Default memory request used by pods and utilization-based HPA metrics |

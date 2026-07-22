@@ -1,53 +1,19 @@
 {{- if and .Values.services.wfx.enabled .Values.services.wfx.routing.enabled }}
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: HTTPRoute
-metadata:
-  name: api-wfx-sbi
-  namespace: {{ .Release.Namespace }}
-  labels:
-    auth: "external"
-spec:
-  parentRefs:
-    - name: eg
-      sectionName: https  # The specific listener
-  rules:
-    - matches:
-      - path:
-          type: PathPrefix
-          value: {{ .Values.services.wfx.routing.sbiPath }}
-      filters:
-      - type: URLRewrite
-        urlRewrite:
-          path:
-            type: ReplacePrefixMatch
-            replacePrefixMatch: {{ default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteSbiPath | quote }}
-      backendRefs:
-        - name: wfx
-          port: {{ .Values.services.wfx.clientPort }}
+{{ include "lamassu.httproute" (dict
+  "root" $
+  "name" "api-wfx-sbi"
+  "backend" "wfx"
+  "port" .Values.services.wfx.clientPort
+  "path" .Values.services.wfx.routing.sbiPath
+  "rewrite" (default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteSbiPath)
+  "authLabel" "external") }}
 ---
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: HTTPRoute
-metadata:
-  name: api-wfx-nbi
-  namespace: {{ .Release.Namespace }}
-  labels:
-    auth: "external"
-spec:
-  parentRefs:
-    - name: eg
-      sectionName: https  # The specific listener
-  rules:
-    - matches:
-      - path:
-          type: PathPrefix
-          value: {{ .Values.services.wfx.routing.nbiPath }}
-      filters:
-      - type: URLRewrite
-        urlRewrite:
-          path:
-            type: ReplacePrefixMatch
-            replacePrefixMatch: {{ default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteNbiPath | quote }}
-      backendRefs:
-        - name: wfx
-          port: {{ .Values.services.wfx.managementPort }}
+{{ include "lamassu.httproute" (dict
+  "root" $
+  "name" "api-wfx-nbi"
+  "backend" "wfx"
+  "port" .Values.services.wfx.managementPort
+  "path" .Values.services.wfx.routing.nbiPath
+  "rewrite" (default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteNbiPath)
+  "authLabel" "external") }}
 {{- end }}

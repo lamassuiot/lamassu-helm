@@ -1,20 +1,3 @@
 {{- if .Values.services.wfx.enabled }}
-apiVersion: v1
-kind: Service
-metadata:
-  name: wfx
-  namespace: {{ .Release.Namespace }}
-spec:
-  selector:
-    app: wfx
-  type: ClusterIP
-  ports:
-  - name: sbi
-    port: {{ .Values.services.wfx.clientPort }}
-    targetPort: {{ .Values.services.wfx.clientPort }}
-    protocol: TCP
-  - name: nbi
-    port: {{ .Values.services.wfx.managementPort }}
-    targetPort: {{ .Values.services.wfx.managementPort }}
-    protocol: TCP
+{{ include "lamassu.service" (dict "root" $ "name" "wfx" "svcKey" "wfx" "ports" (include "lamassu.wfx.svcPorts" $)) }}
 {{- end }}

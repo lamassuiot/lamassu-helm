@@ -1,14 +1,3 @@
-{{- define "lamassu.va.volumeClaimTemplates" -}}
-- metadata:
-    name: {{ .name }}
-  spec:
-    accessModes: [ "ReadWriteOnce" ]
-    storageClassName: null
-    resources:
-      requests:
-        storage: 1Gi
-{{- end -}}
-
 {{- if and (gt (int .Values.services.va.replicaCount) 1) (eq .Values.services.va.fileStore.type "local") }}
   {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
 {{- end }}

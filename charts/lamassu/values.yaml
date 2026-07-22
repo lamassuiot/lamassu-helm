@@ -279,8 +279,8 @@ services:
     enabled: true
     # -- Docker image for the WFX component
     image: ghcr.io/siemens/wfx:latest
-    # -- Number of WFX replicas.
-    replicas: 1
+    # -- Number of WFX replicas. Ignored when autoscaling is enabled.
+    replicaCount: 1
     # -- WFX southbound/client API port.
     clientPort: 9080
     # -- WFX northbound/management API port.
@@ -315,7 +315,7 @@ services:
       rewritePath: /api/wfx/
     extraEnv: []
     # -- Additional command line arguments for the WFX container.
-    extraArgs: []
+    args: []
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0

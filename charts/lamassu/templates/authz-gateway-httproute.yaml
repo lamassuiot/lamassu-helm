@@ -1,23 +1,2 @@
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: HTTPRoute
-metadata:
-  name: api-authz
-  namespace: {{ .Release.Namespace }}
-spec:
-  parentRefs:
-    - name: eg
-      sectionName: https  # The specific listener
-  rules:
-    - matches:
-      - path:
-          type: PathPrefix
-          value: /api/authz/
-      filters:
-      - type: URLRewrite
-        urlRewrite:
-          path:
-            type: ReplacePrefixMatch
-            replacePrefixMatch: "/"
-      backendRefs:
-        - name: authz
-          port: 8085
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "authz") | fromYaml -}}
+{{ include "lamassu.httproute" (dict "root" $ "name" "api-authz" "backend" "authz" "port" $svc.port "path" "/api/authz/" "rewrite" "/") }}

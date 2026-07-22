@@ -66,6 +66,21 @@ storage:
   password: "{{ .Values.postgres.password }}"
 {{- end -}}
 
+{{/*
+Client block for calling another Lamassu service's HTTP API. Context dict:
+  key       section name, e.g. "kms_client" | "authz_client" | "ca_client" | "device_manager_client" | "dms_manager_client"
+  hostname  target Kubernetes Service name
+  port      target port (default: 8085, the chart-wide service port)
+*/}}
+{{- define "lamassu.config.client" -}}
+{{ .key }}:
+  log_level: debug
+  auth_mode: noauth
+  protocol: http
+  hostname: {{ .hostname }}
+  port: {{ .port | default 8085 }}
+{{- end -}}
+
 {{/* OTel traces/logging block, guarded by observability.enabled. Context: chart root ($) */}}
 {{- define "lamassu.config.otel" -}}
 {{- if .Values.observability.enabled }}

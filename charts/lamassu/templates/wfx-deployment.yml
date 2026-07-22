@@ -1,77 +1,12 @@
 {{- if .Values.services.wfx.enabled }}
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: wfx
-  namespace: {{ .Release.Namespace }}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: wfx
-spec:
-  replicas: {{ .Values.services.wfx.replicas }}
-  selector:
-    matchLabels:
-      app: wfx
-  template:
-    metadata:
-      labels:
-        app: wfx
-    spec:
-      containers:
-        - name: wfx
-          image: {{ .Values.services.wfx.image }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-{{- with .Values.services.wfx.extraArgs }}
-          args:
-{{- range . }}
-            - {{ . | quote }}
-{{- end }}
-{{- end }}
-          env:
-            - name: WFX_STORAGE
-              value: "postgres"
-            - name: WFX_CLIENT_HOST
-              value: "0.0.0.0"
-            - name: WFX_CLIENT_PORT
-              value: {{ .Values.services.wfx.clientPort | quote }}
-            - name: WFX_MGMT_HOST
-              value: "0.0.0.0"
-            - name: WFX_MGMT_PORT
-              value: {{ .Values.services.wfx.managementPort | quote }}
-            - name: WFX_LOG_FORMAT
-              value: {{ .Values.services.wfx.logs.format | quote }}
-            - name: WFX_LOG_LEVEL
-              value: {{ .Values.services.wfx.logs.level | quote }}
-            - name: PGHOST
-              value: {{ .Values.postgres.hostname | quote }}
-            - name: PGPORT
-              value: {{ .Values.postgres.port | quote }}
-            - name: PGUSER
-              value: {{ .Values.postgres.username | quote }}
-            - name: PGPASSWORD
-              value: {{ .Values.postgres.password | quote }}
-            - name: PGDATABASE
-              value: {{ .Values.services.wfx.postgres.database | quote }}
-            - name: PGSSLMODE
-              value: {{ .Values.services.wfx.postgres.sslmode | quote }}
-{{- with .Values.services.wfx.extraEnv }}
-{{ toYaml . | nindent 12 }}
-{{- end }}
-          readinessProbe:
-            tcpSocket:
-              port: {{ .Values.services.wfx.clientPort }}
-            initialDelaySeconds: 3
-            periodSeconds: 5
-          livenessProbe:
-            tcpSocket:
-              port: {{ .Values.services.wfx.clientPort }}
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          ports:
-            - name: client
-              containerPort: {{ .Values.services.wfx.clientPort }}
-            - name: management
-              containerPort: {{ .Values.services.wfx.managementPort }}
-      restartPolicy: Always
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" "wfx"
+  "svcKey" "wfx"
+  "tty" false
+  "configMapName" ""
+  "env" (include "lamassu.wfx.env" $)
+  "ports" (include "lamassu.wfx.containerPorts" $)
+  "livenessProbe" (include "lamassu.wfx.livenessProbe" $)
+  "readinessProbe" (include "lamassu.wfx.readinessProbe" $)) }}
 {{- end }}

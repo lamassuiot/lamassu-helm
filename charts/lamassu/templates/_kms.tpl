@@ -1,0 +1,131 @@
+{{- define "lamassu.kms.extraEnv" -}}
+{{- range .Values.services.kms.cryptoEngines.engines }}
+{{- if eq .type "pkcs11" }}
+{{- range $key, $value := (dig "module_extra_options" "env" dict .) }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "lamassu.kms.volumeClaimTemplates" -}}
+# Filesystem engine is configured, using PVC for persistent storage
+- metadata:
+    name: golang-engine-storage
+  spec:
+    accessModes: [ "ReadWriteOnce" ]
+    storageClassName: null
+    resources:
+      requests:
+        storage: 1Gi
+{{- end -}}
+
+{{- define "lamassu.kms.volumeMounts" -}}
+{{- if .Values.services.kms.pkcs11Sidecar.enabled }}
+- name: pkcs11-socket
+  mountPath: {{ .Values.services.kms.pkcs11Sidecar.socketDir | quote }}
+{{- end }}
+{{- range $module := .Values.services.kms.pkcs11Modules }}
+- name: {{ printf "pkcs11-module-%s" ($module.name | default "module") | trunc 63 | trimSuffix "-" }}
+  mountPath: {{ $module.mountPath | default "/run/pkcs11-modules" | quote }}
+  readOnly: true
+{{- end }}
+- name: golang-engine-storage
+  mountPath: /crypto/fs
+{{- end -}}
+
+{{- define "lamassu.kms.volumes" -}}
+{{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
+{{- if .Values.services.kms.pkcs11Sidecar.enabled }}
+- name: pkcs11-socket
+  emptyDir: {}
+{{- with .Values.services.kms.pkcs11Sidecar.volumes }}
+{{- toYaml . | nindent 0 }}
+{{- end }}
+{{- end }}
+{{- range $module := .Values.services.kms.pkcs11Modules }}
+- name: {{ printf "pkcs11-module-%s" ($module.name | default "module") | trunc 63 | trimSuffix "-" }}
+  emptyDir: {}
+{{- end }}
+{{- if not $hasFilesystemEngine }}
+- name: golang-engine-storage
+  emptyDir: {}
+{{- end }}
+{{- end -}}
+
+{{- define "lamassu.kms.initContainers" -}}
+{{- range $module := .Values.services.kms.pkcs11Modules }}
+{{- $moduleName := $module.name | default "module" }}
+{{- $moduleDir := $module.mountPath | default "/run/pkcs11-modules" }}
+# Run-to-completion init container that stages a PKCS#11 module and its config
+# into a shared volume so KMS can load it without rebuilding the KMS image.
+- name: {{ printf "kms-pkcs11-module-%s" $moduleName | trunc 63 | trimSuffix "-" }}
+  image: {{ $module.image | quote }}
+  imagePullPolicy: {{ $module.imagePullPolicy | default "IfNotPresent" | quote }}
+  {{- with $module.securityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $module.command }}
+  command:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $module.args }}
+  args:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  env:
+    - name: PKCS11_MODULE_DIR
+      value: {{ $moduleDir | quote }}
+    {{- with $module.env }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  volumeMounts:
+    - name: {{ printf "pkcs11-module-%s" $moduleName | trunc 63 | trimSuffix "-" }}
+      mountPath: {{ $moduleDir | quote }}
+{{- end }}
+{{- if .Values.services.kms.pkcs11Sidecar.enabled }}
+{{- $pkcs11Sidecar := .Values.services.kms.pkcs11Sidecar }}
+- name: kms-pkcs11-sidecar
+  image: {{ $pkcs11Sidecar.image | quote }}
+  imagePullPolicy: {{ $pkcs11Sidecar.imagePullPolicy | quote }}
+  {{- with $pkcs11Sidecar.securityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  # restartPolicy: Always on an initContainer is a Kubernetes 1.29+ sidecar feature.
+  # Unlike regular initContainers (which must exit 0 before main containers start),
+  # a sidecar initContainer with restartPolicy: Always stays running for the pod's
+  # lifetime. Main containers wait only for this container to become Ready (via
+  # readinessProbe), not for it to exit — which is what we need for the SSH tunnel.
+  restartPolicy: Always
+  {{- with $pkcs11Sidecar.command }}
+  command:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $pkcs11Sidecar.args }}
+  args:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $pkcs11Sidecar.env }}
+  env:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  readinessProbe:
+    exec:
+      command: ["test", "-S", {{ $pkcs11Sidecar.socketDir | printf "%s/pkcs11" | quote }}]
+    initialDelaySeconds: 2
+    periodSeconds: 2
+  volumeMounts:
+    - name: pkcs11-socket
+      mountPath: {{ $pkcs11Sidecar.socketDir | quote }}
+    {{- with $pkcs11Sidecar.volumeMounts }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $pkcs11Sidecar.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end -}}
