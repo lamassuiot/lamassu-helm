@@ -30,6 +30,15 @@ SOFTHSM_SO_PIN="5432"
 NETHSM_PKCS11_VERSION="v2.2.0"
 NETHSM_TOKEN_LABEL="LocalHSM"
 NETHSM_OPERATOR_PASSPHRASE="0123456789"
+NETHSM_UNLOCK_PASSPHRASE=$(
+    shuf -er -n30 {A..Z} {a..z} {0..9} | tr -d '\n'
+    echo
+)
+NETHSM_ADMIN_PASSPHRASE=$(
+    shuf -er -n30 {A..Z} {a..z} {0..9} | tr -d '\n'
+    echo
+)
+NETHSM_SYSTEM_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 TLS_CRT=
 TLS_KEY=
@@ -1041,6 +1050,9 @@ function install_softhsm() {
         --set-string softhsm.so_pin="$SOFTHSM_SO_PIN" \
         --set nethsm.enabled=true \
         --set-string nethsm.tokenLabel="$NETHSM_TOKEN_LABEL" \
+        --set-string nethsm.provision.unlockPassphrase="$NETHSM_UNLOCK_PASSPHRASE" \
+        --set-string nethsm.provision.adminPassphrase="$NETHSM_ADMIN_PASSPHRASE" \
+        --set-string nethsm.provision.systemTime="$NETHSM_SYSTEM_TIME" \
         --set-string nethsm.provision.operator.passphrase="$NETHSM_OPERATOR_PASSPHRASE" \
         --wait
     if [ $? -eq 0 ]; then
