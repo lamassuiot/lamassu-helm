@@ -197,11 +197,11 @@ serviceDefaults:
 services:
   ui:
     # -- Docker image for the UI component
-    image: "ghcr.io/lamassuiot/lamassu-ui:dev"
+    image: "ghcr.io/lamassuiot/lamassu-ui:4.3.0"
     port: 80
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-va:dev
+    image: ghcr.io/lamassuiot/lamassu-va:3.8.0
     autoscaling:
       maxReplicas: 3
     fileStore:
@@ -229,7 +229,7 @@ services:
       frequency: "* * * * *"
   kms:
     # -- Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-kms:dev
+    image: ghcr.io/lamassuiot/lamassu-kms:3.8.0
     autoscaling:
       maxReplicas: 3
     # -- Optional command override for the KMS container
@@ -329,7 +329,7 @@ services:
     extraArgs: []
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:dev
+    image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
     autoscaling:
       maxReplicas: 3
     smtp_server:
