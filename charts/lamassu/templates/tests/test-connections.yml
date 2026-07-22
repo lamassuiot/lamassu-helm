@@ -20,7 +20,6 @@ spec:
       name: helm-test-lamassu-connectivity-hckek-script
   restartPolicy: Never
 ---
-
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -62,7 +61,6 @@ data:
             echo "$ui_response"
             exit 1
         fi
-
     }
     
     curl_and_analyze_json http://ca:8085/health
