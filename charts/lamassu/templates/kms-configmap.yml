@@ -11,6 +11,13 @@ data:
 
     {{- include "lamassu.config.storage" $ | nindent 4 }}
 
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
+      port: 8085
+
     crypto_engines:
       migrate_keys_format: false
       log_level: "trace"

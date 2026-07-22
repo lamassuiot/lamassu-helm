@@ -18,6 +18,13 @@ data:
       hostname: kms
       port: 8085
 
+    authz_client:
+      log_level: debug
+      auth_mode: noauth
+      protocol: http
+      hostname: authz
+      port: 8085
+        
     certificate_monitoring_job:
       enabled: true
       frequency: "{{ .Values.services.ca.monitoring.frequency }}"

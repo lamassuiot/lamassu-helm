@@ -25,10 +25,15 @@
   emptyDir: {}
 {{- end -}}
 
+{{- define "lamassu.dmsManager.volumeMounts" -}}
+- name: shared
+  mountPath: /shared
+{{- end -}}
+
 {{ include "lamassu.workload" (dict
   "root" $
   "name" "dms-manager"
   "svcKey" "dmsManager"
   "initContainers" (include "lamassu.dmsManager.initContainers" $)
-  "volumeMounts" "- name: shared\n  mountPath: /shared"
+  "volumeMounts" (include "lamassu.dmsManager.volumeMounts" $)
   "volumes" (include "lamassu.dmsManager.volumes" $)) }}

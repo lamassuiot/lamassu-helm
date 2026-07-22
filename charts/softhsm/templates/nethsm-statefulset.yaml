@@ -1,0 +1,51 @@
+{{- if .Values.nethsm.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "soft.nethsm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soft.labels" . | nindent 4 }}
+    app: {{ include "soft.nethsm.fullname" . }}
+spec:
+  replicas: 1
+  serviceName: {{ include "soft.nethsm.fullname" . }}
+  selector:
+    matchLabels:
+      app: {{ include "soft.nethsm.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "soft.nethsm.fullname" . }}
+    spec:
+      containers:
+        - name: nethsm
+          image: {{ .Values.nethsm.image }}
+          imagePullPolicy: {{ default "Always" (get (default (dict) (get .Values "global")) "imagePullPolicy") | quote }}
+          ports:
+            - name: https
+              containerPort: {{ .Values.nethsm.port }}
+          readinessProbe:
+            # NetHSM's alive endpoint changes status after provisioning, so use TCP.
+            tcpSocket:
+              port: {{ .Values.nethsm.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          {{- if .Values.nethsm.persistence.enabled }}
+          volumeMounts:
+            - name: nethsm-data
+              mountPath: /data
+          {{- end }}
+      restartPolicy: Always
+  {{- if .Values.nethsm.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: nethsm-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: {{ .Values.nethsm.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.nethsm.persistence.size }}
+  {{- end }}
+{{- end }}
