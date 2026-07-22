@@ -11,25 +11,12 @@ data:
 
     {{- include "lamassu.config.eventbus" (dict "root" $ "key" "publisher_event_bus") | nindent 4 }}
 
-    authz_db:
-      provider: "postgres"
-      hostname: {{ .Values.postgres.hostname }}
-      port: {{ .Values.postgres.port }}
-      username: "{{ .Values.postgres.username }}"
-      password: "{{ .Values.postgres.password }}"
-      database: {{ .Values.services.authz.database }}
-
+    {{- include "lamassu.config.storage" (dict "root" $ "key" "authz_db" "database" .Values.services.authz.database) | nindent 4 }}
 
     {{- if .Values.services.authz.credentials }}
     credentials:
       {{- range $schema, $cred := .Values.services.authz.credentials }}
-      {{ $schema }}:
-        provider: "postgres"
-        hostname: {{ $.Values.postgres.hostname }}
-        port: {{ $.Values.postgres.port }}
-        username: "{{ $.Values.postgres.username }}"
-        password: "{{ $.Values.postgres.password }}"
-        database: {{ $cred.database }}
+      {{- include "lamassu.config.storage" (dict "root" $ "key" $schema "database" $cred.database) | nindent 6 }}
       {{- end }}
     {{- end }}
 

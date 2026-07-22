@@ -55,15 +55,31 @@ AMQP event bus block. Context dict:
     password: "{{ .root.Values.amqp.password }}"
 {{- end -}}
 
-{{/* PostgreSQL storage block. Context: chart root ($) */}}
+{{/*
+PostgreSQL storage block. Context: chart root ($), or a dict:
+  root      chart root context ($)
+  key       top-level section name (default: "storage")
+  database  optional `database` field to append (e.g. authz's per-schema DBs)
+*/}}
 {{- define "lamassu.config.storage" -}}
-storage:
+{{- $root := . -}}
+{{- $key := "storage" -}}
+{{- $database := "" -}}
+{{- if hasKey . "root" -}}
+{{- $root = .root -}}
+{{- $key = .key | default "storage" -}}
+{{- $database = .database -}}
+{{- end -}}
+{{ $key }}:
   log_level: "info"
   provider: "postgres" #couch_db | postgres | dynamo_db
-  hostname: {{ .Values.postgres.hostname }}
-  port: {{ .Values.postgres.port }}
-  username: "{{ .Values.postgres.username }}"
-  password: "{{ .Values.postgres.password }}"
+  hostname: {{ $root.Values.postgres.hostname }}
+  port: {{ $root.Values.postgres.port }}
+  username: "{{ $root.Values.postgres.username }}"
+  password: "{{ $root.Values.postgres.password }}"
+  {{- with $database }}
+  database: {{ . }}
+  {{- end }}
 {{- end -}}
 
 {{/*
