@@ -7,17 +7,6 @@
 {{- if and (eq .Values.services.va.fileStore.type "s3") (not .Values.services.va.fileStore.s3) }}
   {{ fail "VA fileStore.type is set to s3 but fileStore.s3 is empty. Provide at least bucket_name, auth_method and region under services.va.fileStore.s3." }}
 {{- end }}
-{{- define "lamassu.va.volumeClaimTemplates" -}}
-- metadata:
-    name: {{ .name }}
-  spec:
-    accessModes: [ "ReadWriteOnce" ]
-    storageClassName: null
-    resources:
-      requests:
-        storage: 1Gi
-{{- end -}}
-
 {{- $vaIsLocal := eq .Values.services.va.fileStore.type "local" -}}
 {{- $vaStorageDir := .Values.services.va.fileStore.local.storageDirectory | default "/data/crl" -}}
 {{- $vaVolumeName := "local-crl-file-storage" -}}

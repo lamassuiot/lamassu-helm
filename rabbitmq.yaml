@@ -1,8 +1,0 @@
-fullnameOverride: "rabbitmq"
-image:
-  registry: docker.io
-  repository: rabbitmq
-  tag: "4.3.0"
-auth:
-  username: admin
-  password: kIk1w3YcC1uNXjxTnfJXuKoYHXnJo2

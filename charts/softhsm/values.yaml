@@ -3,8 +3,8 @@
 # Declare variables to be passed into your templates.
 image: "ghcr.io/lamassuiot/softhsm:dev"
 softhsm:
-  pin: "1234"
-  so_pin: "5432"
+  pin: ""
+  so_pin: ""
   slot: "0"
   label: lamassuHSM
 
@@ -32,10 +32,10 @@ nethsm:
     # Container image used by the provisioning Job; it must provide curl.
     image: "curlimages/curl:8.11.0"
     # NetHSM passphrases must contain 10-200 characters. Defaults are for testing only.
-    unlockPassphrase: "a0b1c2d3e4f5"
-    adminPassphrase: "abcdefghijklm"
+    unlockPassphrase: ""
+    adminPassphrase: ""
     systemTime: "2026-01-01T00:00:00Z"
     operator:
       userId: "operator"
       realName: "Lamassu Operator"
-      passphrase: "0123456789"
+      passphrase: ""
