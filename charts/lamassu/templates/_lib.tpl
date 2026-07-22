@@ -22,6 +22,7 @@ All templates take a dict context with:
                         Defaults to "<name>-config"; set "" to skip the mount.
   env                   pre-rendered YAML string of extra env list items
   initContainers        pre-rendered YAML string of initContainer list items
+  podSecurityContext    optional pod security-context override
   volumeMounts          pre-rendered YAML string of extra volumeMount list items
   volumes               pre-rendered YAML string of extra volume list items
   volumeClaimTemplates  pre-rendered YAML string of volumeClaimTemplate items
@@ -46,6 +47,7 @@ All templates take a dict context with:
 {{- $name := .name -}}
 {{- $configMapName := hasKey . "configMapName" | ternary .configMapName (printf "%s-config" $name) -}}
 {{- $tty := hasKey . "tty" | ternary .tty true -}}
+{{- $podSecurityContext := hasKey . "podSecurityContext" | ternary .podSecurityContext $svc.podSecurityContext -}}
 apiVersion: apps/v1
 kind: {{ .kind | default "Deployment" }}
 metadata:
@@ -90,7 +92,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $svc.podSecurityContext }}
+      {{- with $podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}

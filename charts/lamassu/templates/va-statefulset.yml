@@ -9,7 +9,7 @@
 {{- end }}
 {{- define "lamassu.va.volumeClaimTemplates" -}}
 - metadata:
-    name: local-crl-file-storage
+    name: {{ .name }}
   spec:
     accessModes: [ "ReadWriteOnce" ]
     storageClassName: null
@@ -20,11 +20,12 @@
 
 {{- $vaIsLocal := eq .Values.services.va.fileStore.type "local" -}}
 {{- $vaStorageDir := .Values.services.va.fileStore.local.storageDirectory | default "/data/crl" -}}
+{{- $vaVolumeName := "local-crl-file-storage" -}}
 {{ include "lamassu.workload" (dict
   "root" $
   "name" "va"
   "svcKey" "va"
   "kind" "StatefulSet"
   "env" (printf "- name: TMPDIR\n  value: %s" $vaStorageDir)
-  "volumeMounts" (ternary (printf "- name: local-crl-file-storage\n  mountPath: %s" $vaStorageDir) "" $vaIsLocal)
-  "volumeClaimTemplates" (ternary (include "lamassu.va.volumeClaimTemplates" $) "" $vaIsLocal)) }}
+  "volumeMounts" (ternary (printf "- name: %s\n  mountPath: %s" $vaVolumeName $vaStorageDir) "" $vaIsLocal)
+  "volumeClaimTemplates" (ternary (include "lamassu.va.volumeClaimTemplates" (dict "name" $vaVolumeName)) "" $vaIsLocal)) }}

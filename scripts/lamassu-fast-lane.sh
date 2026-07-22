@@ -19,9 +19,17 @@ GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 SOFTHSM_CHART_PATH="./charts/softhsm"
-WITH_SOFTHSM=false
+WITH_HSM=false
 SOFTHSM_SSH_PRIVATE_KEY_FILE=""
 SOFTHSM_SSH_PUBLIC_KEY=""
+SOFTHSM_LABEL="lamassuHSM"
+SOFTHSM_PIN="1234"
+SOFTHSM_SLOT="0"
+SOFTHSM_SO_PIN="5432"
+# The KMS downloads the NetHSM PKCS#11 module at runtime so no custom KMS image is needed.
+NETHSM_PKCS11_VERSION="v2.2.0"
+NETHSM_TOKEN_LABEL="LocalHSM"
+NETHSM_OPERATOR_PASSPHRASE="0123456789"
 
 TLS_CRT=
 TLS_KEY=
@@ -106,7 +114,7 @@ function main() {
                 exit 1
             fi
         fi
-        if [ "$WITH_SOFTHSM" = true ] && [ "$OFFLINE_HELMCHART_SOFTHSM" = "" ]; then
+        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_HELMCHART_SOFTHSM" = "" ]; then
             echo -e "\n${RED}SoftHSM helm chart path is empty${NOCOLOR}"
             exit 1
         fi
@@ -119,7 +127,7 @@ function main() {
     check_dependencies
     echo -e "\n${BLUE}2) Provide minimal config info${NOCOLOR}"
     request_config_data
-    if [ "$WITH_SOFTHSM" = true ]; then
+    if [ "$WITH_HSM" = true ]; then
         echo -e "\n${BLUE}2.1) Prepare SoftHSM SSH credentials${NOCOLOR}"
         prepare_softhsm_ssh_keypair
     fi
@@ -144,7 +152,7 @@ function main() {
         next_step=$((next_step + 1))
     fi
 
-    if [ "$WITH_SOFTHSM" = true ]; then
+    if [ "$WITH_HSM" = true ]; then
         echo -e "\n${BLUE}${next_step}) Install SoftHSM${NOCOLOR}"
         install_softhsm
         checkpoint "SoftHSM"
@@ -176,7 +184,7 @@ function usage() {
     echo " --helm-chart-postgres        (Only needed while using --offline) Path to the Posgtres helm chart (.tgz format)"
     echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
     echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
-    echo " --helm-chart-softhsm         (Only needed while using --offline and --with-softhsm) Path to the SoftHSM helm chart (.tgz format)"
+    echo " --helm-chart-softhsm         (Only needed while using --offline and --with-hsm) Path to the SoftHSM helm chart (.tgz format)"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
@@ -185,7 +193,7 @@ function usage() {
     echo " --helm-chart-jaeger          (Only needed while using --offline with --otel) Path to the Jaeger helm chart (.tgz format)"
     echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: ./charts/softhsm"
-    echo " --with-softhsm               Install SoftHSM and configure Lamassu KMS to use PKCS#11"
+    echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11"
 }
 
 function has_argument() {
@@ -216,8 +224,8 @@ function process_flags() {
         --offline)
             OFFLINE=true
             ;;
-        --with-softhsm)
-            WITH_SOFTHSM=true
+        --with-hsm)
+            WITH_HSM=true
             ;;
         --softhsm-chart-path)
             if ! has_argument $@; then
@@ -439,7 +447,7 @@ function final_instructions() {
     echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
     echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
     echo -e "${BLUE}Use the provided Keycloak credentials ${KEYCLOAK_USER}/${KEYCLOAK_PWD}${NOCOLOR}"
-    if [ "$WITH_SOFTHSM" = true ]; then
+    if [ "$WITH_HSM" = true ]; then
                 echo -e "${BLUE}SoftHSM endpoint configured for PKCS#11 via p11-kit socket forwarding${NOCOLOR}"
     fi
 }
@@ -458,7 +466,7 @@ function prepare_softhsm_ssh_keypair() {
 
 function create_softhsm_kms_override_file() {
 target_file="$1"
-cat >"$target_file" <<"EOF"
+cat >"$target_file" <<EOF
 services:
   kms:
     pkcs11Sidecar:
@@ -483,17 +491,136 @@ services:
         - name: kms-pkcs11-ssh-key
           secret:
             secretName: kms-pkcs11-sidecar-ssh-key
+EOF
+
+# NetHSM engine: stage libnethsm_pkcs11.so and its config in a shared volume.
+cat >>"$target_file" <<EOF
+    pkcs11Modules:
+      - name: nethsm
+        image: curlimages/curl:8.11.0
+        imagePullPolicy: IfNotPresent
+        mountPath: /run/nethsm
+        command:
+          - /bin/sh
+          - -ec
+          - |
+EOF
+
+cat >>"$target_file" <<'EOF'
+            set -eu
+            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/nethsm}"
+            mkdir -p "${TARGET_DIR}"
+            case "$(uname -m)" in
+              x86_64) ARCH=x86_64 ;;
+              aarch64|arm64) ARCH=aarch64 ;;
+              *) echo "unsupported arch $(uname -m)" >&2; exit 1 ;;
+            esac
+            URL="https://github.com/Nitrokey/nethsm-pkcs11/releases/download/${NETHSM_PKCS11_VERSION}/nethsm-pkcs11-${NETHSM_PKCS11_VERSION}-${ARCH}-linux-glibc.so"
+            echo "Downloading ${URL}"
+            curl -fsSL "${URL}" -o "${TARGET_DIR}/libnethsm_pkcs11.so"
+            chmod 0555 "${TARGET_DIR}/libnethsm_pkcs11.so"
+            cat > "${TARGET_DIR}/p11nethsm.yaml" <<CFG
+            log_level: ${NETHSM_LOG_LEVEL:-Info}
+            slots:
+              - label: ${NETHSM_SLOT_LABEL:-LocalHSM}
+                operator:
+                  username: "${NETHSM_OPERATOR_USER:-operator}"
+                  password: "${NETHSM_OPERATOR_PASSWORD:-}"
+                administrator:
+                  username: "${NETHSM_ADMIN_USER:-admin}"
+                  password: "${NETHSM_ADMIN_PASSWORD:-}"
+                instances:
+                  - url: "${NETHSM_URL:-https://hsm-nethsm:8443/api/v1}"
+                    danger_insecure_cert: ${NETHSM_INSECURE_CERT:-true}
+                retries:
+                  count: 3
+                  delay_seconds: 1
+                timeout_seconds: 10
+            CFG
+            chmod 0444 "${TARGET_DIR}/p11nethsm.yaml"
+            ls -l "${TARGET_DIR}"
+EOF
+
+cat >>"$target_file" <<EOF
+        env:
+          - name: NETHSM_PKCS11_VERSION
+            value: "${NETHSM_PKCS11_VERSION}"
+          - name: NETHSM_URL
+            value: https://hsm-nethsm:8443/api/v1
+          - name: NETHSM_SLOT_LABEL
+            value: ${NETHSM_TOKEN_LABEL}
+          - name: NETHSM_OPERATOR_USER
+            value: operator
+          - name: NETHSM_OPERATOR_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: hsm-nethsm-provision
+                key: operatorPassphrase
+          - name: NETHSM_ADMIN_USER
+            value: admin
+          - name: NETHSM_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: hsm-nethsm-provision
+                key: adminPassphrase
+EOF
+
+# SoftHSM engine: stage p11-kit-client.so and its non-core dependencies.
+cat >>"$target_file" <<EOF
+      - name: p11-kit-client
+        image: debian:12-slim
+        imagePullPolicy: IfNotPresent
+        mountPath: /run/p11-kit-modules
+        securityContext:
+          runAsUser: 0
+        command:
+          - /bin/sh
+          - -ec
+          - |
+EOF
+
+cat >>"$target_file" <<'EOF'
+            set -eu
+            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/p11-kit-modules}"
+            mkdir -p "${TARGET_DIR}"
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends p11-kit-modules
+            MOD="$(dpkg -L p11-kit-modules | grep -m1 '/p11-kit-client\.so$')"
+            [ -n "${MOD}" ] || { echo "p11-kit-client.so not found" >&2; exit 1; }
+            echo "Staging ${MOD} -> ${TARGET_DIR}/p11-kit-client.so"
+            cp -L "${MOD}" "${TARGET_DIR}/p11-kit-client.so"
+            ldd "${MOD}" | sed -n 's/.*=> \(\/[^ ]*\).*/\1/p' | while read -r lib; do
+              case "${lib}" in
+                */libc.so*|*/libm.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/ld-linux*) continue ;;
+              esac
+              cp -L "${lib}" "${TARGET_DIR}/" 2>/dev/null || true
+            done
+            chmod -R 0555 "${TARGET_DIR}"
+            ls -l "${TARGET_DIR}"
+EOF
+
+cat >>"$target_file" <<EOF
     cryptoEngines:
-      defaultEngineID: "pkcs11-1"
+      defaultEngineID: "pkcs11-softhsm"
       engines:
-        - id: "pkcs11-1"
+        - id: "pkcs11-softhsm"
           type: "pkcs11"
-          token: "lamassuHSM"
-          pin: "1234"
-          module_path: "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"
+          token: "${SOFTHSM_LABEL}"
+          pin: "${SOFTHSM_PIN}"
+          module_path: "/run/p11-kit-modules/p11-kit-client.so"
           module_extra_options:
             env:
               P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
+              LD_LIBRARY_PATH: "/run/p11-kit-modules"
+        - id: "pkcs11-nethsm"
+          type: "pkcs11"
+          token: "${NETHSM_TOKEN_LABEL}"
+          pin: "${NETHSM_OPERATOR_PASSPHRASE}"
+          module_path: "/run/nethsm/libnethsm_pkcs11.so"
+          module_extra_options:
+            env:
+              P11NETHSM_CONFIG_FILE: "/run/nethsm/p11nethsm.yaml"
         - id: "filesystem-1"
           type: "filesystem"
           storage_directory: "/crypto/fs"
@@ -602,7 +729,7 @@ else
     yq -i '.tls.certManagerOptions.certSpec.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
 fi
 
-if [ "$WITH_SOFTHSM" = true ]; then
+if [ "$WITH_HSM" = true ]; then
     if [ -z "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
         echo -e "\n${RED}SoftHSM SSH private key is not prepared.${NOCOLOR}"
         exit 1
@@ -906,7 +1033,16 @@ function install_softhsm() {
         helm_path="$OFFLINE_HELMCHART_SOFTHSM"
     fi
 
-    run_helm install hsm "$helm_path" -n "$NAMESPACE" --set-string ssh.authorizedKeys="$SOFTHSM_SSH_PUBLIC_KEY" --wait
+    run_helm install hsm "$helm_path" -n "$NAMESPACE" \
+        --set-string ssh.authorizedKeys="$SOFTHSM_SSH_PUBLIC_KEY" \
+        --set-string softhsm.label="$SOFTHSM_LABEL" \
+        --set-string softhsm.pin="$SOFTHSM_PIN" \
+        --set-string softhsm.slot="$SOFTHSM_SLOT" \
+        --set-string softhsm.so_pin="$SOFTHSM_SO_PIN" \
+        --set nethsm.enabled=true \
+        --set-string nethsm.tokenLabel="$NETHSM_TOKEN_LABEL" \
+        --set-string nethsm.provision.operator.passphrase="$NETHSM_OPERATOR_PASSPHRASE" \
+        --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
     else
@@ -1049,7 +1185,7 @@ function check_dependencies() {
             fi
         fi
     fi
-    if [ "$WITH_SOFTHSM" = true ]; then
+    if [ "$WITH_HSM" = true ]; then
         exit_if_command_not_installed ssh-keygen
     fi
 

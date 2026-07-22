@@ -186,11 +186,11 @@ serviceDefaults:
 services:
   ui:
     # -- Docker image for the UI component
-    image: "ghcr.io/lamassuiot/lamassu-ui:4.3.0"
+    image: "ghcr.io/lamassuiot/lamassu-ui:dev"
     port: 80
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-va:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-va:dev
     autoscaling:
       maxReplicas: 3
     fileStore:
@@ -212,13 +212,13 @@ services:
     domains:
       - dev.lamassu.io
     # -- Docker image for the CA component
-    image: ghcr.io/lamassuiot/lamassu-ca:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-ca:dev
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
   kms:
     # -- Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-kms:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-kms:dev
     autoscaling:
       maxReplicas: 3
     # -- Optional command override for the KMS container
@@ -233,6 +233,12 @@ services:
       image: ""
       # -- Image pull policy for the PKCS#11 sidecar
       imagePullPolicy: IfNotPresent
+      # -- Security context for the PKCS#11 sidecar. This must match the KMS
+      #    runtime user so its mode-0600 forwarded Unix socket is accessible.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 0
       # -- Shared directory where the sidecar should create the PKCS#11 socket
       socketDir: /run/p11-kit
       # -- Command for the PKCS#11 sidecar
@@ -247,6 +253,11 @@ services:
       volumes: []
       # -- Resource requests and limits for the PKCS#11 sidecar
       resources: {}
+    # -- Optional PKCS#11 modules to inject into KMS at runtime. Each entry runs a
+    #    short-lived init container that stages a module and optional config in a
+    #    shared volume mounted read-only into KMS. Fields: name (unique), image,
+    #    imagePullPolicy, securityContext, command, args, env, and mountPath.
+    pkcs11Modules: []
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
@@ -259,10 +270,10 @@ services:
           storage_directory: "/crypto/fs"
   deviceManager:
     # -- Docker image for the Device Manager component
-    image: ghcr.io/lamassuiot/lamassu-devmanager:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-devmanager:dev
   dmsManager:
     # -- Docker image for the DMS Manager component
-    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev
   wfx:
     # -- Enable the Siemens WFX workflow service
     enabled: true
@@ -307,7 +318,7 @@ services:
     extraArgs: []
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-alerts:dev
     autoscaling:
       maxReplicas: 3
     smtp_server:
@@ -327,7 +338,7 @@ services:
       port: 25
   authz:
     # -- Docker image for the Authz connector component
-    image: ghcr.io/lamassuiot/lamassu-authz:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-authz:dev
     # -- JWKS endpoint used by authz to validate JWTs
     jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
     # -- PostgreSQL database name for authz principals, grants, and policies
@@ -342,7 +353,7 @@ toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
 migrations:
   db:
-    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev
     databases:
       - alerts
       - ca
@@ -354,4 +365,4 @@ migrations:
     # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0.
     enabled: false
     # -- Docker image for the CA-to-KMS migration tool
-    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0
+    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev

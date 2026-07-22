@@ -2,12 +2,40 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 image: "ghcr.io/lamassuiot/softhsm:dev"
-hsm:
+softhsm:
   pin: "1234"
   so_pin: "5432"
   slot: "0"
   label: lamassuHSM
+
 ssh:
   port: 22
   # Set one or more SSH public keys to allow in-cluster SSH tunneling to SoftHSM. Use "ssh-ed25519 XXXXXXXXXXXXXXXX" style
   authorizedKeys: ""
+
+# Nitrokey NetHSM (https://docs.nitrokey.com/nethsm/). Disabled by default.
+# When enabled, a second HSM is deployed alongside SoftHSM and provisioned by
+# a post-install/upgrade Job that also creates an Operator user.
+nethsm:
+  enabled: false
+  # Nitrokey NetHSM container image. The testing image is self-contained and ephemeral.
+  image: "nitrokey/nethsm:testing"
+  # HTTPS REST API port exposed by NetHSM.
+  port: 8443
+  # Token/slot label exposed by the p11nethsm PKCS#11 module.
+  tokenLabel: "LocalHSM"
+  persistence:
+    enabled: false
+    size: 2Gi
+    storageClassName: ""
+  provision:
+    # Container image used by the provisioning Job; it must provide curl.
+    image: "curlimages/curl:8.11.0"
+    # NetHSM passphrases must contain 10-200 characters. Defaults are for testing only.
+    unlockPassphrase: "a0b1c2d3e4f5"
+    adminPassphrase: "abcdefghijklm"
+    systemTime: "2026-01-01T00:00:00Z"
+    operator:
+      userId: "operator"
+      realName: "Lamassu Operator"
+      passphrase: "0123456789"

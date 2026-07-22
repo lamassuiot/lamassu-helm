@@ -1,0 +1,116 @@
+{{- if .Values.nethsm.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "soft.nethsm.fullname" . }}-provision
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soft.labels" . | nindent 4 }}
+    app: {{ include "soft.nethsm.fullname" . }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: {{ include "soft.nethsm.fullname" . }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: provision
+          image: {{ .Values.nethsm.provision.image }}
+          imagePullPolicy: {{ default "IfNotPresent" (get (default (dict) (get .Values "global")) "imagePullPolicy") | quote }}
+          env:
+            - name: NETHSM_HOST
+              value: {{ include "soft.nethsm.fullname" . | quote }}
+            - name: NETHSM_PORT
+              value: {{ .Values.nethsm.port | quote }}
+            - name: SYSTEM_TIME
+              value: {{ .Values.nethsm.provision.systemTime | quote }}
+            - name: OPERATOR_USER_ID
+              value: {{ .Values.nethsm.provision.operator.userId | quote }}
+            - name: OPERATOR_REAL_NAME
+              value: {{ .Values.nethsm.provision.operator.realName | quote }}
+            - name: UNLOCK_PASSPHRASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "soft.nethsm.fullname" . }}-provision
+                  key: unlockPassphrase
+            - name: ADMIN_PASSPHRASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "soft.nethsm.fullname" . }}-provision
+                  key: adminPassphrase
+            - name: OPERATOR_PASSPHRASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "soft.nethsm.fullname" . }}-provision
+                  key: operatorPassphrase
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              BASE="https://${NETHSM_HOST}:${NETHSM_PORT}/api/v1"
+
+              echo "Waiting for NetHSM at ${BASE} to become reachable..."
+              until curl -ks -o /dev/null "${BASE}/health/alive"; do
+                echo "  ...not ready yet"
+                sleep 3
+              done
+
+              state=$(curl -ks "${BASE}/health/state")
+              echo "NetHSM state: ${state}"
+
+              case "${state}" in
+                *Unprovisioned*)
+                  echo "Provisioning NetHSM..."
+                  code=$(curl -ks -o /dev/null -w '%{http_code}' -X POST "${BASE}/provision" \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"unlockPassphrase\":\"${UNLOCK_PASSPHRASE}\",\"adminPassphrase\":\"${ADMIN_PASSPHRASE}\",\"systemTime\":\"${SYSTEM_TIME}\"}")
+                  if [ "${code}" != "204" ]; then
+                    echo "Provisioning failed with HTTP ${code}"
+                    exit 1
+                  fi
+                  echo "NetHSM provisioned."
+                  ;;
+                *Locked*)
+                  echo "Unlocking NetHSM..."
+                  code=$(curl -ks -o /dev/null -w '%{http_code}' -X POST "${BASE}/unlock" \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"passphrase\":\"${UNLOCK_PASSPHRASE}\"}")
+                  if [ "${code}" != "204" ]; then
+                    echo "Unlock failed with HTTP ${code}"
+                    exit 1
+                  fi
+                  echo "NetHSM unlocked."
+                  ;;
+                *Operational*)
+                  echo "NetHSM already operational."
+                  ;;
+                *)
+                  echo "Unexpected NetHSM state: ${state}"
+                  exit 1
+                  ;;
+              esac
+
+              echo "Ensuring Operator user '${OPERATOR_USER_ID}' exists..."
+              ucode=$(curl -ks -o /dev/null -w '%{http_code}' -u "admin:${ADMIN_PASSPHRASE}" "${BASE}/users/${OPERATOR_USER_ID}")
+              if [ "${ucode}" = "200" ]; then
+                echo "Operator user already exists, skipping."
+              else
+                code=$(curl -ks -o /dev/null -w '%{http_code}' -X PUT "${BASE}/users/${OPERATOR_USER_ID}" \
+                  -u "admin:${ADMIN_PASSPHRASE}" \
+                  -H 'Content-Type: application/json' \
+                  -d "{\"realName\":\"${OPERATOR_REAL_NAME}\",\"role\":\"Operator\",\"passphrase\":\"${OPERATOR_PASSPHRASE}\"}")
+                if [ "${code}" != "201" ]; then
+                  echo "Failed to create Operator user, HTTP ${code}"
+                  exit 1
+                fi
+                echo "Operator user '${OPERATOR_USER_ID}' created."
+              fi
+
+              echo "NetHSM provisioning complete."
+{{- end }}

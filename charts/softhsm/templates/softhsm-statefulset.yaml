@@ -25,15 +25,23 @@ spec:
           ports:
             - containerPort: 5657
             - containerPort: 22
+          # sshd starts before token initialization and p11-kit server startup.
+          # Do not let Helm/Kubernetes consider SoftHSM ready until the server
+          # socket exists, otherwise KMS can start before the token is visible.
+          readinessProbe:
+            exec:
+              command: ["test", "-S", "/run/p11-kit/pkcs11"]
+            initialDelaySeconds: 1
+            periodSeconds: 2
           env:
             - name: LABEL
-              value: "{{ .Values.hsm.label }}"
+              value: "{{ .Values.softhsm.label }}"
             - name: PIN
-              value: "{{ .Values.hsm.pin }}"
+              value: "{{ .Values.softhsm.pin }}"
             - name: SO_PIN
-              value: "{{ .Values.hsm.so_pin }}"
+              value: "{{ .Values.softhsm.so_pin }}"
             - name: SLOT
-              value: "{{ .Values.hsm.slot }}"
+              value: "{{ .Values.softhsm.slot }}"
             - name: CONNECTION_PROTOCOL
               value: "tcp"
             {{- if .Values.ssh.authorizedKeys }}

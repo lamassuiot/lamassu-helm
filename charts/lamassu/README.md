@@ -125,6 +125,7 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.pkcs11Sidecar.enabled | bool | `false` | Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS. Requires Kubernetes 1.29+ |
 | services.kms.pkcs11Sidecar.image | string | `""` | Sidecar image used to create the forwarded PKCS#11 socket |
 | services.kms.pkcs11Sidecar.imagePullPolicy | string | `"IfNotPresent"` | Image pull policy for the PKCS#11 sidecar |
+| services.kms.pkcs11Sidecar.securityContext | object | `{runAsNonRoot: true, runAsUser: 65532, runAsGroup: 0}` | Security context that keeps the forwarded mode-0600 socket accessible to KMS |
 | services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory where the sidecar should create the PKCS#11 socket |
 | services.kms.pkcs11Sidecar.command | list | `[]` | Command for the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.args | list | `[]` | Arguments for the PKCS#11 sidecar |
@@ -132,6 +133,7 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.pkcs11Sidecar.volumeMounts | list | `[]` | Extra sidecar volume mounts, for example SSH key secrets |
 | services.kms.pkcs11Sidecar.volumes | list | `[]` | Extra pod volumes needed by the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.resources | object | `{}` | Resource requests and limits for the PKCS#11 sidecar |
+| services.kms.pkcs11Modules | list | `[]` | Optional PKCS#11 modules injected into KMS at runtime by short-lived init containers. Each entry supports `name`, `image`, `imagePullPolicy`, `securityContext`, `command`, `args`, `env`, and `mountPath` |
 | **Multi-HSM Deployment** | | | |
 | services.kms.cryptoEngines.engines[0].module_path | string | `"/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-client.so"` | PKCS#11 client module to use when the HSM socket is forwarded |
 | services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory used by the sidecar and the KMS container for the forwarded socket |
