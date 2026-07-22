@@ -22,9 +22,18 @@ All templates take a dict context with:
                         Defaults to "<name>-config"; set "" to skip the mount.
   env                   pre-rendered YAML string of extra env list items
   initContainers        pre-rendered YAML string of initContainer list items
+  podSecurityContext    optional pod security-context override
   volumeMounts          pre-rendered YAML string of extra volumeMount list items
   volumes               pre-rendered YAML string of extra volume list items
   volumeClaimTemplates  pre-rendered YAML string of volumeClaimTemplate items
+  ports                 pre-rendered YAML string of container port list items.
+                        Defaults to a single `containerPort: $svc.port`.
+  livenessProbe         pre-rendered YAML string replacing the default httpGet probe
+  readinessProbe        pre-rendered YAML string replacing the default httpGet probe
+
+"lamassu.service" additionally accepts:
+  ports         pre-rendered YAML string of Service port list items.
+                Defaults to a single named "http" port at $svc.port.
 
 "lamassu.hpa" additionally accepts:
   kind          scaleTargetRef kind: Deployment (default) | StatefulSet
@@ -46,6 +55,7 @@ All templates take a dict context with:
 {{- $name := .name -}}
 {{- $configMapName := hasKey . "configMapName" | ternary .configMapName (printf "%s-config" $name) -}}
 {{- $tty := hasKey . "tty" | ternary .tty true -}}
+{{- $podSecurityContext := hasKey . "podSecurityContext" | ternary .podSecurityContext $svc.podSecurityContext -}}
 apiVersion: apps/v1
 kind: {{ .kind | default "Deployment" }}
 metadata:
@@ -90,7 +100,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $svc.podSecurityContext }}
+      {{- with $podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -102,6 +112,14 @@ spec:
         - name: {{ $name }}
           image: {{ $svc.image }}
           imagePullPolicy: {{ $root.Values.global.imagePullPolicy | quote }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if $tty }}
           tty: true
           {{- end }}
@@ -119,17 +137,25 @@ spec:
             {{- end }}
           {{- end }}
           livenessProbe:
+            {{- with .livenessProbe }}
+            {{- . | nindent 12 }}
+            {{- else }}
             httpGet:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
             initialDelaySeconds: {{ $svc.probes.initialDelaySeconds }}
             periodSeconds: {{ $svc.probes.periodSeconds }}
+            {{- end }}
           readinessProbe:
+            {{- with .readinessProbe }}
+            {{- . | nindent 12 }}
+            {{- else }}
             httpGet:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
             initialDelaySeconds: {{ $svc.probes.initialDelaySeconds }}
             periodSeconds: {{ $svc.probes.periodSeconds }}
+            {{- end }}
           {{- with $svc.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -146,7 +172,14 @@ spec:
             {{- end }}
           {{- end }}
           ports:
+            {{- with .ports }}
+            {{- . | nindent 12 }}
+            {{- else }}
             - containerPort: {{ $svc.port }}
+            {{- end }}
+      {{- with .sidecars }}
+      {{- . | nindent 8 }}
+      {{- end }}
       restartPolicy: Always
       {{- with $svc.nodeSelector }}
       nodeSelector:
@@ -217,10 +250,14 @@ spec:
     app: {{ .name }}
   type: ClusterIP
   ports:
+  {{- with .ports }}
+  {{- . | nindent 2 }}
+  {{- else }}
   - name: http
     port: {{ $svc.port }}
     targetPort: {{ $svc.port }}
     protocol: TCP
+  {{- end }}
 {{- end -}}
 
 {{- define "lamassu.hpa" -}}

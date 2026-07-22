@@ -1,0 +1,2 @@
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "authz") | fromYaml -}}
+{{ include "lamassu.httproute" (dict "root" $ "name" "api-authz" "backend" "authz" "port" $svc.port "path" "/api/authz/" "rewrite" "/") }}

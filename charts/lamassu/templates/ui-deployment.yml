@@ -1,22 +1,3 @@
-{{- define "lamassu.ui.env" -}}
-- name: CHART_VERSION
-  value: {{ .Chart.Version }}
-- name: HELM_REVISION
-  value: "{{ .Release.Revision }}"
-- name: LAMASSU_API
-  value: "https://${window.location.host}/api"
-- name: OIDC_ENABLED
-  value: "true"
-- name: OIDC_AUTHORITY
-  value: {{ .Values.auth.oidc.frontend.authority }}
-- name: OIDC_CLIENT_ID
-  value: {{ .Values.auth.oidc.frontend.clientId }}
-- name: CLOUD_CONNECTORS
-  value: "[{{- range $index, $element := .Values.services.connectors -}}{{- if $index }}, {{ end }}\"{{ $element.id }}\"{{- end }}]"
-- name: UI_FOOTER_ENABLED
-  value: "false"
-{{- end -}}
-
 {{ include "lamassu.workload" (dict
   "root" $
   "name" "ui"

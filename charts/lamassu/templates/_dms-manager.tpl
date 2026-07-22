@@ -1,0 +1,31 @@
+{{- define "lamassu.dmsManager.initContainers" -}}
+- name: init-tls-certs
+  image: {{ .Values.toolbox.image }}
+  imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+  command: ["/bin/bash", "/docker-entrypoint.sh"]
+  volumeMounts:
+    - name: downstream-tls-certificate
+      mountPath: /certs/downstream.crt
+      subPath: tls.crt
+    - name: downstream-tls-certificate
+      mountPath: /certs/downstream-ca.crt
+      subPath: ca.crt
+    - name: api-config
+      mountPath: /docker-entrypoint.sh
+      subPath: init.sh
+    - name: shared
+      mountPath: /shared
+{{- end -}}
+
+{{- define "lamassu.dmsManager.volumes" -}}
+- name: downstream-tls-certificate
+  secret:
+    secretName: {{ ternary .Values.tls.externalOptions.secretName "downstream-cert" (eq .Values.tls.type "external") }}
+- name: shared
+  emptyDir: {}
+{{- end -}}
+
+{{- define "lamassu.dmsManager.volumeMounts" -}}
+- name: shared
+  mountPath: /shared
+{{- end -}}

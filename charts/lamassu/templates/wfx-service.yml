@@ -1,0 +1,3 @@
+{{- if .Values.services.wfx.enabled }}
+{{ include "lamassu.service" (dict "root" $ "name" "wfx" "svcKey" "wfx" "ports" (include "lamassu.wfx.svcPorts" $)) }}
+{{- end }}

@@ -1,0 +1,12 @@
+{{- if .Values.services.wfx.enabled }}
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" "wfx"
+  "svcKey" "wfx"
+  "tty" false
+  "configMapName" ""
+  "env" (include "lamassu.wfx.env" $)
+  "ports" (include "lamassu.wfx.containerPorts" $)
+  "livenessProbe" (include "lamassu.wfx.livenessProbe" $)
+  "readinessProbe" (include "lamassu.wfx.readinessProbe" $)) }}
+{{- end }}

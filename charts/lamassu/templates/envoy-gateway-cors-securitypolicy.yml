@@ -11,7 +11,7 @@ spec:
     allowOrigins:
     - "*"
     allowHeaders:
-    - "*"	
+    - "*"
     allowMethods:
     - "*"
     allowCredentials: true

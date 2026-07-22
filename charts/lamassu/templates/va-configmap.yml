@@ -35,17 +35,9 @@ data:
 
     {{- include "lamassu.config.storage" $ | nindent 4 }}
 
-    kms_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: kms
-      port: 8085
+    {{- include "lamassu.config.client" (dict "key" "kms_client" "hostname" "kms") | nindent 4 }}
 
-    ca_client:
-      log_level: debug
-      auth_mode: "noauth"
-      protocol: "http"
-      hostname: "ca"
-      port: 8085
+    {{- include "lamassu.config.client" (dict "key" "ca_client" "hostname" "ca") | nindent 4 }}
+
+    {{- include "lamassu.config.client" (dict "key" "authz_client" "hostname" "authz") | nindent 4 }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}
