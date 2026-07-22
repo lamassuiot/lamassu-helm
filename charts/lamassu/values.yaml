@@ -186,11 +186,11 @@ serviceDefaults:
 services:
   ui:
     # -- Docker image for the UI component
-    image: "ghcr.io/lamassuiot/lamassu-ui:dev"
+    image: "ghcr.io/lamassuiot/lamassu-ui:4.3.0"
     port: 80
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-va:dev
+    image: ghcr.io/lamassuiot/lamassu-va:3.8.0
     autoscaling:
       maxReplicas: 3
     fileStore:
@@ -212,13 +212,13 @@ services:
     domains:
       - dev.lamassu.io
     # -- Docker image for the CA component
-    image: ghcr.io/lamassuiot/lamassu-ca:dev
+    image: ghcr.io/lamassuiot/lamassu-ca:3.8.0
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
   kms:
     # -- Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-kms:dev
+    image: ghcr.io/lamassuiot/lamassu-kms:3.8.0
     autoscaling:
       maxReplicas: 3
     # -- Optional command override for the KMS container
@@ -270,10 +270,10 @@ services:
           storage_directory: "/crypto/fs"
   deviceManager:
     # -- Docker image for the Device Manager component
-    image: ghcr.io/lamassuiot/lamassu-devmanager:dev
+    image: ghcr.io/lamassuiot/lamassu-devmanager:3.8.0
   dmsManager:
     # -- Docker image for the DMS Manager component
-    image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev
+    image: ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0
   wfx:
     # -- Enable the Siemens WFX workflow service
     enabled: true
@@ -318,7 +318,7 @@ services:
     extraArgs: []
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:dev
+    image: ghcr.io/lamassuiot/lamassu-alerts:3.8.0
     autoscaling:
       maxReplicas: 3
     smtp_server:
@@ -338,7 +338,7 @@ services:
       port: 25
   authz:
     # -- Docker image for the Authz connector component
-    image: ghcr.io/lamassuiot/lamassu-authz:dev
+    image: ghcr.io/lamassuiot/lamassu-authz:3.8.0
     # -- JWKS endpoint used by authz to validate JWTs
     jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
     # -- PostgreSQL database name for authz principals, grants, and policies
@@ -353,7 +353,7 @@ toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
 migrations:
   db:
-    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev
+    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0
     databases:
       - alerts
       - ca
@@ -365,4 +365,4 @@ migrations:
     # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0.
     enabled: false
     # -- Docker image for the CA-to-KMS migration tool
-    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev
+    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0
