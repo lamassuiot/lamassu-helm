@@ -136,12 +136,19 @@
 {{- if and .Values.services.kms.pkcs11Sidecar.enabled (not (hasKey $kmsPodSecurityContext "fsGroup")) -}}
 {{- $_ := set $kmsPodSecurityContext "fsGroup" 0 -}}
 {{- end -}}
+
 {{- if and $hasFilesystemEngine (gt (int $kms.replicaCount) 1) -}}
   {{ fail "KMS replicaCount > 1 is not supported with the filesystem crypto engine. Switch to an external engine (hashicorp_vault, aws_kms, aws_secrets_manager, pkcs11) to enable multiple replicas." }}
 {{- end -}}
+
 {{- if and $hasFilesystemEngine $kms.autoscaling.enabled -}}
   {{ fail "KMS autoscaling is not supported with the filesystem crypto engine. Switch to an external engine to enable autoscaling." }}
 {{- end -}}
+
+{{- if and .Values.services.kms.pkcs11Sidecar.enabled (not (semverCompare ">=1.29.0-0" .Capabilities.KubeVersion.Version)) -}}
+  {{ fail (printf "services.kms.pkcs11Sidecar.enabled=true requires Kubernetes 1.29 or newer because restartPolicy: Always on init containers uses native sidecar semantics (detected %s)" .Capabilities.KubeVersion.Version) }}
+{{- end -}}
+
 {{- if and .Values.services.kms.pkcs11Sidecar.enabled (empty .Values.services.kms.pkcs11Sidecar.image) -}}
   {{ fail "services.kms.pkcs11Sidecar.image is required when services.kms.pkcs11Sidecar.enabled=true" }}
 {{- end -}}
