@@ -531,7 +531,13 @@ EOF
 }
 
 function populate_sample_data() {
-    SERVER="https://${DOMAIN}" INSECURE_SKIP_VERIFY=true "${SCRIPT_DIR}/sample-data.sh"
+    SERVER="https://${DOMAIN}" \
+    INSECURE_SKIP_VERIFY=true \
+    OIDC_WELL_KNOWN_URL="https://${DOMAIN}/auth/realms/lamassu/.well-known/openid-configuration" \
+    OIDC_CLIENT_ID=frontend \
+    OIDC_USERNAME=lamassu \
+    OIDC_PASSWORD=lamassu \
+    "${SCRIPT_DIR}/sample-data.sh"
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Sample data populated${NOCOLOR}"
     else
