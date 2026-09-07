@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
 dist=
 kube=
 KUBE_CONTEXT=""
@@ -18,6 +20,8 @@ HTTP_PORT=80
 GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
+SAMPLE_DATA=false
+HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
 TLS_CRT=
 TLS_KEY=
@@ -35,6 +39,10 @@ RABBIT_PWD=$(
 
 KEYCLOAK_USER=admin
 KEYCLOAK_PWD=$(
+    shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
+    echo
+)
+SAMPLE_DATA_CLIENT_SECRET=$(
     shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
     echo
 )
@@ -127,6 +135,11 @@ function main() {
     fi
     install_lamassu
 
+    if [ "$SAMPLE_DATA" = true ]; then
+        echo -e "\n${BLUE}9) Populate sample data${NOCOLOR}"
+        populate_sample_data
+    fi
+
     final_instructions
 }
 
@@ -155,6 +168,7 @@ function usage() {
     echo " --helm-chart-victoria-traces (Only needed while using --offline with --otel) Path to the victoria-traces-single helm chart (.tgz format)"
     echo " --helm-chart-jaeger          (Only needed while using --offline with --otel) Path to the Jaeger helm chart (.tgz format)"
     echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
+    echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
 }
 
 function has_argument() {
@@ -328,6 +342,9 @@ function process_flags() {
         --otel)
             OTEL=true
             ;;
+        --sample-data)
+            SAMPLE_DATA=true
+            ;;
         --helm-chart-victoria-logs)
             if ! has_argument $@; then
                 echo -e "\n${RED}Victoria Logs Helm Chart not specified.${NOCOLOR}" >&2
@@ -447,6 +464,8 @@ yq -i '.gateway.ports.https = env(HTTPS_PORT)' lamassu.yaml
 yq -i '.gateway.ports.http = env(HTTP_PORT)' lamassu.yaml
 
 export NAMESPACE=$NAMESPACE
+yq -i '.auth.oidc.apiGateway.jwks[0].uri = "http://auth-keycloak." + env(NAMESPACE) + ".svc.cluster.local/auth/realms/lamassu/protocol/openid-connect/certs"' lamassu.yaml
+
 # Check if TLS_CRT and TLS_KEY are not empty
 if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
     echo -e "${ORANGE}Deploying Lamassu with EXTERNAL TLS Certificates${NOCOLOR}"
@@ -508,12 +527,27 @@ EOF
         helm_version="--version $VERSION"
     fi
 
-    run_helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait
+    run_helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT"
 
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Lamassu IoT installed${NOCOLOR}"
     else
         echo -e "\n${RED}Error installing Lamassu IoT${NOCOLOR}"
+        exit 1
+    fi
+}
+
+function populate_sample_data() {
+    SERVER="https://${DOMAIN}" \
+    INSECURE_SKIP_VERIFY=true \
+    OIDC_WELL_KNOWN_URL="https://${DOMAIN}/auth/realms/lamassu/.well-known/openid-configuration" \
+    OIDC_CLIENT_ID=sample-data \
+    OIDC_CLIENT_SECRET="${SAMPLE_DATA_CLIENT_SECRET}" \
+    "${SCRIPT_DIR}/sample-data.sh"
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}Sample data populated${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error populating sample data${NOCOLOR}"
         exit 1
     fi
 }
@@ -543,7 +577,7 @@ EOF
         helm_path=$OFFLINE_HELMCHART_RABBITMQ
     fi
    
-    run_helm install rabbitmq $helm_path --version 0.21.4 -n $NAMESPACE -f rabbitmq.yaml --wait
+    run_helm install rabbitmq $helm_path --version 0.21.4 -n $NAMESPACE -f rabbitmq.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT"
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}RabbitMQ installed${NOCOLOR}"
     else
@@ -639,6 +673,40 @@ realm:
     }
 EOF
 
+    if [ "$SAMPLE_DATA" = true ]; then
+        local realm_config
+        if ! realm_config=$(yq -r '.realm.configFile' keycloak.yaml | jq --arg secret "$SAMPLE_DATA_CLIENT_SECRET" '
+            .users += [{
+                username: "service-account-sample-data",
+                enabled: true,
+                serviceAccountClientId: "sample-data",
+                realmRoles: ["pki-admin"]
+            }] |
+            .clients += [{
+                clientId: "sample-data",
+                enabled: true,
+                protocol: "openid-connect",
+                publicClient: false,
+                clientAuthenticatorType: "client-secret",
+                secret: $secret,
+                serviceAccountsEnabled: true,
+                standardFlowEnabled: false,
+                directAccessGrantsEnabled: false,
+                fullScopeAllowed: true
+            }]
+        '); then
+            echo -e "\n${RED}Error configuring the Keycloak sample-data service account${NOCOLOR}"
+            exit 1
+        fi
+
+        export SAMPLE_DATA_REALM_CONFIG="$realm_config"
+        if ! yq -i '.realm.configFile = strenv(SAMPLE_DATA_REALM_CONFIG)' keycloak.yaml; then
+            echo -e "\n${RED}Error writing the Keycloak sample-data service account configuration${NOCOLOR}"
+            exit 1
+        fi
+        unset SAMPLE_DATA_REALM_CONFIG
+    fi
+
     if [ "$OFFLINE" = false ]; then
         cat >>keycloak.yaml <<"EOF"
 extraInitContainers:
@@ -672,7 +740,7 @@ EOF
         helm_path=$OFFLINE_HELMCHART_KEYCLOAK
     fi
 
-    run_helm install auth $helm_path --version 0.21.9 -n $NAMESPACE --wait -f keycloak.yaml
+    run_helm install auth $helm_path --version 0.21.9 -n $NAMESPACE --wait --timeout "$HELM_INSTALL_TIMEOUT" -f keycloak.yaml
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Keycloak installed${NOCOLOR}"
     else
@@ -714,7 +782,7 @@ EOF
         helm_path=$OFFLINE_HELMCHART_POSTGRES
     fi
 
-    run_helm install postgres $helm_path -n $NAMESPACE --version 0.19.5 -f postgres.yaml --wait
+    run_helm install postgres $helm_path -n $NAMESPACE --version 0.19.5 -f postgres.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT"
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}PostgreSQL installed${NOCOLOR}"
     else
@@ -858,6 +926,9 @@ function detect_distribution() {
 
 function check_dependencies() {
     exit_if_command_not_installed yq
+    if [ "$SAMPLE_DATA" = true ]; then
+        exit_if_command_not_installed jq
+    fi
     if [ $dist == "microk8s" ]; then
         exit_if_command_not_installed $dist
     else
