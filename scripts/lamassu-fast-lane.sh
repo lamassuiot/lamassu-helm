@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
 dist=
 kube=
 KUBE_CONTEXT=""
@@ -18,6 +20,7 @@ HTTP_PORT=80
 GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
+SAMPLE_DATA=false
 
 TLS_CRT=
 TLS_KEY=
@@ -127,6 +130,11 @@ function main() {
     fi
     install_lamassu
 
+    if [ "$SAMPLE_DATA" = true ]; then
+        echo -e "\n${BLUE}9) Populate sample data${NOCOLOR}"
+        populate_sample_data
+    fi
+
     final_instructions
 }
 
@@ -155,6 +163,7 @@ function usage() {
     echo " --helm-chart-victoria-traces (Only needed while using --offline with --otel) Path to the victoria-traces-single helm chart (.tgz format)"
     echo " --helm-chart-jaeger          (Only needed while using --offline with --otel) Path to the Jaeger helm chart (.tgz format)"
     echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
+    echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
 }
 
 function has_argument() {
@@ -327,6 +336,9 @@ function process_flags() {
             ;;
         --otel)
             OTEL=true
+            ;;
+        --sample-data)
+            SAMPLE_DATA=true
             ;;
         --helm-chart-victoria-logs)
             if ! has_argument $@; then
@@ -514,6 +526,16 @@ EOF
         echo -e "\n${GREEN}Lamassu IoT installed${NOCOLOR}"
     else
         echo -e "\n${RED}Error installing Lamassu IoT${NOCOLOR}"
+        exit 1
+    fi
+}
+
+function populate_sample_data() {
+    SERVER="https://${DOMAIN}" INSECURE_SKIP_VERIFY=true "${SCRIPT_DIR}/sample-data.sh"
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}Sample data populated${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error populating sample data${NOCOLOR}"
         exit 1
     fi
 }
