@@ -1,30 +1,30 @@
-{{- range $i, $dbName := .Values.migrations.db.databases }}
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: migration-db-{{ $dbName }}
-  namespace: {{ $.Release.Namespace }}
-  annotations:
-    "helm.sh/hook": pre-upgrade,pre-install
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: migrate
-          image: {{ $.Values.migrations.db.image }}
-          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
-          args:
-            - >-
-              host={{ $.Values.postgres.hostname }}
-              user={{ $.Values.postgres.username }}
-              password={{ $.Values.postgres.password }}
-              dbname=pki
-              search_path={{ $dbName }}
-              port={{ $.Values.postgres.port }}
-              sslmode=disable
-            - "up"
----
-{{- end }}
+# {{- range $i, $dbName := .Values.migrations.db.databases }}
+# ---
+# apiVersion: batch/v1
+# kind: Job
+# metadata:
+#   name: migration-db-{{ $dbName }}
+#   namespace: {{ $.Release.Namespace }}
+#   annotations:
+#     "helm.sh/hook": pre-upgrade,pre-install
+#     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+# spec:
+#   template:
+#     spec:
+#       restartPolicy: OnFailure
+#       containers:
+#         - name: migrate
+#           image: {{ $.Values.migrations.db.image }}
+#           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+#           args:
+#             - >-
+#               host={{ $.Values.postgres.hostname }}
+#               user={{ $.Values.postgres.username }}
+#               password={{ $.Values.postgres.password }}
+#               dbname=pki
+#               search_path={{ $dbName }}
+#               port={{ $.Values.postgres.port }}
+#               sslmode=disable
+#             - "up"
+# ---
+# {{- end }}

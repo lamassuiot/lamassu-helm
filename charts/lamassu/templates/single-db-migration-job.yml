@@ -32,13 +32,15 @@ spec:
               echo "=========================================="
               echo "Starting Database Schema Migration"
               echo "From: Separate databases per service"
-              echo "To: Single 'lamassu' database with schemas"
+              echo "To: Single 'pki' database with schemas"
               echo "=========================================="
               echo ""
 
               # List of services and their databases
-              SERVICES="{{ join " " .Values.migrations.databases }}"
-              TARGET_DB="lamassu"
+              SERVICES="{{ join " " .Values.migrations.db.databases }}"
+              TARGET_DB="pki"
+              AUTHZ_DB="{{ .Values.services.authz.database }}"
+              WFX_DB="{{ .Values.services.wfx.postgres.database }}"
 
               # Function to check if database exists
               check_db_exists() {
@@ -76,23 +78,27 @@ spec:
                   fi
                 done
                 
-                if [ "$all_schemas_exist" == "true" ]; then
+                if [ "$all_schemas_exist" == "true" ] && [ "$(check_db_exists $AUTHZ_DB)" == "1" ] && [ "$(check_db_exists $WFX_DB)" == "1" ]; then
                   echo "  >> All service schemas already exist in '$TARGET_DB'."
+                  echo "  >> Authz database '$AUTHZ_DB' already exists."
+                  echo "  >> WFX database '$WFX_DB' already exists."
                   echo "  >> Migration appears to be already completed. Skipping..."
                   exit 0
                 fi
               fi
               echo ""
 
-              # Step 2: Create target database if it doesn't exist
-              echo "Step 2: Creating target database '$TARGET_DB'..."
-              if [ "$(check_db_exists $TARGET_DB)" == "1" ]; then
-                echo "  >> Database '$TARGET_DB' already exists. Skipping creation."
-              else
-                echo "  >> Creating database '$TARGET_DB'..."
-                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -c "CREATE DATABASE $TARGET_DB;"
-                echo "  >> Database '$TARGET_DB' created successfully."
-              fi
+              # Step 2: Create required databases if they don't exist
+              echo "Step 2: Ensuring required databases exist..."
+              for database in $TARGET_DB $AUTHZ_DB $WFX_DB; do
+                if [ "$(check_db_exists $database)" == "1" ]; then
+                  echo "  >> Database '$database' already exists. Skipping creation."
+                else
+                  echo "  >> Creating database '$database'..."
+                  PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -c "CREATE DATABASE $database;"
+                  echo "  >> Database '$database' created successfully."
+                fi
+              done
               echo ""
 
               # Step 3: Migrate each service database to its own schema
@@ -187,6 +193,8 @@ spec:
               echo ""
               echo "Summary:"
               echo "  - Target database: $TARGET_DB"
+              echo "  - Authz database: $AUTHZ_DB"
+              echo "  - WFX database: $WFX_DB"
               echo "  - Migrated services: $SERVICES"
               echo ""
               echo "IMPORTANT: Update your application configuration to use:"
