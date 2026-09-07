@@ -31,6 +31,10 @@
 #   OIDC_USERNAME        \_ for a PUBLIC client (no secret): uses
 #   OIDC_PASSWORD        /  grant_type=password (Resource Owner Password Credentials)
 #   OIDC_SCOPE           optional extra scope(s), space separated
+#   OIDC_DISCOVERY_MAX_ATTEMPTS  discovery attempts while the gateway starts (default: 30)
+#   OIDC_DISCOVERY_RETRY_DELAY   seconds between discovery attempts (default: 2)
+#   OIDC_CONNECT_TIMEOUT         curl connection timeout in seconds (default: 5)
+#   OIDC_REQUEST_TIMEOUT         curl request timeout in seconds (default: 15)
 #   ACCESS_TOKEN         alternatively, pass an already-issued bearer token directly
 #                        (skips OIDC discovery/token-request entirely)
 #
@@ -73,16 +77,41 @@ AUTH_ARGS=()
 # otherwise falls back to the password grant with username/password (public client).
 fetch_oidc_token() {
     local well_known="$1" client_id="$2" client_secret="${3:-}" username="${4:-}" password="${5:-}" scope="${6:-}"
-    local token_url token_resp token data http_out status
+    local token_url token_resp token data http_out status body curl_rc
+    local attempt=1 max_attempts="${OIDC_DISCOVERY_MAX_ATTEMPTS:-30}"
+    local retry_delay="${OIDC_DISCOVERY_RETRY_DELAY:-2}"
+    local connect_timeout="${OIDC_CONNECT_TIMEOUT:-5}"
+    local request_timeout="${OIDC_REQUEST_TIMEOUT:-15}"
 
-    http_out=$(curl -s "${TLS_ARGS[@]}" -w $'\n''%{http_code}' "${well_known}")
-    status="${http_out##*$'\n'}"
-    log "GET ${well_known} -> ${status}"
-    token_url=$(printf '%s' "${http_out%$'\n'*}" | jq -r '.token_endpoint // empty' 2>/dev/null)
-    if [ -z "${token_url}" ]; then
-        warn "could not discover token_endpoint from ${well_known} (HTTP ${status}, not a valid OIDC discovery document)"
-        return 1
-    fi
+    while [ "$attempt" -le "$max_attempts" ]; do
+        http_out=$(curl -sS "${TLS_ARGS[@]}" \
+            --connect-timeout "$connect_timeout" --max-time "$request_timeout" \
+            -w $'\n''%{http_code}' "${well_known}")
+        curl_rc=$?
+        status="${http_out##*$'\n'}"
+        body="${http_out%$'\n'*}"
+        log "GET ${well_known} -> ${status} (attempt ${attempt}/${max_attempts})"
+        token_url=$(printf '%s' "$body" | jq -r '.token_endpoint // empty' 2>/dev/null)
+
+        if [ "$curl_rc" -eq 0 ] && [[ "$status" == 2* ]] && [ -n "$token_url" ]; then
+            break
+        fi
+
+        if [ "$attempt" -eq "$max_attempts" ]; then
+            if [ "$curl_rc" -ne 0 ]; then
+                warn "could not reach ${well_known} after ${max_attempts} attempts (curl exit ${curl_rc}, HTTP ${status})"
+            elif [[ "$status" != 2* ]]; then
+                warn "OIDC discovery at ${well_known} returned HTTP ${status} after ${max_attempts} attempts"
+            else
+                warn "could not discover token_endpoint from ${well_known} (not a valid OIDC discovery document)"
+            fi
+            return 1
+        fi
+
+        warn "OIDC discovery is not ready (curl exit ${curl_rc}, HTTP ${status}); retrying in ${retry_delay}s"
+        sleep "$retry_delay"
+        attempt=$((attempt + 1))
+    done
 
     if [ -n "${client_secret}" ]; then
         data="grant_type=client_credentials&client_id=${client_id}&client_secret=${client_secret}"
@@ -94,7 +123,8 @@ fetch_oidc_token() {
     fi
     [ -n "${scope}" ] && data="${data}&scope=${scope}"
 
-    http_out=$(curl -s "${TLS_ARGS[@]}" -X POST "${token_url}" \
+    http_out=$(curl -sS "${TLS_ARGS[@]}" -X POST "${token_url}" \
+        --connect-timeout "$connect_timeout" --max-time "$request_timeout" \
         -H 'Content-Type: application/x-www-form-urlencoded' \
         --data "${data}" \
         -w $'\n''%{http_code}')
@@ -294,7 +324,7 @@ if [ -n "${IMPORTED_ROOT_CA_PROFILE_ID}" ]; then
                     key_metadata: {key_id: $key_id, type: "ECDSA", bits: 256},
                     ca_expiration: {type: "Duration", duration: "3650d"},
                     profile_id: $profile_id,
-                    engine_id: "golang-1",
+                    engine_id: "fs-1",
                     metadata: {sample: true, type: "imported-root"}
                 }')")
             CA_RC=$?
