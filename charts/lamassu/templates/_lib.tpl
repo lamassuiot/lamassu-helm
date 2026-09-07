@@ -20,6 +20,8 @@ All templates take a dict context with:
   tty                   set to false to drop `tty: true` from the container
   configMapName         config ConfigMap mounted at /etc/lamassuiot/config.yml.
                         Defaults to "<name>-config"; set "" to skip the mount.
+  podSecurityContext    override for the pod-level securityContext, taking
+                        precedence over $svc.podSecurityContext
   env                   pre-rendered YAML string of extra env list items
   initContainers        pre-rendered YAML string of initContainer list items
   volumeMounts          pre-rendered YAML string of extra volumeMount list items
@@ -90,7 +92,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $svc.podSecurityContext }}
+      {{- with (.podSecurityContext | default $svc.podSecurityContext) }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}

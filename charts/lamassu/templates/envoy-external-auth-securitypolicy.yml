@@ -1,0 +1,20 @@
+{{- if .Values.auth.externalAuthorization.enabled }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: external-authz
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetSelectors:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    matchLabels:
+      auth: "external"
+  extAuth:
+    failOpen: {{ .Values.auth.externalAuthorization.failOpen }}
+    http:
+      backendRefs:
+        - name: {{ .Values.auth.externalAuthorization.serviceName }}
+          port: {{ .Values.auth.externalAuthorization.servicePort }}
+      path: {{ .Values.auth.externalAuthorization.path | quote }}
+{{- end }}

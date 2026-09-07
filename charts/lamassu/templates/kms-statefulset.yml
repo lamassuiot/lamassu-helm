@@ -35,6 +35,7 @@
   "svcKey" "kms"
   "kind" (ternary "StatefulSet" "Deployment" $hasFilesystemEngine)
   "serviceName" (ternary "kms" "" $hasFilesystemEngine)
+  "podSecurityContext" (ternary (dict "runAsUser" 65532 "runAsGroup" 0) dict $hasFilesystemEngine)
   "env" (include "lamassu.kms.extraEnv" $)
   "volumeMounts" (ternary "- name: golang-engine-storage\n  mountPath: /crypto/fs" "" $hasFilesystemEngine)
   "volumeClaimTemplates" (ternary (include "lamassu.kms.volumeClaimTemplates" $) "" $hasFilesystemEngine)) }}

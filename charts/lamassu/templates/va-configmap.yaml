@@ -48,4 +48,6 @@ data:
       protocol: "http"
       hostname: "ca"
       port: 8085
+
+    {{- include "lamassu.config.authzClient" $ | nindent 4 }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}
