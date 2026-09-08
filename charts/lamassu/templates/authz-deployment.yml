@@ -1,0 +1,1 @@
+{{ include "lamassu.workload" (dict "root" $ "name" "authz" "svcKey" "authz") }}

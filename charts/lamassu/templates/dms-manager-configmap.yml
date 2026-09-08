@@ -58,19 +58,11 @@ data:
 
     {{- include "lamassu.config.storage" $ | nindent 4 }}
 
-    device_manager_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: device-manager
-      port: 8085
+    {{- include "lamassu.config.client" (dict "key" "device_manager_client" "hostname" "device-manager") | nindent 4 }}
 
-    ca_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: ca
-      port: 8085
+    {{- include "lamassu.config.client" (dict "key" "ca_client" "hostname" "ca") | nindent 4 }}
+
+    {{- include "lamassu.config.client" (dict "key" "authz_client" "hostname" "authz") | nindent 4 }}
 
     downstream_cert_file: /shared/root.crt
     {{- include "lamassu.config.otel" $ | nindent 4 }}

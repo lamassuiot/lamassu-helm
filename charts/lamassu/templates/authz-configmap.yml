@@ -1,0 +1,40 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: authz-config
+  namespace: {{.Release.Namespace}}
+data:
+  config: |
+    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false) | nindent 4 }}
+
+    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_event_bus") | nindent 4 }}
+
+    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "publisher_event_bus") | nindent 4 }}
+
+    {{- include "lamassu.config.storage" (dict "root" $ "key" "authz_db" "database" .Values.services.authz.database) | nindent 4 }}
+
+    {{- if .Values.services.authz.credentials }}
+    credentials:
+      {{- range $schema, $cred := .Values.services.authz.credentials }}
+      {{- include "lamassu.config.storage" (dict "root" $ "key" $schema "database" $cred.database) | nindent 6 }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.services.authz.bootstrap }}
+    bootstrap:
+      {{ .Values.services.authz.bootstrap | toYaml | nindent 6 | trim }}
+    {{- end }}
+
+    preload_dir: /etc/lamassuiot/authz/preload
+
+    jwks_url: {{ .Values.services.authz.jwkUrl }}
+    enable_jwt_validation: true
+
+    schemas:
+      pki: /etc/lamassuiot/authz/schemas/pki.json
+      authz: /etc/lamassuiot/authz/schemas/authz.json
+
+    {{- if .Values.services.wfx.enabled }}
+    http_schemas:
+    - /etc/lamassuiot/authz/schemas/http-wfx.json
+    {{- end }}

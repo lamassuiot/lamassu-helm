@@ -1,0 +1,19 @@
+{{- if and .Values.services.wfx.enabled .Values.services.wfx.routing.enabled }}
+{{ include "lamassu.httproute" (dict
+  "root" $
+  "name" "api-wfx-sbi"
+  "backend" "wfx"
+  "port" .Values.services.wfx.clientPort
+  "path" .Values.services.wfx.routing.sbiPath
+  "rewrite" (default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteSbiPath)
+  "authLabel" "external") }}
+---
+{{ include "lamassu.httproute" (dict
+  "root" $
+  "name" "api-wfx-nbi"
+  "backend" "wfx"
+  "port" .Values.services.wfx.managementPort
+  "path" .Values.services.wfx.routing.nbiPath
+  "rewrite" (default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteNbiPath)
+  "authLabel" "external") }}
+{{- end }}
