@@ -310,7 +310,30 @@ services:
       # e.g. credentials: { pki: { database: pki_db } }
     credentials: {}
     # -- Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids}
-    bootstrap: []
+    # Seeded by the pre-install/pre-upgrade database Job, after the policies are
+    # preloaded. Creating a principal that already exists is a no-op, so these
+    # entries are safe to leave in place across upgrades.
+    #
+    # The default grants full access to anyone whose OIDC token carries the
+    # "pki-admin" realm role. Without it a fresh install — and an upgrade from
+    # 3.8.0, where authz did not exist — comes up with no principals at all and
+    # nobody able to administer the PKI. Assign that role deliberately in the
+    # identity provider, or replace this entry with your own matching rule.
+    bootstrap:
+      - principal_id: "oidc:pki-admin"
+        principal_name: "PKI Admin"
+        principal_type: "oidc"
+        policy_ids:
+          # SUPER ADMIN — full access to the service APIs
+          - "lamassu.a6811b60-5f89-4ce7-badb-78ea234794d3"
+          # Job Manager - Mgmt NBI Admin — workflow/job management HTTP routes.
+          # Only meaningful when services.wfx.enabled is true; harmless otherwise.
+          - "lamassu.7df018c1-3140-4a35-9067-2e7d6cec3ed2"
+        auth_config:
+          claims:
+            - claim: "realm_access.roles"
+              operator: "contains"
+              value: "pki-admin"
   connectors:
 toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0

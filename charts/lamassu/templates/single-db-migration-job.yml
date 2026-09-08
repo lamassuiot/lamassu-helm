@@ -1,11 +1,53 @@
+{{- $authz := .Values.services.authz | default dict }}
+{{- $authzImage := dig "image" "" $authz }}
+{{- $authzDB := dig "database" "authz" $authz }}
+{{- $wfxDB := dig "postgres" "database" "wfx" (.Values.services.wfx | default dict) }}
+{{- if $authzImage }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "authz-init-config-{{ .Release.Name }}"
+  namespace: "{{ .Release.Namespace }}"
+  annotations:
+    # Must exist before the upgrade Job runs, so it is a hook with a lower weight
+    # than the Job. Carries only what `authz init` reads — connection, preload
+    # directory and bootstrap entries — not the full service configuration.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  config: |
+    logs:
+      level: "info"
+    authz_db:
+      provider: "postgres"
+      hostname: {{ .Values.postgres.hostname }}
+      port: {{ .Values.postgres.port }}
+      username: "{{ .Values.postgres.username }}"
+      password: "{{ .Values.postgres.password }}"
+      database: {{ $authzDB }}
+    preload_dir: /etc/lamassuiot/authz/preload
+    {{- if $authz.bootstrap }}
+    bootstrap:
+      {{ $authz.bootstrap | toYaml | nindent 6 | trim }}
+    {{- end }}
+---
+{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: "single-db-migration-job-{{ .Release.Name }}"
   namespace: "{{ .Release.Namespace }}"
   annotations:
-    # This hook runs before upgrade to migrate from separate databases to single database with schemas
-    "helm.sh/hook": pre-upgrade
+    # Single entry point for preparing the database, run as one Job so the steps
+    # are strictly ordered and the whole thing either succeeds or fails together:
+    #   1. create databases and schemas (and, on upgrade, fold the 3.8.0
+    #      per-service databases into the pki database as schemas)
+    #   2. apply goose migrations to every pki schema
+    #   3. migrate authz and seed its policies and bootstrap principals
+    # Being a pre-install/pre-upgrade hook, Helm waits for it before applying any
+    # Deployment, so no service ever starts against an unprepared database.
+    "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-3"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
@@ -14,9 +56,10 @@ spec:
       name: "single-db-migration-job-{{ .Release.Name }}"
     spec:
       restartPolicy: Never
-      containers:
-        - name: pre-upgrade-schema-migration-job
-          image: docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4
+      initContainers:
+        # Step 1 — databases, schemas and the 3.8.0 consolidation.
+        - name: create-databases
+          image: docker.io/postgres:18.4
           env:
             - name: POSTGRES_USER
               value: "{{ .Values.postgres.username }}"
@@ -39,8 +82,8 @@ spec:
               # List of services and their databases
               SERVICES="{{ join " " .Values.migrations.db.databases }}"
               TARGET_DB="pki"
-              AUTHZ_DB="{{ .Values.services.authz.database }}"
-              WFX_DB="{{ .Values.services.wfx.postgres.database }}"
+              AUTHZ_DB="{{ $authzDB }}"
+              WFX_DB="{{ $wfxDB }}"
 
               # Function to check if database exists
               check_db_exists() {
@@ -101,41 +144,44 @@ spec:
               done
               echo ""
 
-              # Step 3: Migrate each service database to its own schema
+              # Principals and policy grants are seeded by the init-authz step
+              # below, from services.authz.bootstrap. They cannot be inserted
+              # here: authz owns its own migrations, so at this point its
+              # database exists but has no tables yet.
+
+              # Step 3: Ensure each service schema exists, importing legacy data when present
+              IMPORTED_SERVICES=""
               for service in $SERVICES; do
                 echo "=========================================="
-                echo "Migrating service: $service"
+                echo "Ensuring schema: $service"
                 echo "=========================================="
-                
-                # Check if source database exists
+
+                # Decide whether there is legacy data to import BEFORE creating the
+                # target schema, since creating it first would mask the check below.
+                needs_import=true
                 if [ "$(check_db_exists $service)" != "1" ]; then
-                  echo "  >> Source database '$service' does not exist. Skipping migration for this service..."
-                  echo ""
-                  continue
+                  echo "  >> No legacy database '$service'. Nothing to import."
+                  needs_import=false
+                elif [ "$(check_db_has_tables $service)" == "0" ]; then
+                  echo "  >> Legacy database '$service' has no tables. Nothing to import."
+                  needs_import=false
+                elif [ "$(check_schema_exists $TARGET_DB $service)" == "1" ]; then
+                  echo "  >> Schema '$service' already exists in '$TARGET_DB'. Leaving it untouched."
+                  needs_import=false
                 fi
-                
-                # Check if source database has any tables
-                table_count=$(check_db_has_tables $service)
-                if [ "$table_count" == "0" ]; then
-                  echo "  >> Source database '$service' has no tables. Skipping migration for this service..."
-                  echo ""
-                  continue
-                fi
-                
-                echo "  >> Source database '$service' exists with $table_count table(s)."
-                
-                # Check if target schema already exists
-                if [ "$(check_schema_exists $TARGET_DB $service)" == "1" ]; then
-                  echo "  >> Schema '$service' already exists in '$TARGET_DB'. Skipping migration for this service..."
-                  echo ""
-                  continue
-                fi
-                
+
                 # Create schema in target database
-                echo "  >> Creating schema '$service' in database '$TARGET_DB'..."
+                echo "  >> Ensuring schema '$service' exists in database '$TARGET_DB'..."
                 PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "CREATE SCHEMA IF NOT EXISTS $service;"
-                echo "  >> Schema '$service' created."
-                
+
+                if [ "$needs_import" != "true" ]; then
+                  echo ""
+                  continue
+                fi
+
+                echo "  >> Legacy database '$service' has $(check_db_has_tables $service) table(s) to import."
+                IMPORTED_SERVICES="$IMPORTED_SERVICES $service"
+
                 # Dump the source database (schema and data)
                 echo "  >> Dumping data from database '$service'..."
                 PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d "$service" --schema=public --no-owner --no-acl > /tmp/${service}_dump.sql
@@ -180,11 +226,19 @@ spec:
                   applied_at TIMESTAMP DEFAULT NOW() NOT NULL,
                   description TEXT
                 );
-                
-                INSERT INTO public.migration_history (migration_name, description) 
-                VALUES ('schema_migration_v1', 'Migrated from separate databases to single database with schemas for: $SERVICES');
               "
-              echo "  >> Migration marker created."
+
+              # Only record a migration when legacy data was actually imported, so a
+              # fresh install does not leave a marker claiming a migration happened.
+              if [ -n "$IMPORTED_SERVICES" ]; then
+                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "
+                  INSERT INTO public.migration_history (migration_name, description)
+                  VALUES ('schema_migration_v1', 'Migrated from separate databases to single database with schemas for:$IMPORTED_SERVICES');
+                "
+                echo "  >> Migration marker created for:$IMPORTED_SERVICES"
+              else
+                echo "  >> No legacy data imported. No migration marker recorded."
+              fi
               echo ""
 
               echo "=========================================="
@@ -195,9 +249,53 @@ spec:
               echo "  - Target database: $TARGET_DB"
               echo "  - Authz database: $AUTHZ_DB"
               echo "  - WFX database: $WFX_DB"
-              echo "  - Migrated services: $SERVICES"
+              echo "  - Schemas ensured: $SERVICES"
+              echo "  - Imported from legacy databases:${IMPORTED_SERVICES:- none}"
               echo ""
               echo "IMPORTANT: Update your application configuration to use:"
               echo "  - Database: $TARGET_DB"
               echo "  - Schema search path: <service_name> (e.g., 'ca', 'devicemanager', etc.)"
               echo "=========================================="
+
+        # Step 2 — goose migrations, one container per pki schema. They run in
+        # order and each must exit 0 before the next starts.
+        {{- range $schema := .Values.migrations.db.databases }}
+        - name: migrate-{{ $schema }}
+          image: {{ $.Values.migrations.db.image }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          args:
+            - >-
+              host={{ $.Values.postgres.hostname }}
+              user={{ $.Values.postgres.username }}
+              password={{ $.Values.postgres.password }}
+              dbname=pki
+              search_path={{ $schema }}
+              port={{ $.Values.postgres.port }}
+              sslmode=disable
+            - "up"
+        {{- end }}
+
+        {{- if $authzImage }}
+        # Step 3 — authz migrations, policy preload and bootstrap principals.
+        # Same image as the authz Deployment, so the embedded migrations can
+        # never drift from the service that reads them.
+        - name: init-authz
+          image: {{ $authzImage }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args: ["init"]
+          volumeMounts:
+            - name: authz-init-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+        {{- end }}
+
+      containers:
+        - name: done
+          image: docker.io/postgres:18.4
+          command: ["bash", "-c", "echo 'Database upgrade completed.'"]
+      {{- if $authzImage }}
+      volumes:
+        - name: authz-init-config
+          configMap:
+            name: "authz-init-config-{{ .Release.Name }}"
+      {{- end }}
