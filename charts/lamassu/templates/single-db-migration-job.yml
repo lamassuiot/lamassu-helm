@@ -282,6 +282,9 @@ spec:
         - name: init-authz
           image: {{ $authzImage }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          # The image declares the binary as CMD with no ENTRYPOINT, so args
+          # alone would replace it instead of adding to it.
+          command: ["/authz"]
           args: ["init"]
           volumeMounts:
             - name: authz-init-config
