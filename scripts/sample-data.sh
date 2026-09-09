@@ -40,8 +40,6 @@
 #
 # Required tools: curl, jq, openssl, base64.
 #
-# The script is idempotent-ish: like the Go generator, failures on individual
-# "already exists" steps are logged and skipped rather than aborting the run.
 #
 # TLS: like generator.go's http.Client (InsecureSkipVerify: true), TLS
 # certificate verification is skipped by default, since this tool targets
