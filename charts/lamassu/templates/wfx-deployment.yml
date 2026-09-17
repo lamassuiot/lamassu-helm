@@ -22,8 +22,18 @@ spec:
         - name: wfx
           image: {{ .Values.services.wfx.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-{{- with .Values.services.wfx.extraArgs }}
+          # The image's own ENTRYPOINT bakes in "--mgmt-host=0.0.0.0" (a bare
+          # host with no scheme/port), and wfx's CLI flags take precedence
+          # over its WFX_MGMT_HOST/WFX_CLIENT_HOST env vars. Without this
+          # override, that baked-in flag silently wins over WFX_MGMT_HOST and
+          # the management API never actually binds, while the client API
+          # (no such conflicting baked flag) works fine.
+          command:
+            - wfx
           args:
+            - {{ printf "--client-host=http://0.0.0.0:%v" .Values.services.wfx.clientPort | quote }}
+            - {{ printf "--mgmt-host=http://0.0.0.0:%v" .Values.services.wfx.managementPort | quote }}
+{{- with .Values.services.wfx.extraArgs }}
 {{- range . }}
             - {{ . | quote }}
 {{- end }}
@@ -31,10 +41,6 @@ spec:
           env:
             - name: WFX_STORAGE
               value: "postgres"
-            - name: WFX_CLIENT_HOST
-              value: {{ printf "http://0.0.0.0:%v" .Values.services.wfx.clientPort | quote }}
-            - name: WFX_MGMT_HOST
-              value: {{ printf "http://0.0.0.0:%v" .Values.services.wfx.managementPort | quote }}
             - name: WFX_LOG_FORMAT
               value: {{ .Values.services.wfx.logs.format | quote }}
             - name: WFX_LOG_LEVEL
