@@ -499,16 +499,6 @@ target_file="$1"
 cat >"$target_file" <<EOF
 services:
   kms:
-    command:
-      - /bin/sh
-    args:
-      - -ec
-      - |
-        until [ -S /run/p11-kit/pkcs11 ]; do
-          echo "Waiting for PKCS#11 SSH tunnel..."
-          sleep 1
-        done
-        exec /kms
     pkcs11Sidecar:
       enabled: true
       image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
