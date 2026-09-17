@@ -244,8 +244,8 @@ services:
       image: ""
       # -- Image pull policy for the PKCS#11 sidecar
       imagePullPolicy: IfNotPresent
-      # -- Security context for the PKCS#11 sidecar. This must match the KMS
-      #    runtime user so its mode-0600 forwarded Unix socket is accessible.
+      # -- Security context for the PKCS#11 sidecar. The forwarded mode-0660
+      #    Unix socket is accessible to KMS through the pod's fsGroup.
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
