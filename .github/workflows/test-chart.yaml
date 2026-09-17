@@ -108,3 +108,17 @@ jobs:
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct install --config .github/ci/ct.yaml --github-groups --target-branch ${{ github.base_ref || 'main' }}
+
+      - name: Debug wfx logs on failure
+        if: failure() && steps.list-changed.outputs.changed == 'true'
+        run: |
+          echo "=== wfx pod(s) ==="
+          kubectl get pods -n lamassu-test -l app=wfx || true
+          for pod in $(kubectl get pods -n lamassu-test -l app=wfx -o name 2>/dev/null); do
+            echo "=== describe $pod ==="
+            kubectl describe -n lamassu-test "$pod" || true
+            echo "=== logs $pod (current) ==="
+            kubectl logs -n lamassu-test "$pod" --all-containers --tail=200 || true
+            echo "=== logs $pod (previous) ==="
+            kubectl logs -n lamassu-test "$pod" --all-containers --tail=200 --previous || true
+          done
