@@ -32,13 +32,9 @@ spec:
             - name: WFX_STORAGE
               value: "postgres"
             - name: WFX_CLIENT_HOST
-              value: "0.0.0.0"
-            - name: WFX_CLIENT_PORT
-              value: {{ .Values.services.wfx.clientPort | quote }}
+              value: {{ printf "http://0.0.0.0:%v" .Values.services.wfx.clientPort | quote }}
             - name: WFX_MGMT_HOST
-              value: "0.0.0.0"
-            - name: WFX_MGMT_PORT
-              value: {{ .Values.services.wfx.managementPort | quote }}
+              value: {{ printf "http://0.0.0.0:%v" .Values.services.wfx.managementPort | quote }}
             - name: WFX_LOG_FORMAT
               value: {{ .Values.services.wfx.logs.format | quote }}
             - name: WFX_LOG_LEVEL
