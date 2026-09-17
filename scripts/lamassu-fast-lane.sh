@@ -699,7 +699,7 @@ services:
         port: 5432
         username: ""
         password: ""
-    bootstrap: 
+    bootstrap:
     - principal_id: "oidc:lamassu"
       principal_name: "lamassu"
       principal_type: "oidc"
@@ -723,6 +723,23 @@ EOF
 
 export DOMAIN=$DOMAIN
 yq -i '.services.ca.domains = [env(DOMAIN)]' lamassu.yaml
+
+if [ "$SAMPLE_DATA" = true ]; then
+    # Keycloak's service-account username for the "sample-data" client is
+    # "service-account-sample-data", not "lamassu", so it needs its own authz
+    # bootstrap principal alongside the human "lamassu" user's.
+    yq -i '.services.authz.bootstrap += [{
+        "principal_id": "oidc:service-account-sample-data",
+        "principal_name": "service-account-sample-data",
+        "principal_type": "oidc",
+        "policy_ids": ["lamassu.a6811b60-5f89-4ce7-badb-78ea234794d3"],
+        "auth_config": {
+            "claims": [
+                {"claim": "preferred_username", "operator": "equals", "value": "service-account-sample-data"}
+            ]
+        }
+    }]' lamassu.yaml
+fi
 
 if [ -n "$GATEWAY_IP" ]; then
     export IP_LIST="$GATEWAY_IP"
