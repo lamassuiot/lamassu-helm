@@ -29,20 +29,13 @@ gateway:
 
 services:
   kms:
-    # KNOWN ISSUE: ghcr.io/lamassuiot/lamassu-kms:3.8.0's PKCS11 engine fails
-    # with "CKR_CRYPTOKI_NOT_INITIALIZED" even against a verified-working
-    # p11-kit module/socket (confirmed with pkcs11-tool, bypassing KMS
-    # entirely, against the exact same tunnel/module setup this file
-    # configures). This is a regression in the KMS application itself (a
-    # separate repo/codebase), not in this chart's PKCS#11 wiring, and it is
-    # why `ct install` fails to bring KMS to Ready when testing this file.
-    # ghcr.io/lamassuiot/lamassu-kms:dev has a fix for the PKCS11 engine, but
-    # it is not a safe substitute here: it ships without a shell (breaking the
-    # command/args wait-for-socket wrapper below) and appears to default to a
-    # different storage database name, so it isn't just this bug fixed in
-    # isolation. Once a tagged KMS release with the PKCS11 fix (and no other
-    # unrelated changes) is available, bump the image here and this scenario
-    # should pass end-to-end.
+    # No command/args override here: the PKCS#11 sidecar init container below
+    # defines its own readinessProbe (checking the forwarded socket exists),
+    # and Kubernetes' native-sidecar semantics (1.29+) already block the main
+    # "kms" container from starting until that readinessProbe passes. A
+    # command/args wait-loop on the main container would be redundant on top
+    # of that guarantee, and can't work at all on images without a shell
+    # (e.g. ghcr.io/lamassuiot/lamassu-kms:dev).
     # Must match the PKCS#11 sidecar's securityContext: the sidecar forwards the
     # socket as a mode-0600 file owned by this UID, so KMS needs the same UID to
     # read/write it.
@@ -50,16 +43,6 @@ services:
       runAsNonRoot: true
       runAsUser: 65532
       runAsGroup: 0
-    command:
-      - /bin/sh
-    args:
-      - -ec
-      - |
-        until [ -S /run/p11-kit/pkcs11 ]; do
-          echo "Waiting for PKCS#11 SSH tunnel..."
-          sleep 1
-        done
-        exec /kms
     pkcs11Sidecar:
       enabled: true
       image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest

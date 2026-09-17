@@ -179,6 +179,12 @@ The flow is:
 4. Lamassu KMS uses `p11-kit-client.so` and `P11_KIT_SERVER_ADDRESS` to talk
    to the forwarded token.
 
+The sidecar defines a `readinessProbe` that checks for the forwarded socket,
+and Kubernetes' native-sidecar semantics (1.29+) block the main KMS container
+from starting until that probe passes — no extra wait-loop or command
+override is needed on the KMS container itself for the tunnel to be ready in
+time.
+
 Example values: [charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml](/home/ubuntu/dev/lamassu/lamassu-helm/charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml)
 
 Build the proxy image from [ci/softhsm/proxy.dockerfile](/home/ubuntu/dev/lamassu/lamassu-helm/ci/softhsm/proxy.dockerfile:1), then configure:
@@ -193,16 +199,6 @@ services:
       runAsNonRoot: true
       runAsUser: 65532
       runAsGroup: 0
-    command:
-      - /bin/sh
-    args:
-      - -ec
-      - |
-        until [ -S /run/p11-kit/pkcs11 ]; do
-          echo "Waiting for PKCS#11 SSH tunnel..."
-          sleep 1
-        done
-        exec /kms
     pkcs11Sidecar:
       enabled: true
       image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
