@@ -1,0 +1,127 @@
+postgres:
+  hostname: "postgresql"
+  port: 5432
+  username: "admin"
+  password: "admin"
+
+amqp:
+  hostname: "rabbitmq"
+  port: 5672
+  username: "admin"
+  password: "admin"
+
+auth:
+  oidc:
+    frontend:
+      authority: https://ci.lamassu.io/auth/realms/lamassu
+
+gateway:
+  extraRouting:
+    - path: /auth
+      name: auth
+      target:
+        host: auth-keycloak
+        port: 80  # If no sidecar is used
+  ports:
+    http: 80
+    https: 443
+  addresses:
+
+services:
+  kms:
+    # KNOWN ISSUE: ghcr.io/lamassuiot/lamassu-kms:3.8.0's PKCS11 engine fails
+    # with "CKR_CRYPTOKI_NOT_INITIALIZED" even against a verified-working
+    # p11-kit module/socket (confirmed with pkcs11-tool, bypassing KMS
+    # entirely, against the exact same tunnel/module setup this file
+    # configures). This is a regression in the KMS application itself (a
+    # separate repo/codebase), not in this chart's PKCS#11 wiring, and it is
+    # why `ct install` fails to bring KMS to Ready when testing this file.
+    # ghcr.io/lamassuiot/lamassu-kms:dev has a fix for the PKCS11 engine, but
+    # it is not a safe substitute here: it ships without a shell (breaking the
+    # command/args wait-for-socket wrapper below) and appears to default to a
+    # different storage database name, so it isn't just this bug fixed in
+    # isolation. Once a tagged KMS release with the PKCS11 fix (and no other
+    # unrelated changes) is available, bump the image here and this scenario
+    # should pass end-to-end.
+    # Must match the PKCS#11 sidecar's securityContext: the sidecar forwards the
+    # socket as a mode-0600 file owned by this UID, so KMS needs the same UID to
+    # read/write it.
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 0
+    command:
+      - /bin/sh
+    args:
+      - -ec
+      - |
+        until [ -S /run/p11-kit/pkcs11 ]; do
+          echo "Waiting for PKCS#11 SSH tunnel..."
+          sleep 1
+        done
+        exec /kms
+    pkcs11Sidecar:
+      enabled: true
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+      imagePullPolicy: IfNotPresent
+      socketDir: /run/p11-kit
+      env:
+        - name: SSH_DESTINATION
+          value: root@hsm-softhsm
+        - name: SSH_IDENTITY_FILE
+          value: /etc/p11-kit-ssh/.key
+        - name: P11_LOCAL_SOCKET
+          value: /run/p11-kit/pkcs11
+        - name: P11_REMOTE_SOCKET
+          value: /run/p11-kit/pkcs11
+      volumeMounts:
+        - name: kms-pkcs11-ssh-key
+          mountPath: /etc/p11-kit-ssh
+          readOnly: true
+      volumes:
+        - name: kms-pkcs11-ssh-key
+          secret:
+            secretName: kms-pkcs11-sidecar-ssh-key
+    pkcs11Modules:
+      # p11-kit-client.so is not bundled in the KMS image, so it is staged into a
+      # shared, read-only volume by a short-lived init container instead.
+      - name: p11-kit-client
+        image: debian:12-slim
+        imagePullPolicy: IfNotPresent
+        mountPath: /run/p11-kit-modules
+        securityContext:
+          runAsNonRoot: false
+          runAsUser: 0
+        command:
+          - /bin/sh
+        args:
+          - -ec
+          - |
+            set -eu
+            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/p11-kit-modules}"
+            mkdir -p "${TARGET_DIR}"
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends p11-kit-modules
+            MOD="$(dpkg -L p11-kit-modules | grep -m1 '/p11-kit-client\.so$')"
+            [ -n "${MOD}" ] || { echo "p11-kit-client.so not found" >&2; exit 1; }
+            cp -L "${MOD}" "${TARGET_DIR}/p11-kit-client.so"
+            ldd "${MOD}" | sed -n 's/.*=> \(\/[^ ]*\).*/\1/p' | while read -r lib; do
+              case "${lib}" in
+                */libc.so*|*/libm.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/ld-linux*) continue ;;
+              esac
+              cp -L "${lib}" "${TARGET_DIR}/" 2>/dev/null || true
+            done
+            chmod -R 0555 "${TARGET_DIR}"
+    cryptoEngines:
+      defaultEngineID: pkcs11-1
+      engines:
+        - id: pkcs11-1
+          type: pkcs11
+          token: "lamassuHSM"
+          pin: "1234"
+          module_path: "/run/p11-kit-modules/p11-kit-client.so"
+          module_extra_options:
+            env:
+              P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
+              LD_LIBRARY_PATH: "/run/p11-kit-modules"

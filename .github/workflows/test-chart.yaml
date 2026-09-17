@@ -81,6 +81,30 @@ jobs:
 
           helm install auth oci://registry-1.docker.io/cloudpirates/keycloak --version 0.21.9 -n lamassu-test -f .github/ci/keycloak.yaml --wait --timeout 600s
           helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq --version 0.21.4 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait --timeout 300s
+
+      - name: Prepare SoftHSM for PKCS11 CI test
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          key_dir=$(mktemp -d)
+          ssh-keygen -q -t ed25519 -N "" -f "$key_dir/ssh-key" -C "lamassu-ci-pkcs11"
+          kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
+            --from-file=.key="$key_dir/ssh-key" \
+            -n lamassu-test
+          helm install hsm charts/softhsm -n lamassu-test \
+            --set-string ssh.authorizedKeys="$(cat "$key_dir/ssh-key.pub")" \
+            --set-string softhsm.pin="1234" \
+            --set-string softhsm.so_pin="5432" \
+            --wait
+
+      # KNOWN ISSUE: this currently still fails when testing
+      # charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml. KMS never reaches
+      # Ready because ghcr.io/lamassuiot/lamassu-kms:3.8.0's PKCS11 engine
+      # fails with CKR_CRYPTOKI_NOT_INITIALIZED — confirmed (via pkcs11-tool,
+      # bypassing KMS entirely) to be a regression in the KMS application
+      # itself against this exact chart-provisioned tunnel/module setup, not
+      # a bug in this chart. See charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml
+      # for details; this step should start passing once a KMS release with
+      # the PKCS11 fix is available.
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct install --config .github/ci/ct.yaml --github-groups --target-branch main

@@ -21,18 +21,33 @@ spec:
       containers:
         - name: softhsm-v2
           image: {{ .Values.image }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}: Always
+          imagePullPolicy: {{ default "Always" (get (default (dict) (get .Values "global")) "imagePullPolicy") | quote }}
           ports:
             - containerPort: 5657
+            - containerPort: 22
+          # sshd starts before token initialization and p11-kit server startup.
+          # Do not let Helm/Kubernetes consider SoftHSM ready until the server
+          # socket exists, otherwise KMS can start before the token is visible.
+          readinessProbe:
+            exec:
+              command: ["test", "-S", "/run/p11-kit/pkcs11"]
+            initialDelaySeconds: 1
+            periodSeconds: 2
           env:
             - name: LABEL
-              value: "{{ .Values.hsm.label }}"
+              value: "{{ .Values.softhsm.label }}"
             - name: PIN
-              value: "{{ .Values.hsm.pin }}"
+              value: {{ required "softhsm.pin is required and must not be empty" .Values.softhsm.pin | quote }}
             - name: SO_PIN
-              value: "{{ .Values.hsm.so_pin }}"
+              value: {{ required "softhsm.so_pin is required and must not be empty" .Values.softhsm.so_pin | quote }}
+            - name: SLOT
+              value: "{{ .Values.softhsm.slot }}"
             - name: CONNECTION_PROTOCOL
               value: "tcp"
+            {{- if .Values.ssh.authorizedKeys }}
+            - name: SSH_AUTHORIZED_KEYS
+              value: {{ .Values.ssh.authorizedKeys | quote }}
+            {{- end }}
           volumeMounts:
             - name: softhsm-v2-data
               mountPath: /softhsm/tokens
@@ -53,4 +68,3 @@ spec:
       resources:
         requests:
           storage: 2Gi
-

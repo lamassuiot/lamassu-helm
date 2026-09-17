@@ -23,6 +23,28 @@ LAMASSU_USE_LOCAL_PATH=false
 SAMPLE_DATA=false
 HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
+SOFTHSM_CHART_PATH="./charts/softhsm"
+WITH_HSM=false
+SOFTHSM_SSH_PRIVATE_KEY_FILE=""
+SOFTHSM_SSH_PUBLIC_KEY=""
+SOFTHSM_LABEL="lamassuHSM"
+SOFTHSM_PIN="1234"
+SOFTHSM_SLOT="0"
+SOFTHSM_SO_PIN="5432"
+# The KMS downloads the NetHSM PKCS#11 module at runtime so no custom KMS image is needed.
+NETHSM_PKCS11_VERSION="v2.2.0"
+NETHSM_TOKEN_LABEL="LocalHSM"
+NETHSM_OPERATOR_PASSPHRASE="0123456789"
+NETHSM_UNLOCK_PASSPHRASE=$(
+    shuf -er -n30 {A..Z} {a..z} {0..9} | tr -d '\n'
+    echo
+)
+NETHSM_ADMIN_PASSPHRASE=$(
+    shuf -er -n30 {A..Z} {a..z} {0..9} | tr -d '\n'
+    echo
+)
+NETHSM_SYSTEM_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
 TLS_CRT=
 TLS_KEY=
 
@@ -55,6 +77,7 @@ OFFLINE_HELMCHART_VICTORIA_LOGS=""
 OFFLINE_HELMCHART_VICTORIA_TRACES=""
 OFFLINE_HELMCHART_JAEGER=""
 OFFLINE_HELMCHART_OTEL_COLLECTOR=""
+OFFLINE_HELMCHART_SOFTHSM=""
 
 
 function main() {
@@ -112,6 +135,10 @@ function main() {
                 exit 1
             fi
         fi
+        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_HELMCHART_SOFTHSM" = "" ]; then
+            echo -e "\n${RED}SoftHSM helm chart path is empty${NOCOLOR}"
+            exit 1
+        fi
     else
         echo -e "${ORANGE}ONLINE MODE ENABLED${NOCOLOR}"
     fi
@@ -121,22 +148,41 @@ function main() {
     check_dependencies
     echo -e "\n${BLUE}2) Provide minimal config info${NOCOLOR}"
     request_config_data
+    if [ "$WITH_HSM" = true ]; then
+        echo -e "\n${BLUE}2.1) Prepare SoftHSM SSH credentials${NOCOLOR}"
+        prepare_softhsm_ssh_keypair
+    fi
     echo -e "\n${BLUE}3) Create ${NAMESPACE} namespace${NOCOLOR}"
     create_kubernetes_namespace
+    STEP_START_TIME=$(date +%s)
     echo -e "\n${BLUE}4) Install PostgreSQL${NOCOLOR}"
     install_postgresql
+    checkpoint "PostgreSQL"
     echo -e "\n${BLUE}5) Install Auth - Keycloak${NOCOLOR}"
     install_keycloak
+    checkpoint "Keycloak"
     echo -e "\n${BLUE}6) Install RabbitMQ${NOCOLOR}"
     install_rabbitmq
+    checkpoint "RabbitMQ"
+
+    next_step=7
     if [ "$OTEL" = true ]; then
-        echo -e "\n${BLUE}7) Install Observability Stack (Victoria Logs + VictoriaTraces + Jaeger + OTel Collector)${NOCOLOR}"
+        echo -e "\n${BLUE}${next_step}) Install Observability Stack (Victoria Logs + VictoriaTraces + Jaeger + OTel Collector)${NOCOLOR}"
         install_observability
-        echo -e "\n${BLUE}8) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
-    else
-        echo -e "\n${BLUE}7) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
+        checkpoint "Observability Stack"
+        next_step=$((next_step + 1))
     fi
+
+    if [ "$WITH_HSM" = true ]; then
+        echo -e "\n${BLUE}${next_step}) Install SoftHSM${NOCOLOR}"
+        install_softhsm
+        checkpoint "SoftHSM"
+        next_step=$((next_step + 1))
+    fi
+
+    echo -e "\n${BLUE}${next_step}) Install Lamassu IoT. It may take a few minutes${NOCOLOR}"
     install_lamassu
+    checkpoint "Lamassu IoT"
 
     if [ "$SAMPLE_DATA" = true ]; then
         echo -e "\n${BLUE}9) Populate sample data${NOCOLOR}"
@@ -164,6 +210,7 @@ function usage() {
     echo " --helm-chart-postgres        (Only needed while using --offline) Path to the Posgtres helm chart (.tgz format)"
     echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
     echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
+    echo " --helm-chart-softhsm         (Only needed while using --offline and --with-hsm) Path to the SoftHSM helm chart (.tgz format)"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
@@ -172,6 +219,8 @@ function usage() {
     echo " --helm-chart-jaeger          (Only needed while using --offline with --otel) Path to the Jaeger helm chart (.tgz format)"
     echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
+    echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: ./charts/softhsm"
+    echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11"
 }
 
 function has_argument() {
@@ -201,6 +250,19 @@ function process_flags() {
             ;;
         --offline)
             OFFLINE=true
+            ;;
+        --with-hsm)
+            WITH_HSM=true
+            ;;
+        --softhsm-chart-path)
+            if ! has_argument $@; then
+                echo -e "\n${RED}SoftHSM chart path not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            SOFTHSM_CHART_PATH=$(extract_argument $@)
+
+            shift
             ;;
          --tls-crt)
               if ! has_argument $@; then
@@ -259,6 +321,16 @@ function process_flags() {
                 exit 1
             fi
             OFFLINE_HELMCHART_KEYCLOAK=$(extract_argument $@)
+
+            shift
+            ;;
+         --helm-chart-softhsm)
+              if ! has_argument $@; then
+                echo -e "\n${RED}SoftHSM Helm Chart not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_HELMCHART_SOFTHSM=$(extract_argument $@)
 
             shift
             ;;
@@ -400,10 +472,199 @@ function process_flags() {
 
 function final_instructions() {
     echo -e "${GREEN}=== Lamassu IoT has been installed in your Kubernetes instance ===${NOCOLOR}"
+    echo -e "${GREEN}Total installation time: $(format_duration $(($(date +%s) - SCRIPT_START_TIME)))${NOCOLOR}"
     echo -e "${BLUE}Please connect to https://${DOMAIN} using default user lamassu/lamassu ${NOCOLOR}"
     echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
     echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
     echo -e "${BLUE}Use the provided Keycloak credentials ${KEYCLOAK_USER}/${KEYCLOAK_PWD}${NOCOLOR}"
+    if [ "$WITH_HSM" = true ]; then
+                echo -e "${BLUE}SoftHSM endpoint configured for PKCS#11 via p11-kit socket forwarding${NOCOLOR}"
+    fi
+}
+
+function prepare_softhsm_ssh_keypair() {
+        if [ -n "$SOFTHSM_SSH_PUBLIC_KEY" ] && [ -n "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
+                return 0
+        fi
+
+        local key_dir
+        key_dir=$(mktemp -d /tmp/lamassu-kms-pkcs11-XXXXXX)
+        SOFTHSM_SSH_PRIVATE_KEY_FILE="$key_dir/ssh-key"
+        ssh-keygen -q -t ed25519 -N "" -f "$SOFTHSM_SSH_PRIVATE_KEY_FILE" -C "lamassu-fastlane-pkcs11" >/dev/null
+        SOFTHSM_SSH_PUBLIC_KEY=$(cat "$SOFTHSM_SSH_PRIVATE_KEY_FILE.pub")
+}
+
+function create_softhsm_kms_override_file() {
+target_file="$1"
+cat >"$target_file" <<EOF
+services:
+  kms:
+    command:
+      - /bin/sh
+    args:
+      - -ec
+      - |
+        until [ -S /run/p11-kit/pkcs11 ]; do
+          echo "Waiting for PKCS#11 SSH tunnel..."
+          sleep 1
+        done
+        exec /kms
+    pkcs11Sidecar:
+      enabled: true
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+      imagePullPolicy: Always
+      socketDir: /run/p11-kit
+      env:
+        - name: SSH_DESTINATION
+          value: root@hsm-softhsm
+        - name: SSH_IDENTITY_FILE
+          value: /etc/p11-kit-ssh/.key
+        - name: P11_LOCAL_SOCKET
+          value: /run/p11-kit/pkcs11
+        - name: P11_REMOTE_SOCKET
+          value: /run/p11-kit/pkcs11
+      volumeMounts:
+        - name: kms-pkcs11-ssh-key
+          mountPath: /etc/p11-kit-ssh
+          readOnly: true
+      volumes:
+        - name: kms-pkcs11-ssh-key
+          secret:
+            secretName: kms-pkcs11-sidecar-ssh-key
+EOF
+
+# NetHSM engine: stage libnethsm_pkcs11.so and its config in a shared volume.
+cat >>"$target_file" <<EOF
+    pkcs11Modules:
+      - name: nethsm
+        image: curlimages/curl:8.11.0
+        imagePullPolicy: IfNotPresent
+        mountPath: /run/nethsm
+        command:
+          - /bin/sh
+          - -ec
+          - |
+EOF
+
+cat >>"$target_file" <<'EOF'
+            set -eu
+            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/nethsm}"
+            mkdir -p "${TARGET_DIR}"
+            case "$(uname -m)" in
+              x86_64) ARCH=x86_64 ;;
+              aarch64|arm64) ARCH=aarch64 ;;
+              *) echo "unsupported arch $(uname -m)" >&2; exit 1 ;;
+            esac
+            URL="https://github.com/Nitrokey/nethsm-pkcs11/releases/download/${NETHSM_PKCS11_VERSION}/nethsm-pkcs11-${NETHSM_PKCS11_VERSION}-${ARCH}-linux-glibc.so"
+            echo "Downloading ${URL}"
+            curl -fsSL "${URL}" -o "${TARGET_DIR}/libnethsm_pkcs11.so"
+            chmod 0555 "${TARGET_DIR}/libnethsm_pkcs11.so"
+            cat > "${TARGET_DIR}/p11nethsm.yaml" <<CFG
+            log_level: ${NETHSM_LOG_LEVEL:-Info}
+            slots:
+              - label: ${NETHSM_SLOT_LABEL:-LocalHSM}
+                operator:
+                  username: "${NETHSM_OPERATOR_USER:-operator}"
+                  password: "${NETHSM_OPERATOR_PASSWORD:-}"
+                administrator:
+                  username: "${NETHSM_ADMIN_USER:-admin}"
+                  password: "${NETHSM_ADMIN_PASSWORD:-}"
+                instances:
+                  - url: "${NETHSM_URL:-https://hsm-nethsm:8443/api/v1}"
+                    danger_insecure_cert: ${NETHSM_INSECURE_CERT:-true}
+                retries:
+                  count: 3
+                  delay_seconds: 1
+                timeout_seconds: 10
+            CFG
+            chmod 0444 "${TARGET_DIR}/p11nethsm.yaml"
+            ls -l "${TARGET_DIR}"
+EOF
+
+cat >>"$target_file" <<EOF
+        env:
+          - name: NETHSM_PKCS11_VERSION
+            value: "${NETHSM_PKCS11_VERSION}"
+          - name: NETHSM_URL
+            value: https://hsm-nethsm:8443/api/v1
+          - name: NETHSM_SLOT_LABEL
+            value: ${NETHSM_TOKEN_LABEL}
+          - name: NETHSM_OPERATOR_USER
+            value: operator
+          - name: NETHSM_OPERATOR_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: hsm-nethsm-provision
+                key: operatorPassphrase
+          - name: NETHSM_ADMIN_USER
+            value: admin
+          - name: NETHSM_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: hsm-nethsm-provision
+                key: adminPassphrase
+EOF
+
+# SoftHSM engine: stage p11-kit-client.so and its non-core dependencies.
+cat >>"$target_file" <<EOF
+      - name: p11-kit-client
+        image: debian:12-slim
+        imagePullPolicy: IfNotPresent
+        mountPath: /run/p11-kit-modules
+        securityContext:
+          runAsUser: 0
+        command:
+          - /bin/sh
+          - -ec
+          - |
+EOF
+
+cat >>"$target_file" <<'EOF'
+            set -eu
+            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/p11-kit-modules}"
+            mkdir -p "${TARGET_DIR}"
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends p11-kit-modules
+            MOD="$(dpkg -L p11-kit-modules | grep -m1 '/p11-kit-client\.so$')"
+            [ -n "${MOD}" ] || { echo "p11-kit-client.so not found" >&2; exit 1; }
+            echo "Staging ${MOD} -> ${TARGET_DIR}/p11-kit-client.so"
+            cp -L "${MOD}" "${TARGET_DIR}/p11-kit-client.so"
+            ldd "${MOD}" | sed -n 's/.*=> \(\/[^ ]*\).*/\1/p' | while read -r lib; do
+              case "${lib}" in
+                */libc.so*|*/libm.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/ld-linux*) continue ;;
+              esac
+              cp -L "${lib}" "${TARGET_DIR}/" 2>/dev/null || true
+            done
+            chmod -R 0555 "${TARGET_DIR}"
+            ls -l "${TARGET_DIR}"
+EOF
+
+cat >>"$target_file" <<EOF
+    cryptoEngines:
+      defaultEngineID: "pkcs11-softhsm"
+      engines:
+        - id: "pkcs11-softhsm"
+          type: "pkcs11"
+          token: "${SOFTHSM_LABEL}"
+          pin: "${SOFTHSM_PIN}"
+          module_path: "/run/p11-kit-modules/p11-kit-client.so"
+          module_extra_options:
+            env:
+              P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
+              LD_LIBRARY_PATH: "/run/p11-kit-modules"
+        - id: "pkcs11-nethsm"
+          type: "pkcs11"
+          token: "${NETHSM_TOKEN_LABEL}"
+          pin: "${NETHSM_OPERATOR_PASSPHRASE}"
+          module_path: "/run/nethsm/libnethsm_pkcs11.so"
+          module_extra_options:
+            env:
+              P11NETHSM_CONFIG_FILE: "/run/nethsm/p11nethsm.yaml"
+        - id: "filesystem-1"
+          type: "filesystem"
+          storage_directory: "/crypto/fs"
+EOF
 }
 
 
@@ -511,6 +772,19 @@ else
     yq -i '.tls.certManagerOptions.certSpec.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
 fi
 
+if [ "$WITH_HSM" = true ]; then
+    if [ -z "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
+        echo -e "\n${RED}SoftHSM SSH private key is not prepared.${NOCOLOR}"
+        exit 1
+    fi
+    run_kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
+        --from-file=.key="$SOFTHSM_SSH_PRIVATE_KEY_FILE" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | run_kubectl apply -f -
+    create_softhsm_kms_override_file softhsm-kms.yaml
+    yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml softhsm-kms.yaml -i
+    rm softhsm-kms.yaml
+fi
 
     export POSTGRES_USER=$POSTGRES_USER
     export POSTGRES_PWD=$POSTGRES_PWD
@@ -839,6 +1113,38 @@ function create_kubernetes_namespace() {
     fi
 }
 
+function install_softhsm() {
+    if [ -z "$SOFTHSM_SSH_PUBLIC_KEY" ]; then
+        echo -e "\n${RED}SoftHSM SSH public key is not prepared.${NOCOLOR}"
+        exit 1
+    fi
+
+    helm_path="$SOFTHSM_CHART_PATH"
+    if [ "$OFFLINE" = true ]; then
+        helm_path="$OFFLINE_HELMCHART_SOFTHSM"
+    fi
+
+    run_helm install hsm "$helm_path" -n "$NAMESPACE" \
+        --set-string ssh.authorizedKeys="$SOFTHSM_SSH_PUBLIC_KEY" \
+        --set-string softhsm.label="$SOFTHSM_LABEL" \
+        --set-string softhsm.pin="$SOFTHSM_PIN" \
+        --set-string softhsm.slot="$SOFTHSM_SLOT" \
+        --set-string softhsm.so_pin="$SOFTHSM_SO_PIN" \
+        --set nethsm.enabled=true \
+        --set-string nethsm.tokenLabel="$NETHSM_TOKEN_LABEL" \
+        --set-string nethsm.provision.unlockPassphrase="$NETHSM_UNLOCK_PASSPHRASE" \
+        --set-string nethsm.provision.adminPassphrase="$NETHSM_ADMIN_PASSPHRASE" \
+        --set-string nethsm.provision.systemTime="$NETHSM_SYSTEM_TIME" \
+        --set-string nethsm.provision.operator.passphrase="$NETHSM_OPERATOR_PASSPHRASE" \
+        --wait
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error installing SoftHSM${NOCOLOR}"
+        exit 1
+    fi
+}
+
 function request_config_data() {
     if [ "$NON_INTERACTIVE" = false ]; then
         request_domain
@@ -976,6 +1282,10 @@ function check_dependencies() {
         fi
     fi
 
+    if [ "$WITH_HSM" = true ]; then
+        exit_if_command_not_installed ssh-keygen
+    fi
+
     if [ $dist == "microk8s" ]; then
         exit_if_kube_command_not_installed kubectl
         exit_if_kube_command_not_installed helm
@@ -1000,6 +1310,33 @@ function init() {
     ORANGE='\033[0;33m'
     GREEN='\033[0;32m'
     NOCOLOR='\033[0m'
+
+    SCRIPT_START_TIME=$(date +%s)
+    STEP_START_TIME=$SCRIPT_START_TIME
+}
+
+function format_duration() {
+    local total=$1
+    local h=$((total / 3600))
+    local m=$(((total % 3600) / 60))
+    local s=$((total % 60))
+    if [ "$h" -gt 0 ]; then
+        printf '%dh %dm %ds' "$h" "$m" "$s"
+    elif [ "$m" -gt 0 ]; then
+        printf '%dm %ds' "$m" "$s"
+    else
+        printf '%ds' "$s"
+    fi
+}
+
+function checkpoint() {
+    local label="$1"
+    local now
+    now=$(date +%s)
+    local step_elapsed=$((now - STEP_START_TIME))
+    local total_elapsed=$((now - SCRIPT_START_TIME))
+    echo -e "${GREEN}⏱  Checkpoint [${label}]: took $(format_duration "$step_elapsed") (total elapsed: $(format_duration "$total_elapsed"))${NOCOLOR}"
+    STEP_START_TIME=$now
 }
 
 function run_kubectl() {
