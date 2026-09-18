@@ -28,6 +28,17 @@ gateway:
   ports:
     http: 80
     https: 443
+  responseOverride:
+    # -- Rewrite 401 responses with a custom body
+    unauthorized:
+      enabled: true
+      contentType: application/json
+      body: '{"error": "Unauthorized"}'
+    # -- Rewrite 403 responses with a custom body
+    forbidden:
+      enabled: true
+      contentType: application/json
+      body: '{"error": "Forbidden"}'
 postgres:
   # -- Hostname for the PostgreSQL server
   hostname: ""
@@ -186,11 +197,11 @@ serviceDefaults:
 services:
   ui:
     # -- Docker image for the UI component
-    image: "ghcr.io/lamassuiot/lamassu-ui:dev"
+    image: "ghcr.io/lamassuiot/lamassu-ui:dev-v4"
     port: 80
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-va:dev
+    image: ghcr.io/lamassuiot/lamassu-va:dev-v4
     autoscaling:
       maxReplicas: 3
     fileStore:
@@ -212,13 +223,13 @@ services:
     domains:
       - dev.lamassu.io
     # -- Docker image for the CA component
-    image: ghcr.io/lamassuiot/lamassu-ca:dev
+    image: ghcr.io/lamassuiot/lamassu-ca:dev-v4
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
   kms:
     # -- Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC).
-    image: ghcr.io/lamassuiot/lamassu-kms:dev
+    image: ghcr.io/lamassuiot/lamassu-kms:dev-v4
     autoscaling:
       maxReplicas: 3
     # -- Optional command override for the KMS container
@@ -233,8 +244,8 @@ services:
       image: ""
       # -- Image pull policy for the PKCS#11 sidecar
       imagePullPolicy: IfNotPresent
-      # -- Security context for the PKCS#11 sidecar. This must match the KMS
-      #    runtime user so its mode-0600 forwarded Unix socket is accessible.
+      # -- Security context for the PKCS#11 sidecar. The forwarded mode-0660
+      #    Unix socket is accessible to KMS through the pod's fsGroup.
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -270,10 +281,10 @@ services:
           storage_directory: "/crypto/fs"
   deviceManager:
     # -- Docker image for the Device Manager component
-    image: ghcr.io/lamassuiot/lamassu-devmanager:dev
+    image: ghcr.io/lamassuiot/lamassu-devmanager:dev-v4
   dmsManager:
     # -- Docker image for the DMS Manager component
-    image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev
+    image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4
   wfx:
     # -- Enable the Siemens WFX workflow service
     enabled: true
@@ -318,7 +329,7 @@ services:
     extraArgs: []
   alerts:
     # -- Docker image for the Alerts component
-    image: ghcr.io/lamassuiot/lamassu-alerts:dev
+    image: ghcr.io/lamassuiot/lamassu-alerts:dev-v4
     autoscaling:
       maxReplicas: 3
     smtp_server:
@@ -338,7 +349,7 @@ services:
       port: 25
   authz:
     # -- Docker image for the Authz connector component
-    image: ghcr.io/lamassuiot/lamassu-authz:dev
+    image: ghcr.io/lamassuiot/lamassu-authz:dev-v4
     # -- JWKS endpoint used by authz to validate JWTs
     jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
     # -- PostgreSQL database name for authz principals, grants, and policies
@@ -376,7 +387,7 @@ toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
 migrations:
   db:
-    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev
+    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4
     databases:
       - alerts
       - ca
@@ -388,4 +399,4 @@ migrations:
     # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0.
     enabled: false
     # -- Docker image for the CA-to-KMS migration tool
-    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev
+    image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4

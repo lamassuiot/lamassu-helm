@@ -96,9 +96,6 @@ function main() {
         HELM_CONTEXT_ARGS=(--kube-context "$KUBE_CONTEXT")
     elif [ "$dist" == "microk8s" ]; then
         kube="microk8s"
-    elif [ "$KUBE_CONTEXT" != "" ]; then
-        kubectl="kubectl --context $KUBE_CONTEXT"
-        helm="helm --kube-context $KUBE_CONTEXT"
     fi
 
     if [ "$OFFLINE" = true ]; then
@@ -1350,6 +1347,7 @@ function request_keycloak_pwd() {
 
 function request_namespace() {
     echo -n "Kubernetes namespace ($NAMESPACE): "
+
     read req
     if [ "$req" != "" ]; then
         NAMESPACE=$req
