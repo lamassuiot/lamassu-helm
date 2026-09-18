@@ -78,6 +78,8 @@ OFFLINE_HELMCHART_VICTORIA_TRACES=""
 OFFLINE_HELMCHART_JAEGER=""
 OFFLINE_HELMCHART_OTEL_COLLECTOR=""
 OFFLINE_HELMCHART_SOFTHSM=""
+OFFLINE_IMAGE_NETHSM_PKCS11=""
+OFFLINE_IMAGE_P11_KIT_CLIENT=""
 
 
 function main() {
@@ -137,6 +139,14 @@ function main() {
         fi
         if [ "$WITH_HSM" = true ] && [ "$OFFLINE_HELMCHART_SOFTHSM" = "" ]; then
             echo -e "\n${RED}SoftHSM helm chart path is empty${NOCOLOR}"
+            exit 1
+        fi
+        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_IMAGE_NETHSM_PKCS11" = "" ]; then
+            echo -e "\n${RED}NetHSM PKCS#11 offline image is empty (required with --with-hsm and --offline)${NOCOLOR}"
+            exit 1
+        fi
+        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_IMAGE_P11_KIT_CLIENT" = "" ]; then
+            echo -e "\n${RED}p11-kit-client offline image is empty (required with --with-hsm and --offline)${NOCOLOR}"
             exit 1
         fi
     else
@@ -211,6 +221,8 @@ function usage() {
     echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
     echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
     echo " --helm-chart-softhsm         (Only needed while using --offline and --with-hsm) Path to the SoftHSM helm chart (.tgz format)"
+    echo " --offline-image-nethsm-pkcs11 (Only needed while using --offline and --with-hsm) Pre-built image bundling libnethsm_pkcs11.so, already imported into the cluster"
+    echo " --offline-image-p11-kit-client (Only needed while using --offline and --with-hsm) Pre-built image with the p11-kit-modules package already installed, already imported into the cluster"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
@@ -331,6 +343,26 @@ function process_flags() {
                 exit 1
             fi
             OFFLINE_HELMCHART_SOFTHSM=$(extract_argument $@)
+
+            shift
+            ;;
+         --offline-image-nethsm-pkcs11)
+              if ! has_argument $@; then
+                echo -e "\n${RED}NetHSM PKCS#11 offline image not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_IMAGE_NETHSM_PKCS11=$(extract_argument $@)
+
+            shift
+            ;;
+         --offline-image-p11-kit-client)
+              if ! has_argument $@; then
+                echo -e "\n${RED}p11-kit-client offline image not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_IMAGE_P11_KIT_CLIENT=$(extract_argument $@)
 
             shift
             ;;
@@ -496,13 +528,27 @@ function prepare_softhsm_ssh_keypair() {
 
 function create_softhsm_kms_override_file() {
 target_file="$1"
+
+sidecar_pull_policy="Always"
+nethsm_module_image="curlimages/curl:8.11.0"
+nethsm_module_pull_policy="IfNotPresent"
+p11kit_module_image="debian:12-slim"
+p11kit_module_pull_policy="IfNotPresent"
+if [ "$OFFLINE" = true ]; then
+    sidecar_pull_policy="Never"
+    nethsm_module_image="$OFFLINE_IMAGE_NETHSM_PKCS11"
+    nethsm_module_pull_policy="Never"
+    p11kit_module_image="$OFFLINE_IMAGE_P11_KIT_CLIENT"
+    p11kit_module_pull_policy="Never"
+fi
+
 cat >"$target_file" <<EOF
 services:
   kms:
     pkcs11Sidecar:
       enabled: true
       image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
-      imagePullPolicy: Always
+      imagePullPolicy: ${sidecar_pull_policy}
       socketDir: /run/p11-kit
       env:
         - name: SSH_DESTINATION
@@ -527,8 +573,8 @@ EOF
 cat >>"$target_file" <<EOF
     pkcs11Modules:
       - name: nethsm
-        image: curlimages/curl:8.11.0
-        imagePullPolicy: IfNotPresent
+        image: ${nethsm_module_image}
+        imagePullPolicy: ${nethsm_module_pull_policy}
         mountPath: /run/nethsm
         command:
           - /bin/sh
@@ -536,6 +582,37 @@ cat >>"$target_file" <<EOF
           - |
 EOF
 
+if [ "$OFFLINE" = true ]; then
+cat >>"$target_file" <<'EOF'
+            set -eu
+            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/nethsm}"
+            mkdir -p "${TARGET_DIR}"
+            SRC="${NETHSM_PKCS11_SO_PATH:-/opt/nethsm-pkcs11/libnethsm_pkcs11.so}"
+            [ -f "${SRC}" ] || { echo "libnethsm_pkcs11.so not found at ${SRC}; supply an offline image with the module baked in (see --offline-image-nethsm-pkcs11)" >&2; exit 1; }
+            cp -L "${SRC}" "${TARGET_DIR}/libnethsm_pkcs11.so"
+            chmod 0555 "${TARGET_DIR}/libnethsm_pkcs11.so"
+            cat > "${TARGET_DIR}/p11nethsm.yaml" <<CFG
+            log_level: ${NETHSM_LOG_LEVEL:-Info}
+            slots:
+              - label: ${NETHSM_SLOT_LABEL:-LocalHSM}
+                operator:
+                  username: "${NETHSM_OPERATOR_USER:-operator}"
+                  password: "${NETHSM_OPERATOR_PASSWORD:-}"
+                administrator:
+                  username: "${NETHSM_ADMIN_USER:-admin}"
+                  password: "${NETHSM_ADMIN_PASSWORD:-}"
+                instances:
+                  - url: "${NETHSM_URL:-https://hsm-nethsm:8443/api/v1}"
+                    danger_insecure_cert: ${NETHSM_INSECURE_CERT:-true}
+                retries:
+                  count: 3
+                  delay_seconds: 1
+                timeout_seconds: 10
+            CFG
+            chmod 0444 "${TARGET_DIR}/p11nethsm.yaml"
+            ls -l "${TARGET_DIR}"
+EOF
+else
 cat >>"$target_file" <<'EOF'
             set -eu
             TARGET_DIR="${PKCS11_MODULE_DIR:-/run/nethsm}"
@@ -570,6 +647,7 @@ cat >>"$target_file" <<'EOF'
             chmod 0444 "${TARGET_DIR}/p11nethsm.yaml"
             ls -l "${TARGET_DIR}"
 EOF
+fi
 
 cat >>"$target_file" <<EOF
         env:
@@ -598,8 +676,8 @@ EOF
 # SoftHSM engine: stage p11-kit-client.so and its non-core dependencies.
 cat >>"$target_file" <<EOF
       - name: p11-kit-client
-        image: debian:12-slim
-        imagePullPolicy: IfNotPresent
+        image: ${p11kit_module_image}
+        imagePullPolicy: ${p11kit_module_pull_policy}
         mountPath: /run/p11-kit-modules
         securityContext:
           runAsUser: 0
@@ -609,6 +687,25 @@ cat >>"$target_file" <<EOF
           - |
 EOF
 
+if [ "$OFFLINE" = true ]; then
+cat >>"$target_file" <<'EOF'
+            set -eu
+            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/p11-kit-modules}"
+            mkdir -p "${TARGET_DIR}"
+            MOD="$(dpkg -L p11-kit-modules 2>/dev/null | grep -m1 '/p11-kit-client\.so$')"
+            [ -n "${MOD}" ] || { echo "p11-kit-client.so not found; supply an offline image with p11-kit-modules already installed (see --offline-image-p11-kit-client)" >&2; exit 1; }
+            echo "Staging ${MOD} -> ${TARGET_DIR}/p11-kit-client.so"
+            cp -L "${MOD}" "${TARGET_DIR}/p11-kit-client.so"
+            ldd "${MOD}" | sed -n 's/.*=> \(\/[^ ]*\).*/\1/p' | while read -r lib; do
+              case "${lib}" in
+                */libc.so*|*/libm.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/ld-linux*) continue ;;
+              esac
+              cp -L "${lib}" "${TARGET_DIR}/" 2>/dev/null || true
+            done
+            chmod -R 0555 "${TARGET_DIR}"
+            ls -l "${TARGET_DIR}"
+EOF
+else
 cat >>"$target_file" <<'EOF'
             set -eu
             TARGET_DIR="${PKCS11_MODULE_DIR:-/run/p11-kit-modules}"
@@ -629,6 +726,7 @@ cat >>"$target_file" <<'EOF'
             chmod -R 0555 "${TARGET_DIR}"
             ls -l "${TARGET_DIR}"
 EOF
+fi
 
 cat >>"$target_file" <<EOF
     cryptoEngines:
@@ -1127,8 +1225,10 @@ function install_softhsm() {
     fi
 
     helm_path="$SOFTHSM_CHART_PATH"
+    softhsm_extra_args=()
     if [ "$OFFLINE" = true ]; then
         helm_path="$OFFLINE_HELMCHART_SOFTHSM"
+        softhsm_extra_args+=(--set global.imagePullPolicy=Never)
     fi
 
     run_helm install hsm "$helm_path" -n "$NAMESPACE" \
@@ -1143,6 +1243,7 @@ function install_softhsm() {
         --set-string nethsm.provision.adminPassphrase="$NETHSM_ADMIN_PASSPHRASE" \
         --set-string nethsm.provision.systemTime="$NETHSM_SYSTEM_TIME" \
         --set-string nethsm.provision.operator.passphrase="$NETHSM_OPERATOR_PASSPHRASE" \
+        "${softhsm_extra_args[@]}" \
         --wait
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
