@@ -5,9 +5,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: 5657
-    targetPort: 5657
+  - port: {{ .Values.ssh.port }}
+    targetPort: 22
     protocol: TCP
-    name: "tcp-pkcs11"
+    name: "ssh"
   selector:
     app: {{ include "soft.fullname" . }}

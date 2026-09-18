@@ -21,3 +21,6 @@ initdb:
       CREATE DATABASE devicemanager;
       CREATE DATABASE dmsmanager;
       CREATE DATABASE kms;
+      CREATE DATABASE pki;
+      CREATE DATABASE authz;
+      CREATE DATABASE wfx;

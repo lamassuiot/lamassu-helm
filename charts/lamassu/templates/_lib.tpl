@@ -48,6 +48,7 @@ All templates take a dict context with:
 {{- $name := .name -}}
 {{- $configMapName := hasKey . "configMapName" | ternary .configMapName (printf "%s-config" $name) -}}
 {{- $tty := hasKey . "tty" | ternary .tty true -}}
+{{- $podSecurityContext := hasKey . "podSecurityContext" | ternary .podSecurityContext $svc.podSecurityContext -}}
 apiVersion: apps/v1
 kind: {{ .kind | default "Deployment" }}
 metadata:
@@ -92,7 +93,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with (.podSecurityContext | default $svc.podSecurityContext) }}
+      {{- with $podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -104,6 +105,14 @@ spec:
         - name: {{ $name }}
           image: {{ $svc.image }}
           imagePullPolicy: {{ $root.Values.global.imagePullPolicy | quote }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if $tty }}
           tty: true
           {{- end }}
@@ -149,6 +158,9 @@ spec:
           {{- end }}
           ports:
             - containerPort: {{ $svc.port }}
+      {{- with .sidecars }}
+      {{- . | nindent 8 }}
+      {{- end }}
       restartPolicy: Always
       {{- with $svc.nodeSelector }}
       nodeSelector:
