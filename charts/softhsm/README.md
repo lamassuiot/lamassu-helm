@@ -2,7 +2,7 @@
 
 ![Version: 1.3.0](https://img.shields.io/badge/Version-1.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.0.0](https://img.shields.io/badge/AppVersion-1.0.0-informational?style=flat-square)
 
-SoftHSM with TCP and TLS proxy, and optional Nitrokey NetHSM
+SoftHSM exposed over a p11-kit Unix socket forwarded via SSH, and optional Nitrokey NetHSM
 
 ## Usage
 
@@ -18,10 +18,11 @@ Uninstall:
 helm uninstall hsm -n lamassu
 ```
 
-By default, this chart exposes PKCS#11 over TCP on port `5657`. With release name `hsm`, the in-cluster endpoint is `hsm-softhsm:5657`.
-
-This chart always exposes an internal SSH port so a KMS sidecar can forward
-`/run/p11-kit/pkcs11` from this pod over `ssh -L`.
+This chart exposes PKCS#11 over a Unix socket at `/run/p11-kit/pkcs11` inside
+the pod. It always exposes an internal SSH port so a KMS sidecar can forward
+that socket from this pod over `ssh -L` (see `charts/lamassu`'s
+`services.kms.pkcs11Sidecar`). There is no directly reachable TCP PKCS#11
+endpoint.
 
 For security, no default SSH public key is installed. Set `ssh.authorizedKeys`
 to your own key(s) before using SSH tunneling.

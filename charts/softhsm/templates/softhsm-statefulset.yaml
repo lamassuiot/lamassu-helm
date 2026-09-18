@@ -23,7 +23,6 @@ spec:
           image: {{ .Values.image }}
           imagePullPolicy: {{ default "Always" (get (default (dict) (get .Values "global")) "imagePullPolicy") | quote }}
           ports:
-            - containerPort: 5657
             - containerPort: 22
           # sshd starts before token initialization and p11-kit server startup.
           # Do not let Helm/Kubernetes consider SoftHSM ready until the server
@@ -42,8 +41,6 @@ spec:
               value: {{ required "softhsm.so_pin is required and must not be empty" .Values.softhsm.so_pin | quote }}
             - name: SLOT
               value: "{{ .Values.softhsm.slot }}"
-            - name: CONNECTION_PROTOCOL
-              value: "tcp"
             {{- if .Values.ssh.authorizedKeys }}
             - name: SSH_AUTHORIZED_KEYS
               value: {{ .Values.ssh.authorizedKeys | quote }}
@@ -51,14 +48,7 @@ spec:
           volumeMounts:
             - name: softhsm-v2-data
               mountPath: /softhsm/tokens
-            - name: pkcs11-tls-psk
-              mountPath: /sym.psk
-              subPath: key.psk
       restartPolicy: Always
-      volumes:
-        - name: pkcs11-tls-psk
-          secret:
-            secretName: "{{ include "soft.fullname" . }}-psk"
   volumeClaimTemplates:
   - metadata:
       name: softhsm-v2-data

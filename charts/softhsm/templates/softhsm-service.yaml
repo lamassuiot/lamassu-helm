@@ -5,10 +5,6 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: 5657
-    targetPort: 5657
-    protocol: TCP
-    name: "tcp-pkcs11"
   - port: {{ .Values.ssh.port }}
     targetPort: 22
     protocol: TCP
