@@ -47,6 +47,11 @@ NETHSM_ADMIN_PASSPHRASE=$(
 )
 NETHSM_SYSTEM_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+TRAEFIK_NAMESPACE="traefik-system"
+TRAEFIK_CHART_VERSION="41.0.2"
+TRAEFIK_WEB_PORT=8000
+TRAEFIK_WEBSECURE_PORT=8443
+
 TLS_CRT=
 TLS_KEY=
 
@@ -617,40 +622,24 @@ if [ "$SAMPLE_DATA" = true ]; then
     }]' lamassu.yaml
 fi
 
-if [ -n "$GATEWAY_IP" ]; then
-    export IP_LIST="$GATEWAY_IP"
-else
-    export IP_LIST="$(hostname -I)"
-fi
-export HTTPS_PORT=$HTTPS_PORT
-export HTTP_PORT=$HTTP_PORT
+# Envoy Gateway's own downstream listener is internal-only now (fronted by
+# Traefik, see install_traefik_front_proxy). It always uses the chart's
+# default self-signed certManager cert; no addresses/ports/tls.* overrides
+# are needed here.
 
-yq -i '.gateway.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
-yq -i '.gateway.ports.https = env(HTTPS_PORT)' lamassu.yaml
-yq -i '.gateway.ports.http = env(HTTP_PORT)' lamassu.yaml
-
-# Check if TLS_CRT and TLS_KEY are not empty
-if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
-    echo -e "${ORANGE}Deploying Lamassu with EXTERNAL TLS Certificates${NOCOLOR}"
-
-    run_kubectl create secret tls downstream-provided-crt --cert=$TLS_CRT --key=$TLS_KEY -n $NAMESPACE
-
-    cat >tls.yaml <<"EOF"
-tls:
-  type: external
-  externalOptions:
-    secretName: downstream-provided-crt
-EOF
-
-    yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml tls.yaml -i
-    rm tls.yaml
-else
-    echo -e "${ORANGE}Deploying Lamassu with SelfSigned TLS Certificates${NOCOLOR}"
-    yq -i '.tls.type = "certManager"' lamassu.yaml
-    yq -i '.tls.certManagerOptions.issuer = ""' lamassu.yaml
-    yq -i '.tls.certManagerOptions.certSpec.commonName = (env(DOMAIN))' lamassu.yaml
-    yq -i '.tls.certManagerOptions.certSpec.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
-fi
+# In this Traefik-fronted, PQC-enabled mode every Lamassu UI/backend image
+# (not wfx, which is a Siemens image, and not the toolbox/migration jobs)
+# must use the :pqc tag instead of the chart's default :dev.
+yq -i '
+  .services.ui.image = "ghcr.io/lamassuiot/lamassu-ui:pqc" |
+  .services.va.image = "ghcr.io/lamassuiot/lamassu-va:pqc" |
+  .services.ca.image = "ghcr.io/lamassuiot/lamassu-ca:pqc" |
+  .services.kms.image = "ghcr.io/lamassuiot/lamassu-kms:pqc" |
+  .services.deviceManager.image = "ghcr.io/lamassuiot/lamassu-devmanager:pqc" |
+  .services.dmsManager.image = "ghcr.io/lamassuiot/lamassu-dmsmanager:pqc" |
+  .services.alerts.image = "ghcr.io/lamassuiot/lamassu-alerts:pqc" |
+  .services.authz.image = "ghcr.io/lamassuiot/lamassu-authz:pqc"
+' lamassu.yaml
 
 if [ "$WITH_HSM" = true ]; then
     if [ -z "$SOFTHSM_SSH_PRIVATE_KEY_FILE" ]; then
@@ -697,12 +686,170 @@ fi
         helm_version="--version $VERSION"
     fi
 
-    run_helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT"
+    # Run the (slow, --wait'ing on every pod) install in the background so
+    # the Traefik front proxy can be wired up as soon as the chart's own
+    # objects (the eg Gateway, the selfsigned issuer, ...) exist, instead of
+    # only after every service is fully ready. install_traefik_front_proxy
+    # already tolerates this via its own polling/retries.
+    run_helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT" &
+    local lamassu_install_pid=$!
 
+    install_traefik_front_proxy
+
+    wait "$lamassu_install_pid"
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Lamassu IoT installed${NOCOLOR}"
     else
         echo -e "\n${RED}Error installing Lamassu IoT${NOCOLOR}"
+        exit 1
+    fi
+}
+
+function install_traefik_front_proxy() {
+    local domain_host="${DOMAIN%%:*}"
+
+    echo -e "${ORANGE}Wiring up Traefik front proxy for ${domain_host}${NOCOLOR}"
+
+    # Check if TLS_CRT and TLS_KEY are not empty
+    if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
+        echo -e "${ORANGE}Terminating edge TLS with the provided certificate${NOCOLOR}"
+        run_kubectl create secret tls edge-cert --cert="$TLS_CRT" --key="$TLS_KEY" -n "$NAMESPACE" \
+            --dry-run=client -o yaml | run_kubectl apply -f -
+    else
+        echo -e "${ORANGE}Terminating edge TLS with a SelfSigned certificate${NOCOLOR}"
+
+        if [ -n "$GATEWAY_IP" ]; then
+            local ip_list="$GATEWAY_IP"
+        else
+            local ip_list="$(hostname -I)"
+        fi
+
+        cat >edge-tls-certificate.yaml <<EOF
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: edge-tls-certificate
+  namespace: $NAMESPACE
+spec:
+  isCA: false
+  commonName: "$domain_host"
+  dnsNames:
+  - "$domain_host"
+  duration: "2160h"
+  secretName: edge-cert
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: "Always"
+  issuerRef:
+    kind: Issuer
+    name: lamassu-downstream-ca-selfsigned-issuer
+    group: cert-manager.io
+EOF
+
+        export IP_LIST="$ip_list"
+        yq -i '.spec.ipAddresses = (env(IP_LIST) | split(" "))' edge-tls-certificate.yaml
+
+        run_kubectl apply -f edge-tls-certificate.yaml
+        rm -f edge-tls-certificate.yaml
+    fi
+
+    echo -e "${ORANGE}Waiting for the Envoy Gateway Service backing this install...${NOCOLOR}"
+    local envoy_svc=""
+    for attempt in $(seq 1 30); do
+        envoy_svc=$(run_kubectl get svc -n envoy-gateway-system \
+            -l "gateway.envoyproxy.io/owning-gateway-name=lamassu-gateway,gateway.envoyproxy.io/owning-gateway-namespace=${NAMESPACE}" \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$envoy_svc" ]; then
+            break
+        fi
+        sleep 2
+    done
+
+    if [ -z "$envoy_svc" ]; then
+        echo -e "\n${RED}Could not find the Envoy Gateway Service for namespace ${NAMESPACE}${NOCOLOR}"
+        exit 1
+    fi
+    echo -e "${GREEN}Found Envoy Gateway Service: ${envoy_svc}${NOCOLOR}"
+
+    cat <<EOF | run_kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-traefik-to-envoy-$NAMESPACE
+  namespace: envoy-gateway-system
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: $NAMESPACE
+  to:
+  - group: ""
+    kind: Service
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: traefik-gw
+  namespace: $NAMESPACE
+spec:
+  gatewayClassName: traefik
+  listeners:
+  - name: https
+    protocol: HTTPS
+    port: $TRAEFIK_WEBSECURE_PORT
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        group: ""
+        name: edge-cert
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: inject-client-cert
+  namespace: $NAMESPACE
+spec:
+  passTLSClientCert:
+    pem: true
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: proxy-to-envoy
+  namespace: $NAMESPACE
+spec:
+  hostnames:
+  - "$domain_host"
+  parentRefs:
+  - name: traefik-gw
+    namespace: $NAMESPACE
+    sectionName: https
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: $envoy_svc
+      namespace: envoy-gateway-system
+      port: 443
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: X-Forwarded-Proto
+          value: https
+    - type: ExtensionRef
+      extensionRef:
+        group: traefik.io
+        kind: Middleware
+        name: inject-client-cert
+EOF
+
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}Traefik front proxy configured${NOCOLOR}"
+    else
+        echo -e "\n${RED}Error configuring the Traefik front proxy${NOCOLOR}"
         exit 1
     fi
 }
@@ -1152,6 +1299,7 @@ function check_dependencies() {
         check_microk8s_minimum_requirements
     else
         check_envoy_gateway_helm
+        check_traefik_gateway_helm
     fi
 
 }
@@ -1202,6 +1350,7 @@ function check_microk8s_minimum_requirements() {
     is_microk8s_addon_enabled dns
     is_microk8s_addon_enabled cert-manager
     check_envoy_gateway_helm
+    check_traefik_gateway_helm
 }
 
 function init() {
@@ -1347,6 +1496,144 @@ EOF
             echo "✅ GatewayClass 'eg' created successfully"
         else
             echo "❌ Failed to create GatewayClass 'eg'. Ensure Gateway API CRDs are installed."
+            exit 1
+        fi
+    fi
+}
+
+function check_traefik_gateway_helm() {
+    if [ -n "$GATEWAY_IP" ]; then
+        traefik_ip_list="$GATEWAY_IP"
+    else
+        traefik_ip_list="$(hostname -I)"
+    fi
+
+    cat >traefik.yaml <<"EOF"
+image:
+  registry: ghcr.io
+  repository: lamassuiot/traefik
+  tag: "pqc-3.7.7"
+# The chart's templates gate RBAC/feature rendering on parsing image.tag as
+# semver; our custom PQC tag isn't parseable as-is, so tell the chart which
+# upstream Traefik version to assume instead.
+versionOverride: "3.7.7"
+gateway:
+  enabled: false
+providers:
+  kubernetesGateway:
+    enabled: true
+    experimentalChannel: true
+  kubernetesCRD:
+    enabled: true
+ports:
+  web:
+    port: 8000
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    port: 8443
+additionalArguments:
+  - "--serversTransport.insecureSkipVerify=true"
+service:
+  type: LoadBalancer
+EOF
+
+    export TRAEFIK_HTTP_PORT=$HTTP_PORT
+    export TRAEFIK_HTTPS_PORT=$HTTPS_PORT
+    yq -i '.ports.web.exposedPort = env(TRAEFIK_HTTP_PORT)' traefik.yaml
+    yq -i '.ports.websecure.exposedPort = env(TRAEFIK_HTTPS_PORT)' traefik.yaml
+
+    export IP_LIST="$traefik_ip_list"
+    yq -i '.service.spec.externalIPs = (env(IP_LIST) | split(" "))' traefik.yaml
+
+    helm_path=traefik/traefik
+    helm_version_arg=(--version "${TRAEFIK_CHART_VERSION}")
+    run_helm repo add traefik https://traefik.github.io/charts 2>/dev/null || true
+    run_helm repo update traefik 2>/dev/null || true
+
+    # The chart's crds/ directory bundles both the traefik.io CRDs we need
+    # (Middleware, TLSOption, ...) and its own copy of the Gateway API CRDs,
+    # which collide with the (newer) ones check_envoy_gateway_helm already
+    # installed, so apply only the traefik.io ones ourselves and let the
+    # `helm install`/`upgrade` below skip the rest via --skip-crds.
+    run_helm show crds $helm_path "${helm_version_arg[@]}" 2>/dev/null \
+        | yq 'select(.spec.group == "traefik.io")' \
+        | run_kubectl apply -f -
+
+    # 1. Check Helm Release
+    if run_helm list -n "$TRAEFIK_NAMESPACE" 2>/dev/null | grep -q "^traefik\s"; then
+        echo "✅ Traefik Helm release found"
+        echo "Upgrading Traefik to ${TRAEFIK_CHART_VERSION}..."
+        if run_helm upgrade traefik $helm_path "${helm_version_arg[@]}" -n "$TRAEFIK_NAMESPACE" -f traefik.yaml; then
+            echo "✅ Traefik Helm chart 'traefik' upgraded successfully"
+        else
+            echo "❌ Failed to upgrade Traefik Helm chart 'traefik'. Please check Helm output and try again."
+            exit 1
+        fi
+    else
+        echo "❌ Traefik: Helm release 'traefik' not found in namespace '$TRAEFIK_NAMESPACE'"
+        echo "Installing Traefik ${TRAEFIK_CHART_VERSION}..."
+        # --skip-crds: the cluster's Gateway API CRDs are already managed by
+        # check_envoy_gateway_helm (gateway-crds-helm). Traefik's chart bundles
+        # its own (older) copies in crds/, which a newer cluster's
+        # ValidatingAdmissionPolicy (safe-upgrades.gateway.networking.k8s.io)
+        # rejects as a downgrade.
+        if run_helm install traefik $helm_path "${helm_version_arg[@]}" -n "$TRAEFIK_NAMESPACE" --create-namespace --skip-crds -f traefik.yaml; then
+            echo "✅ Traefik Helm chart 'traefik' installed successfully"
+        else
+            echo "❌ Failed to install Traefik Helm chart 'traefik'. Please check Helm output and try again."
+            exit 1
+        fi
+    fi
+
+    rm -f traefik.yaml
+
+    # 2. Check/Create GatewayClass
+    if run_kubectl get gatewayclass traefik >/dev/null 2>&1; then
+        echo "✅ GatewayClass 'traefik' already exists"
+    else
+        echo "Missing GatewayClass 'traefik'. Applying now..."
+        cat <<EOF | run_kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: traefik
+spec:
+  controllerName: traefik.io/gateway-controller
+EOF
+
+        if [ $? -eq 0 ]; then
+            echo "✅ GatewayClass 'traefik' created successfully"
+        else
+            echo "❌ Failed to create GatewayClass 'traefik'. Ensure Gateway API CRDs are installed."
+            exit 1
+        fi
+    fi
+
+    # 3. Check/Create the cluster-wide default TLSOption (requests, but does not require, client certs)
+    if run_kubectl get tlsoption default -n "$TRAEFIK_NAMESPACE" >/dev/null 2>&1; then
+        echo "✅ TLSOption 'default' already exists"
+    else
+        echo "Missing TLSOption 'default'. Applying now..."
+        cat <<EOF | run_kubectl apply -f -
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: default
+  namespace: $TRAEFIK_NAMESPACE
+spec:
+  minVersion: VersionTLS12
+  clientAuth:
+    clientAuthType: RequestClientCert
+EOF
+
+        if [ $? -eq 0 ]; then
+            echo "✅ TLSOption 'default' created successfully"
+        else
+            echo "❌ Failed to create TLSOption 'default'."
             exit 1
         fi
     fi

@@ -62,6 +62,7 @@ For detailed migration instructions between versions, see the CHANGELOG director
 - Helm 3.2.0+
 - cert-manager v1.14.0+ (for TLS certificate management)
 - Envoy Gateway v1.8.0+ (for API Gateway functionality)
+- Traefik v3+ with the Kubernetes Gateway provider enabled (fronts Envoy Gateway; only required when using the fast lane installer, see below)
 
 ## Installation
 
@@ -87,6 +88,18 @@ For quick deployment, you can use the provided fast lane script:
 ```bash
 ./scripts/lamassu-fast-lane.sh
 ```
+
+The fast lane script fronts Envoy Gateway with a shared Traefik installation
+(`traefik-system` namespace), matching the `Traefik -> Envoy Gateway ->
+services` topology used in Lamassu's own lab clusters: Traefik terminates the
+public TLS/mTLS connection and optionally requests a client certificate,
+forwards it to Envoy Gateway over an internal, self-signed TLS hop, and Envoy
+Gateway's `ClientTrafficPolicy` picks up the forwarded certificate chain from
+there. Envoy Gateway itself is no longer exposed externally. Traefik and Envoy
+Gateway are both installed once per cluster and shared by every namespace the
+fast lane script deploys into (multiple installs are told apart by
+`--domain`); tear either of them down with `scripts/nuke-all.sh
+--purge-gateway --purge-traefik`.
 
 ## Configuration
 

@@ -8,11 +8,20 @@ spec:
     type: Kubernetes
     kubernetes:
       envoyService:
+        {{- if .Values.gateway.addresses }}
         allocateLoadBalancerNodePorts: false
         # Envoy Gateway defaults to Local, which drops traffic entering nodes
         # without a local proxy pod. Pin Cluster so the gateway IP is reachable
         # through any node.
         externalTrafficPolicy: Cluster
+        {{- else }}
+        # No gateway.addresses given: the Gateway isn't meant to be reached
+        # directly (e.g. it sits behind the fast-lane Traefik front proxy).
+        # Keep it ClusterIP-only so it doesn't wait forever on a LoadBalancer
+        # address that no cloud controller will ever assign.
+        # (allocateLoadBalancerNodePorts is only valid for type: LoadBalancer.)
+        type: ClusterIP
+        {{- end }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
