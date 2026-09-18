@@ -80,6 +80,7 @@ OFFLINE_HELMCHART_OTEL_COLLECTOR=""
 OFFLINE_HELMCHART_SOFTHSM=""
 OFFLINE_IMAGE_NETHSM_PKCS11=""
 OFFLINE_IMAGE_P11_KIT_CLIENT=""
+OFFLINE_IMAGE_P11_KIT_SIDECAR=""
 
 
 function main() {
@@ -147,6 +148,10 @@ function main() {
         fi
         if [ "$WITH_HSM" = true ] && [ "$OFFLINE_IMAGE_P11_KIT_CLIENT" = "" ]; then
             echo -e "\n${RED}p11-kit-client offline image is empty (required with --with-hsm and --offline)${NOCOLOR}"
+            exit 1
+        fi
+        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_IMAGE_P11_KIT_SIDECAR" = "" ]; then
+            echo -e "\n${RED}p11-kit-ssh-sidecar offline image is empty (required with --with-hsm and --offline)${NOCOLOR}"
             exit 1
         fi
     else
@@ -223,6 +228,7 @@ function usage() {
     echo " --helm-chart-softhsm         (Only needed while using --offline and --with-hsm) Path to the SoftHSM helm chart (.tgz format)"
     echo " --offline-image-nethsm-pkcs11 (Only needed while using --offline and --with-hsm) Pre-built image bundling libnethsm_pkcs11.so, already imported into the cluster"
     echo " --offline-image-p11-kit-client (Only needed while using --offline and --with-hsm) Pre-built image with the p11-kit-modules package already installed, already imported into the cluster"
+    echo " --offline-image-p11-kit-sidecar (Only needed while using --offline and --with-hsm) p11-kit-ssh-sidecar image, already imported into the cluster"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
@@ -363,6 +369,16 @@ function process_flags() {
                 exit 1
             fi
             OFFLINE_IMAGE_P11_KIT_CLIENT=$(extract_argument $@)
+
+            shift
+            ;;
+         --offline-image-p11-kit-sidecar)
+              if ! has_argument $@; then
+                echo -e "\n${RED}p11-kit-ssh-sidecar offline image not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            OFFLINE_IMAGE_P11_KIT_SIDECAR=$(extract_argument $@)
 
             shift
             ;;
@@ -529,12 +545,14 @@ function prepare_softhsm_ssh_keypair() {
 function create_softhsm_kms_override_file() {
 target_file="$1"
 
+sidecar_image="ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest"
 sidecar_pull_policy="Always"
 nethsm_module_image="curlimages/curl:8.11.0"
 nethsm_module_pull_policy="IfNotPresent"
 p11kit_module_image="debian:12-slim"
 p11kit_module_pull_policy="IfNotPresent"
 if [ "$OFFLINE" = true ]; then
+    sidecar_image="$OFFLINE_IMAGE_P11_KIT_SIDECAR"
     sidecar_pull_policy="Never"
     nethsm_module_image="$OFFLINE_IMAGE_NETHSM_PKCS11"
     nethsm_module_pull_policy="Never"
@@ -547,7 +565,7 @@ services:
   kms:
     pkcs11Sidecar:
       enabled: true
-      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+      image: ${sidecar_image}
       imagePullPolicy: ${sidecar_pull_policy}
       socketDir: /run/p11-kit
       env:
