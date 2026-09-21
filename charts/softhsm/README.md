@@ -8,6 +8,7 @@ SoftHSM with TCP and TLS proxy
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| hsm.slot | string | `"0"` | SoftHSM slot identifier used by the image entrypoint. |
 | hsm.label | string | `"lamassuHSM"` |  |
 | hsm.pin | string | `"1234"` |  |
 | hsm.so_pin | string | `"5432"` |  |

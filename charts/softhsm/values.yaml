@@ -1,8 +1,13 @@
 # Default values for softhsm.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
+global:
+  ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
+  ##
+  imagePullPolicy: Always
 image: "ghcr.io/lamassuiot/softhsm:latest"
 hsm:
+  slot: "0"
   pin: "1234"
   so_pin: "5432"
   label: lamassuHSM
