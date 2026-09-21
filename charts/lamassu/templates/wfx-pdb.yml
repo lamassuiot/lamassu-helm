@@ -1,0 +1,3 @@
+{{- if .Values.services.wfx.enabled }}
+{{ include "lamassu.pdb" (dict "root" $ "name" "wfx" "svcKey" "wfx") }}
+{{- end }}

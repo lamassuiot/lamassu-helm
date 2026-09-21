@@ -25,6 +25,9 @@ HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
 SOFTHSM_CHART_PATH="./charts/softhsm"
 WITH_HSM=false
+# NetHSM (nitrokey/nethsm:testing) ships amd64-only images, so it is skipped
+# on ARM clusters even when --with-hsm is set. SoftHSM/PKCS#11 still deploy.
+WITH_NETHSM=true
 SOFTHSM_SSH_PRIVATE_KEY_FILE=""
 SOFTHSM_SSH_PUBLIC_KEY=""
 SOFTHSM_LABEL="lamassuHSM"
@@ -161,6 +164,7 @@ function main() {
     echo -e "\n${BLUE}2) Provide minimal config info${NOCOLOR}"
     request_config_data
     if [ "$WITH_HSM" = true ]; then
+        detect_nethsm_support
         echo -e "\n${BLUE}2.1) Prepare SoftHSM SSH credentials${NOCOLOR}"
         prepare_softhsm_ssh_keypair
     fi
@@ -235,7 +239,7 @@ function usage() {
     echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: ./charts/softhsm"
-    echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11"
+    echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
 }
 
 function has_argument() {
@@ -584,9 +588,13 @@ services:
             secretName: kms-pkcs11-sidecar-ssh-key
 EOF
 
-# NetHSM engine: stage libnethsm_pkcs11.so and its config in a shared volume.
 cat >>"$target_file" <<EOF
     pkcs11Modules:
+EOF
+
+if [ "$WITH_NETHSM" = true ]; then
+# NetHSM engine: stage libnethsm_pkcs11.so and its config in a shared volume.
+cat >>"$target_file" <<EOF
       - name: nethsm
         image: ${nethsm_module_image}
         imagePullPolicy: ${nethsm_module_pull_policy}
@@ -687,6 +695,7 @@ cat >>"$target_file" <<EOF
                 name: hsm-nethsm-provision
                 key: adminPassphrase
 EOF
+fi
 
 # SoftHSM engine: stage p11-kit-client.so and its non-core dependencies.
 cat >>"$target_file" <<EOF
@@ -695,7 +704,19 @@ cat >>"$target_file" <<EOF
         imagePullPolicy: ${p11kit_module_pull_policy}
         mountPath: /run/p11-kit-modules
         securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: false
           runAsUser: 0
+          runAsGroup: 0
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - CHOWN
+              - DAC_OVERRIDE
+              - FOWNER
+              - SETGID
+              - SETUID
         command:
           - /bin/sh
           - -ec
@@ -756,6 +777,10 @@ cat >>"$target_file" <<EOF
             env:
               P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
               LD_LIBRARY_PATH: "/run/p11-kit-modules"
+EOF
+
+if [ "$WITH_NETHSM" = true ]; then
+cat >>"$target_file" <<EOF
         - id: "pkcs11-nethsm"
           type: "pkcs11"
           token: "${NETHSM_TOKEN_LABEL}"
@@ -764,6 +789,10 @@ cat >>"$target_file" <<EOF
           module_extra_options:
             env:
               P11NETHSM_CONFIG_FILE: "/run/nethsm/p11nethsm.yaml"
+EOF
+fi
+
+cat >>"$target_file" <<EOF
         - id: "filesystem-1"
           type: "filesystem"
           storage_directory: "/crypto/fs"
@@ -887,7 +916,7 @@ EOF
 else
     echo -e "${ORANGE}Deploying Lamassu with SelfSigned TLS Certificates${NOCOLOR}"
     yq -i '.tls.type = "certManager"' lamassu.yaml
-    yq -i '.tls.certManagerOptions.issuer = "downstream-ca-selfsigned-issuer"' lamassu.yaml
+    yq -i '.tls.certManagerOptions.issuer = ""' lamassu.yaml
     yq -i '.tls.certManagerOptions.certSpec.commonName = (env(DOMAIN))' lamassu.yaml
     yq -i '.tls.certManagerOptions.certSpec.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
 fi
@@ -1252,7 +1281,7 @@ function install_softhsm() {
         --set-string softhsm.pin="$SOFTHSM_PIN" \
         --set-string softhsm.slot="$SOFTHSM_SLOT" \
         --set-string softhsm.so_pin="$SOFTHSM_SO_PIN" \
-        --set nethsm.enabled=true \
+        --set nethsm.enabled=$WITH_NETHSM \
         --set-string nethsm.tokenLabel="$NETHSM_TOKEN_LABEL" \
         --set-string nethsm.provision.unlockPassphrase="$NETHSM_UNLOCK_PASSPHRASE" \
         --set-string nethsm.provision.adminPassphrase="$NETHSM_ADMIN_PASSPHRASE" \
@@ -1261,7 +1290,11 @@ function install_softhsm() {
         "${softhsm_extra_args[@]}" \
         --wait
     if [ $? -eq 0 ]; then
-        echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
+        if [ "$WITH_NETHSM" = true ]; then
+            echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
+        else
+            echo -e "\n${GREEN}SoftHSM installed (NetHSM skipped on ARM cluster)${NOCOLOR}"
+        fi
     else
         echo -e "\n${RED}Error installing SoftHSM${NOCOLOR}"
         exit 1
@@ -1418,6 +1451,44 @@ function check_dependencies() {
         check_envoy_gateway_helm
     fi
 
+}
+
+function detect_nethsm_support() {
+    local node_arches
+    local node_arch
+    local has_amd64=false
+    local has_arm64=false
+
+    if ! node_arches=$(run_kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.architecture}{"\n"}{end}' 2>/dev/null) || [ -z "$node_arches" ]; then
+        echo -e "${RED}Unable to determine the architecture of every Kubernetes node; refusing to deploy NetHSM.${NOCOLOR}" >&2
+        exit 1
+    fi
+
+    while IFS=$'\t' read -r _ node_arch; do
+        case "$node_arch" in
+            amd64)
+                has_amd64=true
+                ;;
+            arm64 | aarch64)
+                has_arm64=true
+                ;;
+            *)
+                echo -e "${RED}Unsupported or missing Kubernetes node architecture: ${node_arch:-unknown}; refusing to deploy NetHSM.${NOCOLOR}" >&2
+                exit 1
+                ;;
+        esac
+    done <<< "$node_arches"
+
+    if [ "$has_amd64" = false ]; then
+        WITH_NETHSM=false
+        if [ "$has_arm64" = true ]; then
+            echo -e "${ORANGE}ARM Kubernetes cluster detected: NetHSM has no ARM image, skipping its deployment. SoftHSM/PKCS#11 will still be installed.${NOCOLOR}"
+        else
+            echo -e "${ORANGE}No amd64 Kubernetes node detected: skipping NetHSM deployment. SoftHSM/PKCS#11 will still be installed.${NOCOLOR}"
+        fi
+    elif [ "$has_arm64" = true ]; then
+        echo -e "${ORANGE}Mixed-architecture cluster detected: NetHSM will be restricted to amd64 nodes.${NOCOLOR}"
+    fi
 }
 
 function check_microk8s_minimum_requirements() {

@@ -109,6 +109,20 @@ jobs:
           yq eval ".version = \"${{ github.event.inputs.release_version }}\"" -i charts/${{ github.event.inputs.chart_to_release }}/Chart.yaml
           yq eval ".appVersion = \"${{ github.event.inputs.app_version }}\"" -i charts/${{ github.event.inputs.chart_to_release }}/Chart.yaml
 
+      - name: Update generated values documentation
+        env:
+          HELM_DOCS_VERSION: 1.14.2
+          HELM_DOCS_SHA256: a8cf72ada34fad93285ba2a452b38bdc5bd52cc9a571236244ec31022928d6cc
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
+            --output /tmp/helm-docs.tar.gz
+          echo "${HELM_DOCS_SHA256}  /tmp/helm-docs.tar.gz" | sha256sum --check
+          tar --extract --gzip --directory /tmp --file /tmp/helm-docs.tar.gz helm-docs
+          /tmp/helm-docs \
+            --chart-search-root charts/${{ github.event.inputs.chart_to_release }} \
+            --output-file VALUES.md
+
       - name: Commit charts Chart.yaml, CHANGELOG.md and RELEASE-NOTES.md file 
         run: |
           git config user.name "$GITHUB_ACTOR"
@@ -121,6 +135,7 @@ jobs:
 
           git add ${chart_path}/Chart.yaml
           git add ${chart_path}/values.yaml
+          git add ${chart_path}/VALUES.md
           git add ${chart_path}/CHANGELOG.md
           git add ${chart_path}/RELEASE-NOTES.md
 

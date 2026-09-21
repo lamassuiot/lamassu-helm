@@ -1,46 +1,16 @@
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "authz") | fromYaml -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: authz-config
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-config") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "authz") | nindent 2 }}
 data:
   config: |
-    logs:
-      level: "debug"
+    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false "port" $svc.port) | nindent 4 }}
 
-    server:
-      log_level: "debug"
-      health_check: false
-      listen_address: "0.0.0.0"
-      port: 8085
-      protocol: "http" #http | https
+    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_event_bus") | nindent 4 }}
 
-    openapi:
-      enabled: true
-  
-    subscriber_event_bus:
-      log_level: "debug"
-      enabled: true
-      provider: amqp
-      protocol: amqp #amqp | amqps
-      hostname: {{ .Values.amqp.hostname }}
-      port: {{ .Values.amqp.port }}
-      basic_auth:
-        enabled: true
-        username: "{{ .Values.amqp.username }}"
-        password: "{{ .Values.amqp.password }}"
-
-    publisher_event_bus:
-      log_level: "debug"
-      enabled: true
-      provider: amqp
-      protocol: amqp #amqp | amqps
-      hostname: {{ .Values.amqp.hostname }}
-      port: {{ .Values.amqp.port }}
-      basic_auth:
-        enabled: true
-        username: "{{ .Values.amqp.username }}"
-        password: "{{ .Values.amqp.password }}"
+    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "publisher_event_bus") | nindent 4 }}
 
     authz_db:
       provider: "postgres"
@@ -50,12 +20,7 @@ data:
       password: "{{ .Values.postgres.password }}"
       database: {{ .Values.services.authz.database }}
 
-    authz_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: authz
-      port: 8085
+    {{- include "lamassu.config.authzClient" $ | nindent 4 }}
 
     {{- if .Values.services.authz.credentials }}
     credentials:
