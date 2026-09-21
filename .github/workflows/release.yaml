@@ -43,7 +43,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.ref_name }}
           token: ${{ steps.release-bot-token.outputs.token }}
           persist-credentials: false
       - name: Delete Release & Tag
@@ -70,7 +70,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.ref_name }}
           persist-credentials: false
           token: ${{ steps.release-bot-token.outputs.token }}
 
@@ -167,7 +167,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.ref_name }}
           persist-credentials: false
           token: ${{ steps.release-bot-token.outputs.token }}
           
