@@ -184,6 +184,20 @@ jobs:
           
       - run: git checkout ${{ needs.generate-charts-changelog-update-versions.outputs.latest_commit_sha }} #Checks out by default to SHA that tiggered the executin. Checkout to main to get the commit maded by the prev Job.
 
+      - name: Get Lamassu Release Bot App User ID
+        id: get-release-bot-user-id
+        run: echo "lamassu-release-bot-app-user-id=$(gh api \"/users/${{ steps.release-bot-token.outputs.app-slug }}[bot]\" --jq .id)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
+
+      - name: Configure Git credentials
+        run: |
+          git config --global user.name '${{ steps.release-bot-token.outputs.app-slug }}[bot]'
+          git config --global user.email '${{ steps.get-release-bot-user-id.outputs.lamassu-release-bot-app-user-id }}+${{ steps.release-bot-token.outputs.app-slug }}[bot]@users.noreply.github.com'
+          gh auth setup-git
+        env:
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
+
       - name: Run Chart Releaser
         uses: helm/chart-releaser-action@a917fd15b20e8b64b94d9158ad54cd6345335584 # v1.6.0
         env:
