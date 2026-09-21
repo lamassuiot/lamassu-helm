@@ -125,11 +125,16 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
 
-      - name: Commit charts Chart.yaml, CHANGELOG.md and RELEASE-NOTES.md file 
+      - name: Configure Git credentials
         run: |
-          git config user.name '${{ steps.release-bot-token.outputs.app-slug }}[bot]'
-          git config user.email '${{ steps.get-release-bot-user-id.outputs.lamassu-release-bot-app-user-id }}+${{ steps.release-bot-token.outputs.app-slug }}[bot]@users.noreply.github.com'
+          git config --global user.name '${{ steps.release-bot-token.outputs.app-slug }}[bot]'
+          git config --global user.email '${{ steps.get-release-bot-user-id.outputs.lamassu-release-bot-app-user-id }}+${{ steps.release-bot-token.outputs.app-slug }}[bot]@users.noreply.github.com'
+          gh auth setup-git
+        env:
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
 
+      - name: Commit charts Chart.yaml, CHANGELOG.md and RELEASE-NOTES.md file
+        run: |
           # Commit changes locally.
           chart_name=${{ github.event.inputs.chart_to_release }}
           chart_version=${{ github.event.inputs.release_version }}
@@ -144,11 +149,13 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update Chart.yaml, values.yaml CHANGELOG and RELEASE-NOTES for chart ${chart_name} ${chart_version}" 
-            git push origin $GITHUB_REF_NAME
+            git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
           sha=$(git rev-parse HEAD)
           echo "LTS_SHA=$sha" >> "$GITHUB_ENV"
+        env:
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
 
     outputs:
       latest_commit_sha: ${{ env.LTS_SHA }}
