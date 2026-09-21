@@ -2,13 +2,13 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
-  name: response-override
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "response-override") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "gateway") | nindent 2 }}
 spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: eg
+      name: {{ include "lamassu.componentName" (dict "root" $ "component" "gateway") }}
   responseOverride:
 {{- if .Values.gateway.responseOverride.unauthorized.enabled }}
     - match:

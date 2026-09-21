@@ -2,6 +2,25 @@ global:
   ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
   ##
   imagePullPolicy: Always
+  # -- Image pull secrets applied to every Lamassu pod.
+  imagePullSecrets: []
+# -- Partially override the name used for release-scoped resources.
+nameOverride: ""
+# -- Fully override the release-scoped resource-name prefix.
+fullnameOverride: ""
+# -- Labels added to every chart-managed object. Selector labels remain chart controlled.
+commonLabels: {}
+# -- Annotations added to every chart-managed object.
+commonAnnotations: {}
+serviceAccount:
+  # -- Create a dedicated ServiceAccount for Lamassu workloads.
+  create: true
+  # -- ServiceAccount name. Defaults to the release-scoped chart name when create=true, otherwise default.
+  name: ""
+  # -- Annotations added to the generated ServiceAccount.
+  annotations: {}
+  # -- Mount the Kubernetes API token into Lamassu pods.
+  automountServiceAccountToken: false
 # Downstream TLS (API Gateway)
 tls:
   # -- TLS certificate provider to use for the API Gateway. Allowed values are: `certManager`, `external`
@@ -23,6 +42,8 @@ tls:
     # -- Secret name for the TLS certificate to be used for the API Gateway (the secret at least must have `tls.crt` and `tls.key` keys)
     secretName: ""
 gateway:
+  # -- GatewayClass used by the generated Gateway.
+  className: eg
   extraRouting:
   addresses:
   ports:
@@ -127,16 +148,16 @@ auth:
   externalAuthorization:
     # -- Protect routes labeled auth=external with Envoy Gateway external authorization.
     enabled: true
-    # -- Kubernetes Service name for the external authorization endpoint.
-    serviceName: authz
-    # -- Kubernetes Service port for the external authorization endpoint.
-    servicePort: 8085
+    # -- Kubernetes Service name for the external authorization endpoint. Empty uses the release-scoped authz Service.
+    serviceName: ""
+    # -- Kubernetes Service port for the external authorization endpoint. Defaults to the effective services.authz.port.
+    servicePort:
     # -- HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+.
     path: /v1/ext_authz/check
     # -- Allow traffic when the external authorization service cannot be reached.
     failOpen: false
 # -- Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts,
-# deviceManager, dmsManager and aws connector instances). Any key here can be
+# deviceManager, dmsManager, authz, wfx and aws connector instances). Any key here can be
 # overridden per service under `services.<name>` — the per-service block is
 # deep-merged on top of these defaults. Maps are merged key by key; lists
 # (tolerations, topologySpreadConstraints, extraEnv, ...) replace the default
@@ -167,19 +188,49 @@ serviceDefaults:
   nodeSelector: {}
   # -- Tolerations for pod scheduling
   tolerations: []
-  # -- Image pull secrets for the pods
+  # -- Additional image pull secrets for this service.
   imagePullSecrets: []
-  # -- Pod-level security context
-  podSecurityContext: {}
-  # -- Container-level security context
-  securityContext: {}
+  # -- Pod-level security context.
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container-level security context. Images must run as a non-root user.
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
   # -- Extra environment variables for the service container
   extraEnv: []
-  probes:
-    # -- Path used by the liveness/readiness probes
+  livenessProbe:
+    # -- Enable the liveness probe.
+    enabled: true
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+  readinessProbe:
+    # -- Enable the readiness probe.
+    enabled: true
     path: /health
     initialDelaySeconds: 3
-    periodSeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+  startupProbe:
+    # -- Enable the startup probe so liveness checks do not kill slow-starting services.
+    enabled: true
+    path: /health
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 60
   autoscaling:
     # -- Enable a HorizontalPodAutoscaler for the service
     enabled: false
@@ -187,9 +238,9 @@ serviceDefaults:
     maxReplicas: 5
     targetMemoryUtilizationPercentage: 80
     targetCPUUtilizationPercentage: 80
-  # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+  # -- Pod affinity configuration.
   affinity: {}
-  # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+  # -- Topology spread constraints.
   topologySpreadConstraints: []
   pdb:
     # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
@@ -197,8 +248,13 @@ serviceDefaults:
 services:
   ui:
     # -- Docker image for the UI component
-    image: "ghcr.io/lamassuiot/lamassu-ui:dev-v4"
-    port: 80
+    image: "ghcr.io/lamassuiot/lamassu-ui:dev"
+    # The rootless image listens on the chart-wide unprivileged service port.
+    port: 8085
+    # -- Run the rootless nginx image with its declared numeric identity.
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
     image: ghcr.io/lamassuiot/lamassu-va:dev-v4
@@ -224,6 +280,10 @@ services:
       - dev.lamassu.io
     # -- Docker image for the CA component
     image: ghcr.io/lamassuiot/lamassu-ca:dev-v4
+    # -- Run the owned image with its declared distroless nonroot UID/GID.
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
@@ -282,16 +342,40 @@ services:
   deviceManager:
     # -- Docker image for the Device Manager component
     image: ghcr.io/lamassuiot/lamassu-devmanager:dev-v4
+    # -- Run the owned image with its declared distroless nonroot UID/GID.
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4
+    podSecurityContext:
+      # -- Filesystem group that lets the non-root TLS init container and DMS container share generated certificates.
+      fsGroup: 65532
+      # -- Only update volume ownership when the root directory does not already use fsGroup.
+      fsGroupChangePolicy: OnRootMismatch
+    tlsInitContainer:
+      # -- Security context for the toolbox container that builds the downstream CA bundle.
+      securityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop:
+            - ALL
   wfx:
     # -- Enable the Siemens WFX workflow service
     enabled: true
     # -- Docker image for the WFX component
     image: ghcr.io/siemens/wfx:latest
-    # -- Number of WFX replicas.
-    replicas: 1
+    # The upstream WFX image does not declare a non-root user.
+    securityContext:
+      runAsNonRoot: false
+    # -- WFX command override. The explicit command avoids conflicting flags baked into the image entrypoint.
+    command:
+      - wfx
     # -- WFX southbound/client API port.
     clientPort: 9080
     # -- WFX northbound/management API port.
@@ -330,6 +414,10 @@ services:
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:dev-v4
+    # -- Run the owned image with its declared distroless nonroot UID/GID.
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
     autoscaling:
       maxReplicas: 3
     smtp_server:
@@ -350,6 +438,10 @@ services:
   authz:
     # -- Docker image for the Authz connector component
     image: ghcr.io/lamassuiot/lamassu-authz:dev-v4
+    # The image declares USER lamassu, which resolves to UID/GID 999.
+    securityContext:
+      runAsUser: 999
+      runAsGroup: 999
     # -- JWKS endpoint used by authz to validate JWTs
     jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
     # -- PostgreSQL database name for authz principals, grants, and policies
@@ -382,7 +474,8 @@ services:
             - claim: "realm_access.roles"
               operator: "contains"
               value: "pki-admin"
-  connectors:
+  # -- AWS connector instances keyed by stable connector ID.
+  connectors: {}
 toolbox:
   image: ghcr.io/lamassuiot/toolbox:2.2.0
 migrations:

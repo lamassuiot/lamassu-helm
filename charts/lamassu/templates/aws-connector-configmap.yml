@@ -1,11 +1,13 @@
-{{ range $instance := $.Values.services.connectors }}
+{{ range $connectorID, $instance := $.Values.services.connectors }}
 {{- if eq $instance.type "awsiot" }}
-{{ $instanceID := $instance.id | replace "aws." "" }}
+{{ $instanceID := $connectorID | replace "aws." "" }}
+{{ $component := printf "aws-connector-%s" $instanceID }}
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: aws-connector-config-{{ $instanceID }}
-  namespace: {{ $.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" (printf "%s-config" $component)) }}
+  labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" $component) | nindent 4 }}
 data:
   config: |
     logs:
@@ -19,26 +21,26 @@ data:
       log_level: debug
       auth_mode: noauth
       protocol: http
-      hostname: dms-manager
-      port: 8085
+      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager") }}
+      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "dmsManager") }}
 
     device_manager_client:
       log_level: debug
       auth_mode: noauth
       protocol: http
-      hostname: device-manager
-      port: 8085
+      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
+      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "deviceManager") }}
 
     ca_client:
       log_level: debug
       auth_mode: noauth
       protocol: http
-      hostname: ca
-      port: 8085
+      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "ca") }}
+      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "ca") }}
 
     {{- include "lamassu.config.authzClient" $ | nindent 4 }}
 
-    connector_id:  {{ $instance.id }}
+    connector_id: {{ $connectorID }}
     aws_config:
       {{ $instance.credentials | toYaml | indent 6 | trim  }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}

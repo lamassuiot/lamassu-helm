@@ -139,8 +139,9 @@ The same `autoscaling` block is supported per AWS connector instance:
 ```yaml
 services:
   connectors:
-    - id: aws.myconnector
+    aws.myconnector:
       type: awsiot
+      image: ghcr.io/lamassuiot/lamassu-aws-connector:dev-v4
       autoscaling:
         enabled: true
         minReplicas: 2
@@ -162,7 +163,7 @@ services:
 
 **Resource requests and limits:**
 
-Each service has default resource requests (`100m` CPU / `256Mi` memory) and limits (`500m` CPU / `1Gi` memory). These are required for HPA CPU/memory-based scaling and can be overridden per service:
+Each service has default resource requests (`100m` CPU / `128Mi` memory) and limits (`500m` CPU / `512Mi` memory). These are required for HPA CPU/memory-based scaling and can be overridden per service:
 
 ```yaml
 services:
@@ -176,16 +177,16 @@ services:
         memory: 2Gi
 ```
 
-**Pod anti-affinity and topology spread:**
+**Pod affinity and topology spread:**
 
-By default the chart applies soft pod anti-affinity (spread across nodes) and two `ScheduleAnyway` topology spread constraints (zone and hostname). These can be overridden per service:
+The chart does not assume a cluster topology. Configure affinity or topology spread per service when the cluster has the corresponding labels and capacity:
 
 ```yaml
 services:
   ca:
-    # Override affinity (empty map = use chart default)
+    # Kubernetes affinity spec
     affinity: {}
-    # Override topology spread (empty list = use chart defaults)
+    # Kubernetes TopologySpreadConstraint list
     topologySpreadConstraints: []
 ```
 

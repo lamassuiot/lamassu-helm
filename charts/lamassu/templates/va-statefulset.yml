@@ -1,30 +1,98 @@
-{{- if and (gt (int .Values.services.va.replicaCount) 1) (eq .Values.services.va.fileStore.type "local") }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "va") | fromYaml -}}
+{{- $isLocal := eq $svc.fileStore.type "local" -}}
+{{- $storageDir := $svc.fileStore.local.storageDirectory | default "/data/crl" -}}
+{{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" "va") -}}
+{{- if and (gt (int $svc.replicaCount) 1) $isLocal }}
   {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
 {{- end }}
-{{- if and .Values.services.va.autoscaling.enabled (eq .Values.services.va.fileStore.type "local") }}
+{{- if and $svc.autoscaling.enabled $isLocal }}
   {{ fail "VA autoscaling is not supported with fileStore.type=local (ReadWriteOnce PVC). The HPA would scale up pods that cannot bind the same PVC. Use s3 or a ReadWriteMany volume." }}
 {{- end }}
-{{- if and (eq .Values.services.va.fileStore.type "s3") (not .Values.services.va.fileStore.s3) }}
+{{- if and (eq $svc.fileStore.type "s3") (not $svc.fileStore.s3) }}
   {{ fail "VA fileStore.type is set to s3 but fileStore.s3 is empty. Provide at least bucket_name, auth_method and region under services.va.fileStore.s3." }}
 {{- end }}
-{{- define "lamassu.va.volumeClaimTemplates" -}}
-- metadata:
-    name: local-crl-file-storage
-  spec:
-    accessModes: [ "ReadWriteOnce" ]
-    storageClassName: null
-    resources:
-      requests:
-        storage: 1Gi
-{{- end -}}
-
-{{- $vaIsLocal := eq .Values.services.va.fileStore.type "local" -}}
-{{- $vaStorageDir := .Values.services.va.fileStore.local.storageDirectory | default "/data/crl" -}}
-{{ include "lamassu.workload" (dict
-  "root" $
-  "name" "va"
-  "svcKey" "va"
-  "kind" "StatefulSet"
-  "env" (printf "- name: TMPDIR\n  value: %s" $vaStorageDir)
-  "volumeMounts" (ternary (printf "- name: local-crl-file-storage\n  mountPath: %s" $vaStorageDir) "" $vaIsLocal)
-  "volumeClaimTemplates" (ternary (include "lamassu.va.volumeClaimTemplates" $) "" $vaIsLocal)) }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $resourceName }}
+  {{- include "lamassu.workloadMetadata" (dict "root" $ "name" "va" "svc" $svc) | nindent 2 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicaCount }}
+  {{- end }}
+  serviceName: {{ $resourceName }}
+  selector:
+    matchLabels:
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" "va") | nindent 6 }}
+  template:
+    metadata:
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" "va" "svc" $svc) | nindent 6 }}
+    spec:
+      serviceAccountName: {{ include "lamassu.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with $svc.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: va
+          image: {{ $svc.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: TMPDIR
+              value: {{ $storageDir | quote }}
+            {{- with $svc.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "startupProbe" "probe" $svc.startupProbe "port" $svc.port) | nindent 10 }}
+          {{- with $svc.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: api-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+            {{- if $isLocal }}
+            - name: local-crl-file-storage
+              mountPath: {{ $storageDir }}
+            {{- end }}
+          ports:
+            - containerPort: {{ $svc.port }}
+      restartPolicy: Always
+      {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
+      volumes:
+        - name: api-config
+          configMap:
+            name: {{ include "lamassu.componentName" (dict "root" $ "component" "va-config") }}
+  {{- if $isLocal }}
+  volumeClaimTemplates:
+    - metadata:
+        name: local-crl-file-storage
+        labels:
+          {{- include "lamassu.labels" (dict "root" $ "component" "va") | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: null
+        resources:
+          requests:
+            storage: 1Gi
+  {{- end }}

@@ -1,0 +1,30 @@
+# Exercises non-default ports and autoscaling branches during chart-testing.
+services:
+  ca:
+    port: 9999
+  kms:
+    port: 9998
+  authz:
+    port: 9997
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+  wfx:
+    clientPort: 9082
+    managementPort: 9083
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+  connectors:
+    aws.contract:
+      type: awsiot
+      image: ghcr.io/lamassuiot/lamassu-aws-connector:dev-v4
+      credentials:
+        auth_method: default
+        region: eu-west-1
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 3

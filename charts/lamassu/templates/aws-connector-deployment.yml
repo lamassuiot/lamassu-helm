@@ -1,11 +1,76 @@
-{{ range $instance := $.Values.services.connectors }}
+{{ range $connectorID, $instance := $.Values.services.connectors }}
 {{- if eq $instance.type "awsiot" }}
-{{- $instanceID := $instance.id | replace "aws." "" }}
-{{ include "lamassu.workload" (dict
-  "root" $
-  "name" (printf "aws-connector-%s" $instanceID)
-  "svc" $instance
-  "configMapName" (printf "aws-connector-config-%s" $instanceID)) }}
+{{- $instanceID := $connectorID | replace "aws." "" }}
+{{- $component := printf "aws-connector-%s" $instanceID }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svc" $instance) | fromYaml }}
+{{- $defaultSecurityContext := dict "runAsUser" 65532 "runAsGroup" 65532 }}
+{{- $securityContext := mustMergeOverwrite (deepCopy $defaultSecurityContext) (deepCopy $svc.securityContext) }}
+{{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" $component) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $resourceName }}
+  {{- include "lamassu.workloadMetadata" (dict "root" $ "name" $component "svc" $svc) | nindent 2 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" $component "svc" $svc) | nindent 6 }}
+    spec:
+      serviceAccountName: {{ include "lamassu.serviceAccountName" $ }}
+      automountServiceAccountToken: {{ $.Values.serviceAccount.automountServiceAccountToken }}
+      {{- with $svc.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: {{ $svc.image }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy | quote }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "startupProbe" "probe" $svc.startupProbe "port" $svc.port) | nindent 10 }}
+          {{- with $svc.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: api-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+          ports:
+            - containerPort: {{ $svc.port }}
+      restartPolicy: Always
+      {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
+      volumes:
+        - name: api-config
+          configMap:
+            name: {{ include "lamassu.componentName" (dict "root" $ "component" (printf "%s-config" $component)) }}
 ---
 {{- end -}}
 {{- end -}}

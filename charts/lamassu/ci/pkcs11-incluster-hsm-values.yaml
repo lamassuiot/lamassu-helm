@@ -73,8 +73,19 @@ services:
         imagePullPolicy: IfNotPresent
         mountPath: /run/p11-kit-modules
         securityContext:
+          allowPrivilegeEscalation: false
           runAsNonRoot: false
           runAsUser: 0
+          runAsGroup: 0
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - CHOWN
+              - DAC_OVERRIDE
+              - FOWNER
+              - SETGID
+              - SETUID
         command:
           - /bin/sh
         args:

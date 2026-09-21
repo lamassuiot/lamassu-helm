@@ -1,20 +1,22 @@
 {{- if .Values.services.wfx.enabled }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "wfx") | fromYaml -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: wfx
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "wfx") }}
+  labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" "wfx") | nindent 4 }}
 spec:
   selector:
-    app: wfx
+    {{- include "lamassu.selectorLabels" (dict "root" $ "component" "wfx") | nindent 4 }}
   type: ClusterIP
   ports:
-  - name: sbi
-    port: {{ .Values.services.wfx.clientPort }}
-    targetPort: {{ .Values.services.wfx.clientPort }}
-    protocol: TCP
-  - name: nbi
-    port: {{ .Values.services.wfx.managementPort }}
-    targetPort: {{ .Values.services.wfx.managementPort }}
-    protocol: TCP
+    - name: sbi
+      port: {{ $svc.clientPort }}
+      targetPort: {{ $svc.clientPort }}
+      protocol: TCP
+    - name: nbi
+      port: {{ $svc.managementPort }}
+      targetPort: {{ $svc.managementPort }}
+      protocol: TCP
 {{- end }}

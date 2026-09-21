@@ -1,8 +1,8 @@
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: downstream-ca-selfsigned-issuer
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "downstream-ca-selfsigned-issuer") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "tls") | nindent 2 }}
 spec:
   ca:
-    secretName: root-downstream-cert
+    secretName: {{ include "lamassu.componentName" (dict "root" $ "component" "root-downstream-cert") }}

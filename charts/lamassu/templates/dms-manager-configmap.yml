@@ -1,8 +1,9 @@
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "dmsManager") | fromYaml -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: dms-manager-config
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager-config") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "dms-manager") | nindent 2 }}
 data:
   init.sh: |
     #!/bin/bash
@@ -52,7 +53,7 @@ data:
     cat $ROOT_CA_CRT_FILE
 
   config: |
-    {{- include "lamassu.config.header" (dict "logsLevel" "trace" "healthCheck" false) | nindent 4 }}
+    {{- include "lamassu.config.header" (dict "logsLevel" "trace" "healthCheck" false "port" $svc.port) | nindent 4 }}
 
     {{- include "lamassu.config.eventbus" (dict "root" $ "key" "publisher_event_bus") | nindent 4 }}
 
@@ -62,15 +63,15 @@ data:
       log_level: debug
       auth_mode: noauth
       protocol: http
-      hostname: device-manager
-      port: 8085
+      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
+      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "deviceManager") }}
 
     ca_client:
       log_level: debug
       auth_mode: noauth
       protocol: http
-      hostname: ca
-      port: 8085
+      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "ca") }}
+      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "ca") }}
 
     {{- include "lamassu.config.authzClient" $ | nindent 4 }}
     downstream_cert_file: /shared/root.crt

@@ -1,12 +1,13 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: cors
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "cors") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "gateway") | nindent 2 }}
 spec:
   targetRefs:
   - group: gateway.networking.k8s.io
     kind: Gateway
-    name: eg
+    name: {{ include "lamassu.componentName" (dict "root" $ "component" "gateway") }}
   cors:
     allowOrigins:
     - "*"

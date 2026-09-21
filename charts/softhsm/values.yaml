@@ -18,6 +18,8 @@ ssh:
 # a post-install/upgrade Job that also creates an Operator user.
 nethsm:
   enabled: false
+  nodeSelector:
+    kubernetes.io/arch: amd64
   # Nitrokey NetHSM container image. The testing image is self-contained and ephemeral.
   image: "nitrokey/nethsm:testing"
   # HTTPS REST API port exposed by NetHSM.

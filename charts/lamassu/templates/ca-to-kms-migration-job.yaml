@@ -3,8 +3,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Release.Name }}-ca-to-kms-migration
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "ca-to-kms-migration") }}
+  labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" "migration") | nindent 4 }}
   annotations:
     "helm.sh/hook": pre-upgrade
     "helm.sh/hook-weight": "-10"
@@ -13,13 +14,20 @@ spec:
   backoffLimit: 3
   template:
     metadata:
-      name: ca-to-kms-migration
+      labels:
+        {{- include "lamassu.selectorLabels" (dict "root" $ "component" "migration") | nindent 8 }}
     spec:
+      # Hook resources execute before regular chart resources are reconciled.
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.serviceDefaults.podSecurityContext | nindent 8 }}
       restartPolicy: OnFailure
       containers:
         - name: ca-to-kms-migration
           image: {{ .Values.migrations.caToKms.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.serviceDefaults.securityContext | nindent 12 }}
           volumeMounts:
             - name: kms-config
               mountPath: /etc/lamassuiot/config.yml
@@ -28,5 +36,7 @@ spec:
       volumes:
         - name: kms-config
           configMap:
+            # This one-time pre-upgrade migration consumes the ConfigMap created
+            # by chart versions prior to release-scoped resource naming.
             name: kms-config
 {{- end }}

@@ -10,16 +10,6 @@ amqp:
   username: "admin"
   password: "admin"
 
-services:
-  services:
-    ca:
-      cryptoEngines:
-        defaultEngineID: fs-1
-        engines:
-          - id: fs-1
-            type: filesystem
-            storage_directory: /crypto/fs
-
 auth:
   oidc:
     frontend:

@@ -1,11 +1,12 @@
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "alerts") | fromYaml -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: alerts-config
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "alerts-config") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "alerts") | nindent 2 }}
 data:
   config: |
-    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false) | nindent 4 }}
+    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false "port" $svc.port) | nindent 4 }}
 
     {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_event_bus") | nindent 4 }}
 
