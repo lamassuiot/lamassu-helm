@@ -33,34 +33,47 @@ jobs:
     if: ${{ github.event.inputs.force_overwrite == 'true' }} 
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Create release bot token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: release-bot-token
         with:
-          fetch-depth: 0
+          client-id: ${{ vars.LAMASSU_RELEASE_BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LAMASSU_RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ steps.release-bot-token.outputs.token }}
+          persist-credentials: false
       - name: Delete Release & Tag
         run: gh release delete -y ${{ github.event.inputs.chart_to_release }}-${{ github.event.inputs.release_version }} --cleanup-tag 
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
 
   generate-charts-changelog-update-versions:
     runs-on: ubuntu-latest
     needs: delete-release-tag
     if: always()
-    container: quay.io/git-chglog/git-chglog:0.15.0
     steps:
       - name: fail if conditional job failed
         if: ${{ needs.delete-release-tag.result == 'failure' }}
         run: exit 1
+
+      - name: Create release bot token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: release-bot-token
+        with:
+          client-id: ${{ vars.LAMASSU_RELEASE_BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LAMASSU_RELEASE_BOT_PRIVATE_KEY }}
         
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+          token: ${{ steps.release-bot-token.outputs.token }}
 
-      - name: Install main dependencies
-        run: |
-          apk add bash git grep yq
-          
       - name: Update UI docker image version
         run: |
           yq eval '.services.ui.image = "ghcr.io/lamassuiot/lamassu-ui:${{ github.event.inputs.ui_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
@@ -76,43 +89,46 @@ jobs:
           yq eval '.migrations.db.image = "ghcr.io/lamassuiot/lamassu-lamassu-db-migration:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
           yq eval '.migrations.caToKms.image = "ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
       
-      - name: Generate charts changelog files
-        shell: bash
-        run: |
-          set -x
-          
-          chart_name=${{ github.event.inputs.chart_to_release }}
-          chart_version=${{ github.event.inputs.release_version }}
-          chart_tag="${chart_name}-${chart_version}"
-          chart_path="charts/${chart_name}"
+      - name: Generate chart changelog
+        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
+        with:
+          version: v2.14.1
+          args: >-
+            --tag-pattern "${{ github.event.inputs.chart_to_release }}-[0-9].*"
+            --include-path "charts/${{ github.event.inputs.chart_to_release }}/**"
+            --tag "${{ github.event.inputs.chart_to_release }}-${{ github.event.inputs.release_version }}"
+            --output "charts/${{ github.event.inputs.chart_to_release }}/CHANGELOG.md"
+        env:
+          GITHUB_REPO: ${{ github.repository }}
 
-          #
-          # Generate chart CHANGELOG.md file.
-          git-chglog                                \
-              --no-case                             \
-              --output "${chart_path}/CHANGELOG.md" \
-              --tag-filter-pattern "${chart_name}"  \
-              --next-tag "${chart_tag}"             \
-              --path "${chart_path}"
-
-          #
-          # Generate RELEASE-NOTES.md file (used for Github release notes and ArtifactHub "changes" annotation).
-          git-chglog                                    \
-              --no-case                                 \
-              --output "${chart_path}/RELEASE-NOTES.md" \
-              --tag-filter-pattern "${chart_name}"      \
-              --next-tag "${chart_tag}"                 \
-              --path "${chart_path}" "${chart_tag}"
+      - name: Generate chart release notes
+        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
+        with:
+          version: v2.14.1
+          args: >-
+            --unreleased
+            --tag-pattern "${{ github.event.inputs.chart_to_release }}-[0-9].*"
+            --include-path "charts/${{ github.event.inputs.chart_to_release }}/**"
+            --tag "${{ github.event.inputs.chart_to_release }}-${{ github.event.inputs.release_version }}"
+            --output "charts/${{ github.event.inputs.chart_to_release }}/RELEASE-NOTES.md"
+        env:
+          GITHUB_REPO: ${{ github.repository }}
 
       - name: Update Chart.yaml file with the new version
         run: |
           yq eval ".version = \"${{ github.event.inputs.release_version }}\"" -i charts/${{ github.event.inputs.chart_to_release }}/Chart.yaml
           yq eval ".appVersion = \"${{ github.event.inputs.app_version }}\"" -i charts/${{ github.event.inputs.chart_to_release }}/Chart.yaml
 
+      - name: Get Lamassu Release Bot App User ID
+        id: get-release-bot-user-id
+        run: echo "lamassu-release-bot-app-user-id=$(gh api "/users/${{ steps.release-bot-token.outputs.app-slug }}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
+
       - name: Commit charts Chart.yaml, CHANGELOG.md and RELEASE-NOTES.md file 
         run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git config user.name '${{ steps.release-bot-token.outputs.app-slug }}[bot]'
+          git config user.email '${{ steps.get-release-bot-user-id.outputs.lamassu-release-bot-app-user-id }}+${{ steps.release-bot-token.outputs.app-slug }}[bot]@users.noreply.github.com'
 
           # Commit changes locally.
           chart_name=${{ github.event.inputs.chart_to_release }}
@@ -141,21 +157,25 @@ jobs:
     needs: generate-charts-changelog-update-versions
     if: ${{ always() && !failure() && !cancelled() }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Create release bot token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: release-bot-token
         with:
-          fetch-depth: 0
+          client-id: ${{ vars.LAMASSU_RELEASE_BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LAMASSU_RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+          token: ${{ steps.release-bot-token.outputs.token }}
           
       - run: git checkout ${{ needs.generate-charts-changelog-update-versions.outputs.latest_commit_sha }} #Checks out by default to SHA that tiggered the executin. Checkout to main to get the commit maded by the prev Job.
 
-      - name: Configure Git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-
       - name: Run Chart Releaser
-        uses: helm/chart-releaser-action@v1.6.0
+        uses: helm/chart-releaser-action@a917fd15b20e8b64b94d9158ad54cd6345335584 # v1.6.0
         env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_TOKEN: "${{ steps.release-bot-token.outputs.token }}"
           CR_RELEASE_NOTES_FILE: RELEASE-NOTES.md # Relative to the chart directory
           CR_SKIP_EXISTING: true
