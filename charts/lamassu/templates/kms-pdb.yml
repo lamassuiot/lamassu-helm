@@ -1,0 +1,1 @@
+{{ include "lamassu.pdb" (dict "root" $ "name" "kms" "svcKey" "kms") }}

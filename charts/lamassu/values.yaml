@@ -48,6 +48,50 @@ amqp:
   password: ""
   # -- Enable AMQP over TLS (aka AMPQS)
   tls: false
+observability:
+  # -- Enable OpenTelemetry instrumentation for all Lamassu services
+  enabled: false
+  # -- HTTP routes for the observability UIs exposed through the API Gateway
+  routes:
+    logs:
+      # -- Path prefix at which Victoria Logs UI is exposed through the gateway
+      path: /infra/logs
+      # -- Backend service for the Victoria Logs UI (vmui)
+      hostname: "victoria-logs"
+      # -- Backend port for the Victoria Logs UI
+      port: 9428
+    traces:
+      # -- Path prefix at which VictoriaTraces UI is exposed through the gateway
+      path: /infra/traces
+      # -- Backend service for the VictoriaTraces UI (vmui)
+      hostname: "victoria-traces"
+      # -- Backend port for the VictoriaTraces UI
+      port: 10428
+    jaeger:
+      # -- Path prefix at which the Jaeger UI is exposed through the gateway (must match the Jaeger query base_path)
+      path: /infra/jaeger
+      # -- Backend service for the Jaeger query UI
+      hostname: "jaeger"
+      # -- Backend port for the Jaeger query UI
+      port: 16686
+  traces:
+    # -- Hostname of the OTLP HTTP collector that fans out traces to Jaeger and VictoriaTraces (deployed by --otel fastlane flag)
+    hostname: "otel-collector"
+    # -- OTLP HTTP port exposed by the OTel Collector
+    port: 4318
+    # -- Scheme for the OTLP traces endpoint (http | https)
+    scheme: http
+    # -- Base path for the OTLP traces ingestion endpoint (empty = standard /v1/traces)
+    basePath: ""
+  logs:
+    # -- Hostname of the Victoria Logs OTLP HTTP endpoint (deployed by --otel fastlane flag)
+    hostname: "victoria-logs"
+    # -- OTLP HTTP port exposed by Victoria Logs
+    port: 9428
+    # -- Scheme for the Victoria Logs OTLP endpoint (http | https)
+    scheme: http
+    # -- Base path for the Victoria Logs OTLP log ingestion endpoint
+    basePath: "/insert/opentelemetry/v1/logs"
 auth:
   oidc:
     frontend:
@@ -67,21 +111,89 @@ auth:
     roles:
       # -- Role association to be used to authorize the user as LAMASSU's admin
       admin: pki-admin
+# -- Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts,
+# deviceManager, dmsManager and aws connector instances). Any key here can be
+# overridden per service under `services.<name>` — the per-service block is
+# deep-merged on top of these defaults. Maps are merged key by key; lists
+# (tolerations, topologySpreadConstraints, extraEnv, ...) replace the default
+# wholesale.
+serviceDefaults:
+  # -- HTTP port the service listens on (also used for Service, probes and gateway routes)
+  port: 8085
+  # -- Number of replicas. Ignored when autoscaling is enabled.
+  replicaCount: 1
+  # -- Container resource requests/limits. CPU and memory requests are required
+  # for utilization-based HPA metrics.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # -- Extra annotations for the Deployment/StatefulSet
+  annotations: {}
+  # -- Extra labels for the Deployment/StatefulSet and its pods (added next to the `app` label)
+  labels: {}
+  # -- Extra labels for the pods only
+  podLabels: {}
+  # -- Extra annotations for the pods
+  podAnnotations: {}
+  # -- Node selector for pod scheduling
+  nodeSelector: {}
+  # -- Tolerations for pod scheduling
+  tolerations: []
+  # -- Image pull secrets for the pods
+  imagePullSecrets: []
+  # -- Pod-level security context
+  podSecurityContext: {}
+  # -- Container-level security context
+  securityContext: {}
+  # -- Extra environment variables for the service container
+  extraEnv: []
+  probes:
+    # -- Path used by the liveness/readiness probes
+    path: /health
+    initialDelaySeconds: 3
+    periodSeconds: 3
+  autoscaling:
+    # -- Enable a HorizontalPodAutoscaler for the service
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetMemoryUtilizationPercentage: 80
+    targetCPUUtilizationPercentage: 80
+  # -- Pod affinity override. {} = use chart default (soft node anti-affinity). Provide a full affinity spec to replace it.
+  affinity: {}
+  # -- Topology spread constraints override. [] = use chart defaults (zone + hostname ScheduleAnyway). Provide a list to replace them.
+  topologySpreadConstraints: []
+  pdb:
+    # -- minAvailable for PodDisruptionBudget. Only active when effective replica count > 1.
+    minAvailable: 1
 services:
   ui:
     # -- Docker image for the UI component
     image: "ghcr.io/lamassuiot/lamassu-ui:4.3.0"
+    port: 80
   va:
-    # -- Docker image for the VA component
+    # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
     image: ghcr.io/lamassuiot/lamassu-va:3.8.1
+    autoscaling:
+      maxReplicas: 3
     fileStore:
+      # -- Unique identifier for this storage engine instance
       id: "local-1"
+      # -- Storage backend type  Allowed values: local | s3
       type: "local"
-      storageDirectory: "/data/crl"
+      # -- Config for type=local. Maps to localfs.FilesystemEngineConfig (storage_directory)
+      local:
+        storageDirectory: "/data/crl"
+      # -- Config for type=s3. Free-form map whose keys map directly to s3.AWSS3FilesystemConfig
+      s3:
     job:
       crl:
         # -- Frequency to launch the CRL computation job
-        frequency: "* * * * *"
+        frequency: "0 * * * *"
   ca:
     # -- Domain to be used while signing/generating new CAs and certificates
     domains:
@@ -92,8 +204,10 @@ services:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
   kms:
-    # -- Docker image for the KMS component
+    # -- Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC).
     image: ghcr.io/lamassuiot/lamassu-kms:3.8.1
+    autoscaling:
+      maxReplicas: 3
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
@@ -113,6 +227,8 @@ services:
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:3.8.1
+    autoscaling:
+      maxReplicas: 3
     smtp_server:
       # -- email address to use as the sender of the alerts
       from: ""
@@ -146,4 +262,3 @@ migrations:
     enabled: false
     # -- Docker image for the CA-to-KMS migration tool
     image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.1
-  image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0

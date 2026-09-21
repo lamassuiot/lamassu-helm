@@ -1,56 +1,30 @@
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:  
-  name: va
-  namespace: {{.Release.Namespace}}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: va
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: va
-  template:
-    metadata:
-      labels:
-        app: va
-    spec:     
-      containers:
-        - name: va
-          image: {{.Values.services.va.image}}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-          tty: true
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8085
-            initialDelaySeconds: 3
-            periodSeconds: 3
-          env:
-            - name: TMPDIR
-              value: /data/crl
-          volumeMounts:
-            - name: api-config
-              mountPath: /etc/lamassuiot/config.yml
-              subPath: config
-            - name: local-crl-file-storage
-              mountPath: /data/crl
-          ports:
-            - containerPort: 8085
-      restartPolicy: Always
-      volumes:
-        - name: api-config
-          configMap:  
-            name: va-config
-  volumeClaimTemplates:
-  # If no FileSystem engine is defined, the PVC wont be used
-  - metadata:
-      name: local-crl-file-storage
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: null
-      resources:
-        requests:
-          storage: 1Gi
+{{- if and (gt (int .Values.services.va.replicaCount) 1) (eq .Values.services.va.fileStore.type "local") }}
+  {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
+{{- end }}
+{{- if and .Values.services.va.autoscaling.enabled (eq .Values.services.va.fileStore.type "local") }}
+  {{ fail "VA autoscaling is not supported with fileStore.type=local (ReadWriteOnce PVC). The HPA would scale up pods that cannot bind the same PVC. Use s3 or a ReadWriteMany volume." }}
+{{- end }}
+{{- if and (eq .Values.services.va.fileStore.type "s3") (not .Values.services.va.fileStore.s3) }}
+  {{ fail "VA fileStore.type is set to s3 but fileStore.s3 is empty. Provide at least bucket_name, auth_method and region under services.va.fileStore.s3." }}
+{{- end }}
+{{- define "lamassu.va.volumeClaimTemplates" -}}
+- metadata:
+    name: local-crl-file-storage
+  spec:
+    accessModes: [ "ReadWriteOnce" ]
+    storageClassName: null
+    resources:
+      requests:
+        storage: 1Gi
+{{- end -}}
+
+{{- $vaIsLocal := eq .Values.services.va.fileStore.type "local" -}}
+{{- $vaStorageDir := .Values.services.va.fileStore.local.storageDirectory | default "/data/crl" -}}
+{{ include "lamassu.workload" (dict
+  "root" $
+  "name" "va"
+  "svcKey" "va"
+  "kind" "StatefulSet"
+  "env" (printf "- name: TMPDIR\n  value: %s" $vaStorageDir)
+  "volumeMounts" (ternary (printf "- name: local-crl-file-storage\n  mountPath: %s" $vaStorageDir) "" $vaIsLocal)
+  "volumeClaimTemplates" (ternary (include "lamassu.va.volumeClaimTemplates" $) "" $vaIsLocal)) }}

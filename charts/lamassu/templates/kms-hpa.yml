@@ -1,0 +1,2 @@
+{{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
+{{ include "lamassu.hpa" (dict "root" $ "name" "kms" "svcKey" "kms" "kind" (ternary "StatefulSet" "Deployment" $hasFilesystemEngine)) }}

@@ -1,0 +1,1 @@
+{{ include "lamassu.hpa" (dict "root" $ "name" "device-manager" "svcKey" "deviceManager") }}
