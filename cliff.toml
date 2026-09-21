@@ -25,6 +25,7 @@ conventional_commits = true
 filter_unconventional = false
 commit_preprocessors = [
     { pattern = '\(([A-Za-z]+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/lamassuiot/lamassu-helm/issues/${2}))" },
+    { pattern = '(?m)^Signed-off-by:.*\n?', replace = "" },
 ]
 commit_parsers = [
     { message = "^feat", group = "Features" },
