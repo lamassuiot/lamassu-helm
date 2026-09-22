@@ -1,1 +1,15 @@
-{{ include "lamassu.service" (dict "root" $ "name" "kms" "svcKey" "kms") }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "kms") | fromYaml -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "kms") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "kms") | nindent 2 }}
+spec:
+  selector:
+    {{- include "lamassu.selectorLabels" (dict "root" $ "component" "kms") | nindent 4 }}
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      protocol: TCP

@@ -1,7 +1,14 @@
-name: Build p11-kit SSH sidecar
+name: "Build Docker (multi-arch): p11-kit SSH sidecar"
 
 on:
   workflow_dispatch:
+    inputs:
+      release_version:
+        type: string
+        description: "Release version for the Docker image (example: 2.0.0)"
+
+run-name: >-
+  ${{ format('Build Docker (multi-arch): p11-kit SSH sidecar: {0}', github.event.inputs.release_version) }}
 
 permissions:
   contents: read
@@ -34,4 +41,6 @@ jobs:
           file: ci/softhsm/proxy.dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+          tags: |
+            ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+            ghcr.io/lamassuiot/p11-kit-ssh-sidecar:${{ github.event.inputs.release_version }}

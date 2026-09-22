@@ -4,8 +4,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "lamassu.componentName" (dict "root" $ "component" "wfx") }}
-  labels:
-    {{- include "lamassu.labels" (dict "root" $ "component" "wfx") | nindent 4 }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "wfx") | nindent 2 }}
 spec:
   selector:
     {{- include "lamassu.selectorLabels" (dict "root" $ "component" "wfx") | nindent 4 }}

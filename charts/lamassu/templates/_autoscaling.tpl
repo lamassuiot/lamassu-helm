@@ -1,62 +1,48 @@
-{{/* HorizontalPodAutoscaler for a Deployment or StatefulSet. */}}
-{{- define "lamassu.hpa" -}}
-{{- $svc := include "lamassu.svc.merged" . | fromYaml -}}
-{{- $resourceName := include "lamassu.componentName" (dict "root" .root "component" .name) -}}
-{{- if $svc.autoscaling.enabled }}
-{{- if gt (int $svc.autoscaling.minReplicas) (int $svc.autoscaling.maxReplicas) -}}
+{{/*
+Fails the render if autoscaling bounds are inconsistent: min > max, or neither
+a CPU nor a memory target is set. Call before rendering a HorizontalPodAutoscaler.
+
+dict: name (service key, for the error message), autoscaling (svc.autoscaling)
+*/}}
+{{- define "lamassu.autoscaling.validate" -}}
+{{- if gt (int .autoscaling.minReplicas) (int .autoscaling.maxReplicas) -}}
 {{- fail (printf "services.%s.autoscaling.minReplicas cannot exceed maxReplicas" .name) -}}
 {{- end -}}
-{{- if and (not $svc.autoscaling.targetCPUUtilizationPercentage) (not $svc.autoscaling.targetMemoryUtilizationPercentage) -}}
+{{- if and (not .autoscaling.targetCPUUtilizationPercentage) (not .autoscaling.targetMemoryUtilizationPercentage) -}}
 {{- fail (printf "services.%s.autoscaling requires a CPU or memory utilization target" .name) -}}
 {{- end -}}
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: {{ $resourceName }}
-  labels:
-    {{- include "lamassu.labels" (dict "root" .root "component" .name) | nindent 4 }}
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: {{ .kind | default "Deployment" }}
-    name: {{ $resourceName }}
-  minReplicas: {{ $svc.autoscaling.minReplicas }}
-  maxReplicas: {{ $svc.autoscaling.maxReplicas }}
-  metrics:
-    {{- if $svc.autoscaling.targetCPUUtilizationPercentage }}
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: {{ $svc.autoscaling.targetCPUUtilizationPercentage }}
-    {{- end }}
-    {{- if $svc.autoscaling.targetMemoryUtilizationPercentage }}
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: {{ $svc.autoscaling.targetMemoryUtilizationPercentage }}
-    {{- end }}
+{{- end -}}
+
+{{/*
+Metrics list for a HorizontalPodAutoscaler's spec.metrics.
+
+Argument: svc.autoscaling (must have already passed lamassu.autoscaling.validate)
+*/}}
+{{- define "lamassu.autoscaling.metrics" -}}
+{{- if .targetCPUUtilizationPercentage }}
+- type: Resource
+  resource:
+    name: cpu
+    target:
+      type: Utilization
+      averageUtilization: {{ .targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if .targetMemoryUtilizationPercentage }}
+- type: Resource
+  resource:
+    name: memory
+    target:
+      type: Utilization
+      averageUtilization: {{ .targetMemoryUtilizationPercentage }}
 {{- end }}
 {{- end -}}
 
-{{/* PDB only renders when the effective replica count can exceed one. */}}
-{{- define "lamassu.pdb" -}}
-{{- $svc := include "lamassu.svc.merged" . | fromYaml -}}
-{{- $resourceName := include "lamassu.componentName" (dict "root" .root "component" .name) -}}
-{{- if gt (int (ternary $svc.autoscaling.minReplicas $svc.replicaCount $svc.autoscaling.enabled)) 1 }}
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: {{ $resourceName }}
-  labels:
-    {{- include "lamassu.labels" (dict "root" .root "component" .name) | nindent 4 }}
-spec:
-  minAvailable: {{ $svc.pdb.minAvailable }}
-  selector:
-    matchLabels:
-      {{- include "lamassu.selectorLabels" (dict "root" .root "component" .name) | nindent 6 }}
-{{- end }}
+{{/*
+"true" when a PodDisruptionBudget should render for this service, i.e. its
+effective replica count (fixed, or the autoscaling floor) can exceed one.
+
+Argument: merged svc (from lamassu.svc.merged)
+*/}}
+{{- define "lamassu.pdb.enabled" -}}
+{{- gt (int (ternary .autoscaling.minReplicas .replicaCount .autoscaling.enabled)) 1 -}}
 {{- end -}}
