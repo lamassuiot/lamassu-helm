@@ -60,6 +60,22 @@ gateway:
       enabled: true
       contentType: application/json
       body: '{"error": "Forbidden"}'
+traefikFrontProxy:
+  # -- Enable a Traefik Gateway (mTLS-capable) that terminates edge traffic and forwards it to the internal Envoy Gateway. Used by the fast-lane installer; leave disabled for a standalone Envoy Gateway install.
+  enabled: false
+  # -- Public domain this proxy terminates TLS for and matches HTTPRoute traffic on
+  domain: ""
+  # -- Port the Traefik Gateway's HTTPS listener binds to
+  webSecurePort: 8443
+  tls:
+    # -- TLS certificate provider to use for the edge certificate. Allowed values are: `certManager`, `external`
+    type: certManager
+    certManagerOptions:
+      # -- IP addresses to include as SANs on the self signed edge certificate (e.g. the node/gateway IP)
+      addresses: []
+    externalOptions:
+      # -- Secret name for the TLS certificate to be used as the edge certificate (the secret at least must have `tls.crt` and `tls.key` keys)
+      secretName: ""
 postgres:
   # -- Hostname for the PostgreSQL server
   hostname: ""

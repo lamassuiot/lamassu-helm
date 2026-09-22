@@ -1,0 +1,102 @@
+{{- if .Values.traefikFrontProxy.enabled }}
+{{- if eq .Values.traefikFrontProxy.tls.type "certManager" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: edge-tls-certificate
+  namespace: {{ .Release.Namespace }}
+spec:
+  isCA: false
+  commonName: {{ .Values.traefikFrontProxy.domain | quote }}
+  dnsNames:
+  - {{ .Values.traefikFrontProxy.domain | quote }}
+  {{- if .Values.traefikFrontProxy.tls.certManagerOptions.addresses }}
+  ipAddresses:
+    {{- range .Values.traefikFrontProxy.tls.certManagerOptions.addresses }}
+    - {{ . }}
+    {{- end }}
+  {{- end }}
+  duration: "2160h"
+  secretName: edge-cert
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: "Always"
+  issuerRef:
+    kind: Issuer
+    name: {{ include "lamassu.componentName" (dict "root" $ "component" "downstream-ca-selfsigned-issuer") }}
+    group: cert-manager.io
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-traefik-to-envoy-{{ .Release.Namespace }}
+  namespace: envoy-gateway-system
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: {{ .Release.Namespace }}
+  to:
+  - group: ""
+    kind: Service
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: traefik-gw
+  namespace: {{ .Release.Namespace }}
+spec:
+  gatewayClassName: traefik
+  listeners:
+  - name: https
+    protocol: HTTPS
+    port: {{ .Values.traefikFrontProxy.webSecurePort }}
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        group: ""
+        name: {{ ternary .Values.traefikFrontProxy.tls.externalOptions.secretName "edge-cert" (eq .Values.traefikFrontProxy.tls.type "external") }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: inject-client-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  passTLSClientCert:
+    pem: true
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: proxy-to-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  hostnames:
+  - {{ .Values.traefikFrontProxy.domain | quote }}
+  parentRefs:
+  - name: traefik-gw
+    namespace: {{ .Release.Namespace }}
+    sectionName: https
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: {{ include "envoyGateway.serviceName" . }}
+      namespace: envoy-gateway-system
+      port: 443
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: X-Forwarded-Proto
+          value: https
+    - type: ExtensionRef
+      extensionRef:
+        group: traefik.io
+        kind: Middleware
+        name: inject-client-cert
+{{- end }}

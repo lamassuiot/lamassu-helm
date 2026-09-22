@@ -623,9 +623,11 @@ if [ "$SAMPLE_DATA" = true ]; then
 fi
 
 # Envoy Gateway's own downstream listener is internal-only now (fronted by
-# Traefik, see install_traefik_front_proxy). It always uses the chart's
+# Traefik, see configure_traefik_front_proxy). It always uses the chart's
 # default self-signed certManager cert; no addresses/ports/tls.* overrides
 # are needed here.
+
+configure_traefik_front_proxy
 
 # In this Traefik-fronted, PQC-enabled mode every Lamassu UI/backend image
 # (not wfx, which is a Siemens image, and not the toolbox/migration jobs)
@@ -686,17 +688,12 @@ fi
         helm_version="--version $VERSION"
     fi
 
-    # Run the (slow, --wait'ing on every pod) install in the background so
-    # the Traefik front proxy can be wired up as soon as the chart's own
-    # objects (the eg Gateway, the selfsigned issuer, ...) exist, instead of
-    # only after every service is fully ready. install_traefik_front_proxy
-    # already tolerates this via its own polling/retries.
-    run_helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT" &
-    local lamassu_install_pid=$!
-
-    install_traefik_front_proxy
-
-    wait "$lamassu_install_pid"
+    # The Traefik front proxy (Gateway, HTTPRoute, Middleware, edge
+    # Certificate) is now templated into the chart itself (see
+    # traefikFrontProxy.* in values.yaml, set by configure_traefik_front_proxy
+    # above) and comes up as part of this one install, instead of being
+    # applied separately afterwards.
+    run_helm install -n $NAMESPACE lamassu $helm_path $helm_version -f lamassu.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT"
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}Lamassu IoT installed${NOCOLOR}"
     else
@@ -705,16 +702,29 @@ fi
     fi
 }
 
-function install_traefik_front_proxy() {
+function configure_traefik_front_proxy() {
     local domain_host="${DOMAIN%%:*}"
 
-    echo -e "${ORANGE}Wiring up Traefik front proxy for ${domain_host}${NOCOLOR}"
+    echo -e "${ORANGE}Configuring Traefik front proxy values for ${domain_host}${NOCOLOR}"
+
+    export DOMAIN_HOST="$domain_host"
+    export TRAEFIK_WEBSECURE_PORT=$TRAEFIK_WEBSECURE_PORT
+    yq -i '
+      .traefikFrontProxy.enabled = true |
+      .traefikFrontProxy.domain = env(DOMAIN_HOST) |
+      .traefikFrontProxy.webSecurePort = env(TRAEFIK_WEBSECURE_PORT)
+    ' lamassu.yaml
 
     # Check if TLS_CRT and TLS_KEY are not empty
     if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
         echo -e "${ORANGE}Terminating edge TLS with the provided certificate${NOCOLOR}"
         run_kubectl create secret tls edge-cert --cert="$TLS_CRT" --key="$TLS_KEY" -n "$NAMESPACE" \
             --dry-run=client -o yaml | run_kubectl apply -f -
+
+        yq -i '
+          .traefikFrontProxy.tls.type = "external" |
+          .traefikFrontProxy.tls.externalOptions.secretName = "edge-cert"
+        ' lamassu.yaml
     else
         echo -e "${ORANGE}Terminating edge TLS with a SelfSigned certificate${NOCOLOR}"
 
@@ -724,133 +734,11 @@ function install_traefik_front_proxy() {
             local ip_list="$(hostname -I)"
         fi
 
-        cat >edge-tls-certificate.yaml <<EOF
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: edge-tls-certificate
-  namespace: $NAMESPACE
-spec:
-  isCA: false
-  commonName: "$domain_host"
-  dnsNames:
-  - "$domain_host"
-  duration: "2160h"
-  secretName: edge-cert
-  privateKey:
-    algorithm: ECDSA
-    size: 256
-    rotationPolicy: "Always"
-  issuerRef:
-    kind: Issuer
-    name: lamassu-downstream-ca-selfsigned-issuer
-    group: cert-manager.io
-EOF
-
         export IP_LIST="$ip_list"
-        yq -i '.spec.ipAddresses = (env(IP_LIST) | split(" "))' edge-tls-certificate.yaml
-
-        run_kubectl apply -f edge-tls-certificate.yaml
-        rm -f edge-tls-certificate.yaml
-    fi
-
-    echo -e "${ORANGE}Waiting for the Envoy Gateway Service backing this install...${NOCOLOR}"
-    local envoy_svc=""
-    for attempt in $(seq 1 30); do
-        envoy_svc=$(run_kubectl get svc -n envoy-gateway-system \
-            -l "gateway.envoyproxy.io/owning-gateway-name=lamassu-gateway,gateway.envoyproxy.io/owning-gateway-namespace=${NAMESPACE}" \
-            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "$envoy_svc" ]; then
-            break
-        fi
-        sleep 2
-    done
-
-    if [ -z "$envoy_svc" ]; then
-        echo -e "\n${RED}Could not find the Envoy Gateway Service for namespace ${NAMESPACE}${NOCOLOR}"
-        exit 1
-    fi
-    echo -e "${GREEN}Found Envoy Gateway Service: ${envoy_svc}${NOCOLOR}"
-
-    cat <<EOF | run_kubectl apply -f -
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-traefik-to-envoy-$NAMESPACE
-  namespace: envoy-gateway-system
-spec:
-  from:
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    namespace: $NAMESPACE
-  to:
-  - group: ""
-    kind: Service
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: traefik-gw
-  namespace: $NAMESPACE
-spec:
-  gatewayClassName: traefik
-  listeners:
-  - name: https
-    protocol: HTTPS
-    port: $TRAEFIK_WEBSECURE_PORT
-    tls:
-      mode: Terminate
-      certificateRefs:
-      - kind: Secret
-        group: ""
-        name: edge-cert
----
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: inject-client-cert
-  namespace: $NAMESPACE
-spec:
-  passTLSClientCert:
-    pem: true
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: proxy-to-envoy
-  namespace: $NAMESPACE
-spec:
-  hostnames:
-  - "$domain_host"
-  parentRefs:
-  - name: traefik-gw
-    namespace: $NAMESPACE
-    sectionName: https
-  rules:
-  - backendRefs:
-    - group: ""
-      kind: Service
-      name: $envoy_svc
-      namespace: envoy-gateway-system
-      port: 443
-    filters:
-    - type: RequestHeaderModifier
-      requestHeaderModifier:
-        set:
-        - name: X-Forwarded-Proto
-          value: https
-    - type: ExtensionRef
-      extensionRef:
-        group: traefik.io
-        kind: Middleware
-        name: inject-client-cert
-EOF
-
-    if [ $? -eq 0 ]; then
-        echo -e "\n${GREEN}Traefik front proxy configured${NOCOLOR}"
-    else
-        echo -e "\n${RED}Error configuring the Traefik front proxy${NOCOLOR}"
-        exit 1
+        yq -i '
+          .traefikFrontProxy.tls.type = "certManager" |
+          .traefikFrontProxy.tls.certManagerOptions.addresses = (env(IP_LIST) | split(" "))
+        ' lamassu.yaml
     fi
 }
 
