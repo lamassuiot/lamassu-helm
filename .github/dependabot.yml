@@ -1,0 +1,62 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: "/ci/softhsm"
+    schedule:
+      interval: weekly
+    assignees:
+      - mikelamutxastegi
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: docker
+    directory: "/ci/toolbox"
+    schedule:
+      interval: weekly
+    assignees:
+      - mikelamutxastegi
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: docker
+    directory: "/ci/auth/client-cert-proxy"
+    schedule:
+      interval: weekly
+    assignees:
+      - mikelamutxastegi
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    assignees:
+      - mikelamutxastegi
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
