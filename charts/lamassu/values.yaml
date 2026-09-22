@@ -194,10 +194,14 @@ serviceDefaults:
   podSecurityContext:
     seccompProfile:
       type: RuntimeDefault
-  # -- Container-level security context. Images must run as a non-root user.
+  # -- Container-level security context. Owned distroless images run with their
+  # declared non-root UID/GID. Override per service when an image declares a
+  # different identity (authz) or needs a special group (KMS filesystem engine).
   securityContext:
     allowPrivilegeEscalation: false
     runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
     readOnlyRootFilesystem: false
     capabilities:
       drop:
@@ -251,10 +255,6 @@ services:
     image: "ghcr.io/lamassuiot/lamassu-ui:dev"
     # The rootless image listens on the chart-wide unprivileged service port.
     port: 8085
-    # -- Run the rootless nginx image with its declared numeric identity.
-    securityContext:
-      runAsUser: 65532
-      runAsGroup: 65532
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
     image: ghcr.io/lamassuiot/lamassu-va:dev-v4
@@ -280,10 +280,6 @@ services:
       - dev.lamassu.io
     # -- Docker image for the CA component
     image: ghcr.io/lamassuiot/lamassu-ca:dev-v4
-    # -- Run the owned image with its declared distroless nonroot UID/GID.
-    securityContext:
-      runAsUser: 65532
-      runAsGroup: 65532
     monitoring:
       # -- Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term
       frequency: "* * * * *"
@@ -292,6 +288,10 @@ services:
     image: ghcr.io/lamassuiot/lamassu-kms:dev-v4
     autoscaling:
       maxReplicas: 3
+    securityContext:
+      # -- The filesystem engine's PVC data is group-owned by 0. Match the
+      # pod-level default until the group contract migrates to 65532 (see SECURITY.md).
+      runAsGroup: 0
     # -- Optional command override for the KMS container
     command: []
     # -- Optional arguments override for the KMS container
@@ -342,20 +342,14 @@ services:
   deviceManager:
     # -- Docker image for the Device Manager component
     image: ghcr.io/lamassuiot/lamassu-devmanager:dev-v4
-    # -- Run the owned image with its declared distroless nonroot UID/GID.
-    securityContext:
-      runAsUser: 65532
-      runAsGroup: 65532
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4
     podSecurityContext:
-      # -- Filesystem group that lets the non-root TLS init container and DMS container share generated certificates.
+      # -- Filesystem group that lets the cert-bundle init container and DMS container share generated certificates.
       fsGroup: 65532
-      # -- Only update volume ownership when the root directory does not already use fsGroup.
-      fsGroupChangePolicy: OnRootMismatch
     tlsInitContainer:
-      # -- Security context for the toolbox container that builds the downstream CA bundle.
+      # -- Security context for the busybox container that builds the downstream CA bundle.
       securityContext:
         allowPrivilegeEscalation: false
         runAsNonRoot: true
@@ -414,10 +408,6 @@ services:
   alerts:
     # -- Docker image for the Alerts component
     image: ghcr.io/lamassuiot/lamassu-alerts:dev-v4
-    # -- Run the owned image with its declared distroless nonroot UID/GID.
-    securityContext:
-      runAsUser: 65532
-      runAsGroup: 65532
     autoscaling:
       maxReplicas: 3
     smtp_server:
@@ -438,7 +428,7 @@ services:
   authz:
     # -- Docker image for the Authz connector component
     image: ghcr.io/lamassuiot/lamassu-authz:dev-v4
-    # The image declares USER lamassu, which resolves to UID/GID 999.
+    # The image declares USER lamassu (UID/GID 999), so it overrides the 65532 default.
     securityContext:
       runAsUser: 999
       runAsGroup: 999
