@@ -129,7 +129,7 @@
                 "tlsInitContainer": {
                   "type": "object",
                   "properties": {
-                    "securityContext": { "type": "object" }
+                    "securityContext": { "$ref": "#/definitions/containerSecurityContext" }
                   },
                   "additionalProperties": false
                 }
@@ -162,7 +162,10 @@
               {
                 "type": "object",
                 "required": ["type", "image"],
-                "properties": { "type": { "type": "string", "minLength": 1 } }
+                "properties": {
+                  "type": { "type": "string", "minLength": 1 },
+                  "securityContext": { "$ref": "#/definitions/connectorSecurityContext" }
+                }
               }
             ]
           }
@@ -272,8 +275,8 @@
         "nodeSelector": { "type": "object" },
         "tolerations": { "type": "array" },
         "imagePullSecrets": { "$ref": "#/definitions/imagePullSecrets" },
-        "podSecurityContext": { "type": "object" },
-        "securityContext": { "type": "object" },
+        "podSecurityContext": { "$ref": "#/definitions/podSecurityContext" },
+        "securityContext": { "$ref": "#/definitions/containerSecurityContext" },
         "extraEnv": { "type": "array" },
         "command": { "type": "array", "items": { "type": "string" } },
         "args": { "type": "array", "items": { "type": "string" } },
@@ -286,6 +289,53 @@
         "pdb": { "$ref": "#/definitions/pdb" }
       },
       "additionalProperties": true
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "drop": { "type": "array", "items": { "type": "string" } },
+        "add": { "type": "array", "items": { "type": "string" }, "maxItems": 0 }
+      },
+      "additionalProperties": false
+    },
+    "containerSecurityContext": {
+      "type": "object",
+      "properties": {
+        "runAsNonRoot": { "type": "boolean" },
+        "runAsUser": { "type": "integer", "minimum": 0 },
+        "runAsGroup": { "type": "integer", "minimum": 0 },
+        "allowPrivilegeEscalation": { "const": false },
+        "readOnlyRootFilesystem": { "type": "boolean" },
+        "capabilities": { "$ref": "#/definitions/capabilities" },
+        "seccompProfile": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "properties": {
+        "runAsNonRoot": { "type": "boolean" },
+        "runAsUser": { "type": "integer", "minimum": 0 },
+        "runAsGroup": { "type": "integer", "minimum": 0 },
+        "fsGroup": { "type": "integer", "minimum": 0 },
+        "fsGroupChangePolicy": { "type": "string", "enum": ["OnRootMismatch", "Always"] },
+        "supplementalGroups": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "seccompProfile": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "connectorSecurityContext": {
+      "allOf": [
+        { "$ref": "#/definitions/containerSecurityContext" },
+        {
+          "type": "object",
+          "properties": {
+            "runAsNonRoot": { "const": true },
+            "runAsUser": { "type": "integer", "minimum": 1 },
+            "runAsGroup": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
     }
   }
 }
