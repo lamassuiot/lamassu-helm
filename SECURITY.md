@@ -4,7 +4,7 @@ This document tracks the security posture of the Lamassu Helm chart. It is a
 living engineering record for evidence, accepted exceptions, completed work,
 and prioritized follow-up. It is not a vulnerability disclosure policy.
 
-Last reviewed: 2026-09-21
+Last reviewed: 2026-09-22
 
 ## Status Legend
 
@@ -31,20 +31,20 @@ Last reviewed: 2026-09-21
 
 | Workload | Current identity contract | Status | Security implication | Next action |
 |---|---|---|---|---|
-| Alerts | `65532:65532`, non-root | Done | Numeric identity is enforced and all capabilities are dropped. | Keep image and chart identity synchronized. |
-| CA | `65532:65532`, non-root | Done | Numeric identity is enforced and all capabilities are dropped. | Keep image and chart identity synchronized. |
-| Device Manager | `65532:65532`, non-root | Done | Numeric identity is enforced and all capabilities are dropped. | Keep image and chart identity synchronized. |
-| AWS connector | Defaults to `65532:65532`, non-root; per-instance override supported | Done | Owned image is constrained without preventing custom-image identities. | Add a schema-level contract for overrides. |
-| DMS Manager | Image non-root; shared `fsGroup: 65532` | Partial | Shared files are accessible, but the main container UID/GID is not explicitly pinned. | Set the main container to `65532:65532`; remove irrelevant `fsGroupChangePolicy` for `emptyDir`. |
-| DMS TLS init | `65532:65532`, non-root | Done | Root-default toolbox image is safely overridden. | Rebuild toolbox with a numeric non-root `USER`. |
+| Alerts | `65532:65532`, non-root | Done | Numeric identity comes from `serviceDefaults.securityContext` and all capabilities are dropped. | Keep image and chart identity synchronized. |
+| CA | `65532:65532`, non-root | Done | Numeric identity comes from `serviceDefaults.securityContext` and all capabilities are dropped. | Keep image and chart identity synchronized. |
+| Device Manager | `65532:65532`, non-root | Done | Numeric identity comes from `serviceDefaults.securityContext` and all capabilities are dropped. | Keep image and chart identity synchronized. |
+| AWS connector | Defaults to `65532:65532`, non-root via `serviceDefaults.securityContext`; per-instance override supported | Done | Owned image is constrained without preventing custom-image identities; `values.schema.json` now rejects `runAsNonRoot: false`, `privileged`, added capabilities, and unknown fields for any connector override. | Keep image and chart identity synchronized. |
+| DMS Manager | `65532:65532`, non-root; shared `fsGroup: 65532` | Done | The main container identity is now pinned by `serviceDefaults.securityContext`. | Keep image and chart identity synchronized. |
+| DMS TLS init | `65532:65532`, non-root | Done | Busybox cert-bundle builder runs as non-root with all capabilities dropped. | Rebuild toolbox with a numeric non-root `USER`. |
 | Authz and authz init | `999:999`, non-root | Done | Named image user cannot bypass or confuse kubelet verification. | Publish the image with `USER 999:999`. |
-| VA | Image non-root; no PVC `fsGroup` | Todo | Writable PVC behavior depends on storage-driver permissions. | Use `65532:65532`, `fsGroup: 65532`, and `OnRootMismatch` for local storage. |
-| KMS | `65532:0`; `fsGroup: 0` when the PKCS#11 sidecar is enabled | Todo | Root-group membership broadens access and is a fragile volume-permission strategy. | Migrate to `65532:65532` and `fsGroup: 65532`, including existing PVC ownership. |
-| UI | `65532:65532`, non-root, unprivileged port | Done | Rootless image removes the CHOWN/SETGID/SETUID exception and satisfies Restricted Pod Security. | Keep image and chart identity synchronized. |
-| WFX | Image declares UID `65532`; chart sets `runAsNonRoot: false` | Todo | A mutable image can silently regress to root. | Pin an immutable image and enforce `65532:65532`, non-root. |
+| VA | `65532:65532`, non-root; no PVC `fsGroup` | Partial | Container identity is pinned by `serviceDefaults.securityContext`, but writable PVC behavior depends on storage-driver permissions. | Add `fsGroup: 65532` and `OnRootMismatch` for local storage. |
+| KMS | `65532:0`; `fsGroup: 0` when the PKCS#11 sidecar is enabled | Todo | Root-group membership broadens access and is a fragile volume-permission strategy; KMS overrides the chart-wide `runAsGroup` default with `0`. | Migrate to `65532:65532` and `fsGroup: 65532`, including existing PVC ownership, then delete the KMS exception. |
+| UI | `65532:65532`, non-root, unprivileged port | Done | Identity comes from `serviceDefaults.securityContext`; the rootless image removes the CHOWN/SETGID/SETUID exception and satisfies Restricted Pod Security. | Keep image and chart identity synchronized. |
+| WFX | Image declares UID `65532`; chart sets `runAsNonRoot: false` | Todo | A mutable image can silently regress to root; WFX inherits the 65532 default but keeps a `runAsNonRoot: false` exception. | Pin an immutable image and enforce `65532:65532`, non-root. |
 | DB migration binaries | Image declares UID `65532`; chart does not enforce it | Todo | A republished image could run migrations as root. | Add a migration-specific `65532:65532`, non-root contract. |
 | PostgreSQL migration helpers | Run as root | Todo | Database credentials and shell logic run with unnecessary root privileges. | Run as `999:999`; PostgreSQL client tools were verified with this identity. |
-| CA-to-KMS migration | Image non-root through shared defaults | Partial | UID/GID remain implicit and tied to mutable image metadata. | Add an explicit `65532:65532` migration contract. |
+| CA-to-KMS migration | `65532:65532`, non-root via `serviceDefaults.securityContext` | Done | Explicit chart-level identity, no longer tied to mutable image metadata. | Keep image and chart identity synchronized. |
 | Helm connectivity test | Root toolbox image | Todo | Test hooks unnecessarily run as root and fail Restricted policy. | Run as `65532:65532`, non-root. |
 | PKCS#11 p11-kit module staging | Root with five narrowly restored capabilities | Exception | Runtime package installation cannot satisfy Restricted Pod Security. | Replace runtime `apt-get` with a prebuilt non-root module image. |
 
@@ -100,6 +100,10 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | E-010 | Render and validate the chart | Helm lint and kubeconform pass for default, contract, current fast-lane, and HSM configurations used during this review. |
 | E-011 | Inspect namespace labels | `lamassu-dev` currently has no Pod Security Admission enforcement, audit, or warning labels. |
 | E-012 | Run `ghcr.io/lamassuiot/lamassu-ui:dev` with `--cap-drop=ALL` and `no-new-privileges` | nginx served HTTP 200 on 8085, `config.js` was stamped from env, and `id` reported `uid=65532 gid=65532`. |
+| E-013 | `helm lint` a connector override with `securityContext.runAsNonRoot: false` | Rejected: `runAsNonRoot` must equal `true` for `services.connectors.*`. |
+| E-014 | `helm lint` a connector override with `securityContext.privileged: true` | Rejected: `privileged` is not an allowed property. |
+| E-015 | `helm lint` a connector override with `runAsNonRoot: true`, `runAsUser: 65532`, `runAsGroup: 65532` | Accepted; confirms the tightened schema does not reject a compliant override. |
+| E-016 | `helm lint` and `helm template` the default chart after tightening `values.schema.json` | Both pass, including the WFX `runAsNonRoot: false` exception, which the schema still permits as a plain boolean pending E-001/WFX remediation. |
 
 ## Completed Work
 
@@ -114,6 +118,12 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 - [x] Separate PKCS#11 module-init security from the KMS application contract.
 - [x] Limit the p11-kit root installer to five verified capabilities.
 - [x] Validate the ARM64 architecture of current Lamassu service images.
+- [x] Add schema-level security-context validation in `values.schema.json`:
+  new `containerSecurityContext`, `podSecurityContext`, and `capabilities`
+  definitions close `additionalProperties` (blocking `privileged` and other
+  unlisted fields), pin `allowPrivilegeEscalation` to `false` when set, and
+  restrict `capabilities.add` to empty; `connectorSecurityContext` builds on
+  this to require `runAsNonRoot: true` for every connector instance.
 
 ## Prioritized Work
 
@@ -146,7 +156,14 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 - [ ] Replace runtime `apt-get` in the p11-kit init container with a prebuilt,
   non-root, digest-pinned image.
 - [ ] Replace mutable production tags with immutable versions or digests.
-- [ ] Validate security-context fields and UID/GID ranges in `values.schema.json`.
+- [x] Validate security-context fields in `values.schema.json` for
+  `service.securityContext`, `service.podSecurityContext`,
+  `dmsManager.tlsInitContainer.securityContext`, and `connectors.*.securityContext`
+  (see Completed Work). Still open: `kms.pkcs11Sidecar` and `kms.pkcs11Modules`
+  security contexts sit under `service`'s `additionalProperties: true` and
+  remain unvalidated; no schema field yet excludes UID/GID `0` outright for
+  non-connector services (WFX's documented `runAsNonRoot: false` exception
+  relies on this being permissive).
 - [ ] Add CI assertions for effective UID/GID, non-root guards, capabilities,
   seccomp, privilege escalation, and ServiceAccount token mounting.
 - [ ] Evaluate `supplementalGroupsPolicy: Strict` only after the chart's minimum
@@ -210,6 +227,20 @@ A security item is Done only when:
 7. The evidence and exception registers above are updated.
 
 ## Change Log
+
+- 2026-09-22: Hardened `values.schema.json`. Added `containerSecurityContext`,
+  `podSecurityContext`, and `capabilities` definitions with
+  `additionalProperties: false` (blocks `privileged` and other unlisted
+  fields), `allowPrivilegeEscalation: false` when set, and an empty
+  `capabilities.add`. `connectorSecurityContext` now composes the container
+  definition via `allOf` and requires `runAsNonRoot: true` for every
+  connector instance, closing the gap where a connector override could
+  silently disable non-root enforcement. Verified with `helm lint` against
+  malicious (`runAsNonRoot: false`, `privileged: true`) and compliant
+  connector overrides (E-013 through E-015), and confirmed the default chart
+  and the WFX `runAsNonRoot: false` exception still render and lint cleanly
+  (E-016). Remaining gap: `kms.pkcs11Sidecar`/`kms.pkcs11Modules` security
+  contexts are not yet covered by the schema.
 
 - 2026-09-21: Pinned the Envoy Gateway `envoyService` to
   `externalTrafficPolicy: Cluster` in the chart's EnvoyProxy template. Envoy

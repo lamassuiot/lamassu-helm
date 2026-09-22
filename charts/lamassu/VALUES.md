@@ -108,13 +108,12 @@ Kubernetes: `>=1.24.0-0`
 | serviceDefaults.readinessProbe.enabled | bool | `true` | Enable the readiness probe. |
 | serviceDefaults.replicaCount | int | `1` | Number of replicas. Ignored when autoscaling is enabled. |
 | serviceDefaults.resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Container resource requests/limits. CPU and memory requests are required for utilization-based HPA metrics. |
-| serviceDefaults.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsNonRoot":true}` | Container-level security context. Images must run as a non-root user. |
+| serviceDefaults.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Container-level security context. Owned distroless images run with their declared non-root UID/GID. Override per service when an image declares a different identity (authz) or needs a special group (KMS filesystem engine). |
 | serviceDefaults.startupProbe.enabled | bool | `true` | Enable the startup probe so liveness checks do not kill slow-starting services. |
 | serviceDefaults.tolerations | list | `[]` | Tolerations for pod scheduling |
 | serviceDefaults.topologySpreadConstraints | list | `[]` | Topology spread constraints. |
 | services.alerts.autoscaling.maxReplicas | int | `3` |  |
 | services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:dev-v4"` | Docker image for the Alerts component |
-| services.alerts.securityContext | object | `{"runAsGroup":65532,"runAsUser":65532}` | Run the owned image with its declared distroless nonroot UID/GID. |
 | services.alerts.smtp_server.enable_ssl | bool | `true` | use TLS for the SMTP connection |
 | services.alerts.smtp_server.from | string | `""` | email address to use as the sender of the alerts |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
@@ -132,14 +131,11 @@ Kubernetes: `>=1.24.0-0`
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domain to be used while signing/generating new CAs and certificates |
 | services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:dev-v4"` | Docker image for the CA component |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term |
-| services.ca.securityContext | object | `{"runAsGroup":65532,"runAsUser":65532}` | Run the owned image with its declared distroless nonroot UID/GID. |
 | services.connectors | object | `{}` | AWS connector instances keyed by stable connector ID. |
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:dev-v4"` | Docker image for the Device Manager component |
-| services.deviceManager.securityContext | object | `{"runAsGroup":65532,"runAsUser":65532}` | Run the owned image with its declared distroless nonroot UID/GID. |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4"` | Docker image for the DMS Manager component |
-| services.dmsManager.podSecurityContext.fsGroup | int | `65532` | Filesystem group that lets the non-root TLS init container and DMS container share generated certificates. |
-| services.dmsManager.podSecurityContext.fsGroupChangePolicy | string | `"OnRootMismatch"` | Only update volume ownership when the root directory does not already use fsGroup. |
-| services.dmsManager.tlsInitContainer.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the toolbox container that builds the downstream CA bundle. |
+| services.dmsManager.podSecurityContext.fsGroup | int | `65532` | Filesystem group that lets the cert-bundle init container and DMS container share generated certificates. |
+| services.dmsManager.tlsInitContainer.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the busybox container that builds the downstream CA bundle. |
 | services.kms.args | list | `[]` | Optional arguments override for the KMS container |
 | services.kms.autoscaling.maxReplicas | int | `3` |  |
 | services.kms.command | list | `[]` | Optional command override for the KMS container |
@@ -149,6 +145,7 @@ Kubernetes: `>=1.24.0-0`
 | services.kms.cryptoEngines.engines[0].storage_directory | string | `"/crypto/fs"` |  |
 | services.kms.cryptoEngines.engines[0].type | string | `"filesystem"` |  |
 | services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:dev-v4"` | Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC). |
+| services.kms.securityContext.runAsGroup | int | `0` | The filesystem engine's PVC data is group-owned by 0. Match the pod-level default until the group contract migrates to 65532 (see SECURITY.md). |
 | services.kms.pkcs11Modules | list | `[]` | Optional PKCS#11 modules to inject into KMS at runtime. Each entry runs a    short-lived init container that stages a module and optional config in a    shared volume mounted read-only into KMS. Fields: name (unique), image,    imagePullPolicy, securityContext, command, args, env, and mountPath. |
 | services.kms.pkcs11Sidecar.args | list | `[]` | Arguments for the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.command | list | `[]` | Command for the PKCS#11 sidecar |
@@ -163,7 +160,6 @@ Kubernetes: `>=1.24.0-0`
 | services.kms.pkcs11Sidecar.volumes | list | `[]` | Extra pod volumes needed by the PKCS#11 sidecar |
 | services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:dev-v4"` | Docker image for the UI component |
 | services.ui.port | int | `8085` |  |
-| services.ui.securityContext | object | `{"runAsGroup":65532,"runAsUser":65532}` | Run the rootless nginx image with its declared numeric identity. |
 | services.va.autoscaling.maxReplicas | int | `3` |  |
 | services.va.fileStore.id | string | `"local-1"` | Unique identifier for this storage engine instance |
 | services.va.fileStore.local | object | `{"storageDirectory":"/data/crl"}` | Config for type=local. Maps to localfs.FilesystemEngineConfig (storage_directory) |

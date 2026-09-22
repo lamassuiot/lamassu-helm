@@ -3,8 +3,6 @@
 {{- $instanceID := $connectorID | replace "aws." "" }}
 {{- $component := printf "aws-connector-%s" $instanceID }}
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svc" $instance) | fromYaml }}
-{{- $defaultSecurityContext := dict "runAsUser" 65532 "runAsGroup" 65532 }}
-{{- $securityContext := mustMergeOverwrite (deepCopy $defaultSecurityContext) (deepCopy $svc.securityContext) }}
 {{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" $component) }}
 apiVersion: apps/v1
 kind: Deployment
@@ -44,7 +42,7 @@ spec:
           args:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $securityContext }}
+          {{- with $svc.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}

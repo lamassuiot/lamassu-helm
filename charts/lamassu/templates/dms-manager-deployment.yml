@@ -27,25 +27,38 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        - name: init-tls-certs
-          image: {{ .Values.toolbox.image }}
+        - name: build-cert-bundle
+          image: busybox:1.37
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
           {{- with $svc.tlsInitContainer.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          command: ["/bin/bash", "/docker-entrypoint.sh"]
+          command:
+            - sh
+            - -c
+            - |
+              cat /certs/downstream.crt > /shared/bundle.crt
+
+              if [ -f /certs/downstream-ca.crt ]; then
+                cat /certs/downstream-ca.crt >> /shared/bundle.crt
+              fi
+
+              CERT_COUNT=$(grep -c 'END CERTIFICATE' /shared/bundle.crt)
+
+              awk "BEGIN {p=0;} /BEGIN CERTIFICATE/ {p++;} p==$CERT_COUNT" \
+                /shared/bundle.crt > /shared/root.crt
+
+              echo "Bundle:"
+              cat /shared/bundle.crt
+
+              echo "Root:"
+              cat /shared/root.crt
           volumeMounts:
-            - name: downstream-tls-certificate
-              mountPath: /certs/downstream.crt
-              subPath: tls.crt
-            - name: downstream-tls-certificate
-              mountPath: /certs/downstream-ca.crt
-              subPath: ca.crt
-            - name: api-config
-              mountPath: /docker-entrypoint.sh
-              subPath: init.sh
-            - name: shared
+            - name: cert-input
+              mountPath: /certs
+              readOnly: true
+            - name: cert-output
               mountPath: /shared
       containers:
         - name: dms-manager
@@ -78,7 +91,7 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
-            - name: shared
+            - name: cert-output
               mountPath: /shared
           ports:
             - containerPort: {{ $svc.port }}
@@ -88,8 +101,19 @@ spec:
         - name: api-config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager-config") }}
-        - name: downstream-tls-certificate
-          secret:
-            secretName: {{ include "downstream.certSecret" . }}
-        - name: shared
+        - name: cert-input
+          projected:
+            sources:
+              - secret:
+                  name: {{ include "downstream.certSecret" . }}
+                  items:
+                    - key: tls.crt
+                      path: downstream.crt
+              - secret:
+                  name: {{ include "downstream.certSecret" . }}
+                  items:
+                    - key: ca.crt
+                      path: downstream-ca.crt
+                  optional: true
+        - name: cert-output
           emptyDir: {}
