@@ -1,41 +1,14 @@
 {{/*
-HTTPRoute through the Lamassu API gateway.
+parentRefs entry pointing HTTPRoutes at the shared Envoy Gateway. Every
+Lamassu route attaches to the same gateway, so this is the one fragment
+worth sharing; the rest of an HTTPRoute (matches/filters/backendRefs) is
+route-specific and stays explicit in each route's own file.
 
-Required keys: root, name, backend, port, path.
-Optional keys: rewrite, authLabel, and sections (defaults to ["https"]).
+dict: root, sections (optional, list of gateway listener names, default ["https"])
 */}}
-{{- define "lamassu.httproute" -}}
-{{- $routeName := include "lamassu.componentName" (dict "root" .root "component" .name) -}}
-{{- $backendName := include "lamassu.componentName" (dict "root" .root "component" .backend) -}}
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: {{ $routeName }}
-  labels:
-    {{- include "lamassu.labels" (dict "root" .root "component" .name) | nindent 4 }}
-    {{- with .authLabel }}
-    auth: {{ . | quote }}
-    {{- end }}
-spec:
-  parentRefs:
-    {{- range (.sections | default (list "https")) }}
-    - name: {{ include "lamassu.componentName" (dict "root" $.root "component" "gateway") }}
-      sectionName: {{ . }}
-    {{- end }}
-  rules:
-    - matches:
-      - path:
-          type: PathPrefix
-          value: {{ .path }}
-      {{- with .rewrite }}
-      filters:
-      - type: URLRewrite
-        urlRewrite:
-          path:
-            type: ReplacePrefixMatch
-            replacePrefixMatch: {{ . | quote }}
-      {{- end }}
-      backendRefs:
-        - name: {{ $backendName }}
-          port: {{ .port }}
+{{- define "lamassu.gatewayParentRef" -}}
+{{- range (.sections | default (list "https")) }}
+- name: {{ include "lamassu.componentName" (dict "root" $.root "component" "gateway") }}
+  sectionName: {{ . }}
+{{- end }}
 {{- end -}}

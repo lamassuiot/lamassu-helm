@@ -1,7 +1,20 @@
-{{ range $connectorID, $instance := $.Values.services.connectors }}
+{{- range $connectorID, $instance := $.Values.services.connectors }}
 {{- if eq $instance.type "awsiot" }}
 {{- $instanceID := $connectorID | replace "aws." "" }}
-{{ include "lamassu.pdb" (dict "root" $ "name" (printf "aws-connector-%s" $instanceID) "svc" $instance) }}
+{{- $component := printf "aws-connector-%s" $instanceID }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svc" $instance) | fromYaml }}
+{{- if eq (include "lamassu.pdb.enabled" $svc) "true" }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" $component) }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" $component) | nindent 2 }}
+spec:
+  minAvailable: {{ $svc.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}
 ---
+{{- end }}
 {{- end }}
 {{- end }}
