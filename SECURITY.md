@@ -36,16 +36,16 @@ Last reviewed: 2026-09-23
 | Device Manager | `65532:65532`, non-root | Done | Numeric identity comes from `serviceDefaults.securityContext` and all capabilities are dropped. | Keep image and chart identity synchronized. |
 | AWS connector | Defaults to `65532:65532`, non-root via `serviceDefaults.securityContext`; per-instance override supported | Done | Owned image is constrained without preventing custom-image identities; `values.schema.json` now rejects `runAsNonRoot: false`, `privileged`, added capabilities, and unknown fields for any connector override. | Keep image and chart identity synchronized. |
 | DMS Manager | `65532:65532`, non-root; shared `fsGroup: 65532` | Done | The main container identity is now pinned by `serviceDefaults.securityContext`. | Keep image and chart identity synchronized. |
-| DMS TLS init | `65532:65532`, non-root | Done | Busybox cert-bundle builder runs as non-root with all capabilities dropped. | Rebuild toolbox with a numeric non-root `USER`. |
+| DMS TLS init | `65532:65532`, non-root | Done | Busybox cert-bundle builder runs as non-root with all capabilities dropped. | Keep image and chart identity synchronized. |
 | Authz and authz init | `65532:65532`, non-root | Done | The image was rebuilt to declare UID/GID `65532`, so the chart no longer needs a `999:999` override; both the Deployment and the `init-authz` migration-Job container inherit `serviceDefaults.securityContext`. | Keep image and chart identity synchronized. |
-| VA | `65532:65532`, non-root; no PVC `fsGroup` | Partial | Container identity is pinned by `serviceDefaults.securityContext`, but writable PVC behavior depends on storage-driver permissions. | Add `fsGroup: 65532` and `OnRootMismatch` for local storage. |
+| VA | `65532:65532`, non-root; `fsGroup: 65532` with `fsGroupChangePolicy: OnRootMismatch` when `fileStore.type=local` | Done | Container identity is pinned by `serviceDefaults.securityContext`; the local-storage PVC is now group-owned by `65532` at mount time, with `OnRootMismatch` skipping the recursive chown once ownership is established (no legacy volumes to migrate, unlike KMS). `fileStore.type=s3` gets no PVC and no `fsGroup`. | Keep image and chart identity synchronized. |
 | KMS | `65532:65532`; `fsGroup: 65532` when the filesystem engine or PKCS#11 sidecar is in use | Done | KMS no longer overrides the chart-wide `runAsGroup` default; `fsGroup: 65532` lets the container access both the filesystem engine's PVC and the PKCS#11 socket volume without root-group membership. Kubelet's default `fsGroupChangePolicy: Always` recursively rechowns existing PVC content to `65532` on next pod start. | Keep image and chart identity synchronized. |
 | UI | `65532:65532`, non-root, unprivileged port | Done | Identity comes from `serviceDefaults.securityContext`; the rootless image removes the CHOWN/SETGID/SETUID exception and satisfies Restricted Pod Security. | Keep image and chart identity synchronized. |
 | WFX | `65532:65532`, non-root; image pinned by digest | Done | Image declares UID `65532`; the chart no longer overrides `runAsNonRoot`, so WFX inherits the chart-wide `65532:65532` default, and the `:latest` tag is pinned to its verified digest so it can no longer silently regress to a different (possibly root) image. | Keep image and chart identity synchronized. |
 | DB migration binaries | Image declares UID `65532`; chart does not enforce it | Todo | A republished image could run migrations as root. | Add a migration-specific `65532:65532`, non-root contract. |
 | PostgreSQL migration helpers | Run as root | Todo | Database credentials and shell logic run with unnecessary root privileges. | Run as `999:999`; PostgreSQL client tools were verified with this identity. |
 | CA-to-KMS migration | `65532:65532`, non-root via `serviceDefaults.securityContext` | Done | Explicit chart-level identity, no longer tied to mutable image metadata. | Keep image and chart identity synchronized. |
-| Helm connectivity test | Root toolbox image | Todo | Test hooks unnecessarily run as root and fail Restricted policy. | Run as `65532:65532`, non-root. |
+| Helm connectivity test | `65532:65532`, non-root, `readOnlyRootFilesystem: true`; public `curlimages/curl` image pinned by digest | Done | Replaced the chart-owned `ghcr.io/lamassuiot/toolbox` image (and its `ci/toolbox` build pipeline) with the upstream-maintained `curlimages/curl` image; the hook script was rewritten from `bash`+`jq` to POSIX `sh` with a `grep`-based JSON-shape check, since `curlimages/curl` ships neither. | Keep image and chart identity synchronized. |
 | PKCS#11 p11-kit module staging | Root with five narrowly restored capabilities | Exception | Runtime package installation cannot satisfy Restricted Pod Security. | Replace runtime `apt-get` with a prebuilt non-root module image. |
 
 ## Source Repositories
@@ -81,7 +81,7 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | `lamassu-lamassu-db-migration:dev-v4` | `65532` | `sha256:feb9c41131b3f19a7ddee12cc4bc248e74b41038e611ebd4327f1ea53b8b0f91` |
 | `lamassu-aws-connector:dev-v4` | `65532` | `sha256:ad585a5120c8634eb18b72ee71dce6f8e45c70ddd54502f9b832b5bf5786ba01` |
 | `lamassu-ca-to-kms-migration:dev-v4` | `65532` | `sha256:2c1262a7bc9504257d0d6e65be10b32ed07067b6c29202929806411446ad8b9f` |
-| `toolbox:2.2.0` | root/empty | `sha256:464d86d83ec52abab587d1367de2603e51c46dc989641ecae460a2d68299b355` |
+| `curlimages/curl@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69` (chart-pinned; replaces the retired `ghcr.io/lamassuiot/toolbox:2.2.0`, previously `root/empty`, `sha256:464d86d83ec52abab587d1367de2603e51c46dc989641ecae460a2d68299b355`) | `curl_user` (`100:101`); chart pins `65532:65532` via `securityContext` | `sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69` |
 | `ghcr.io/siemens/wfx@sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678` (chart-pinned; observed under the `:latest` tag on 2026-09-21) | `65532` | `sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678` |
 | `postgres:18.4` | root/empty; `postgres=999:999` | `sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636` |
 
@@ -105,6 +105,8 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | E-014 | `helm lint` a connector override with `securityContext.privileged: true` | Rejected: `privileged` is not an allowed property. |
 | E-015 | `helm lint` a connector override with `runAsNonRoot: true`, `runAsUser: 65532`, `runAsGroup: 65532` | Accepted; confirms the tightened schema does not reject a compliant override. |
 | E-016 | `helm lint` and `helm template` the default chart after tightening `values.schema.json` | Both pass, including the WFX `runAsNonRoot: false` exception, which the schema still permits as a plain boolean pending E-001/WFX remediation. |
+| E-017 | Run `curlimages/curl:8.11.1` with `-u 65532:65532 --cap-drop=ALL --security-opt=no-new-privileges --read-only` | `sh`, `curl`, and `grep` all work; a live `curl` to an external HTTPS endpoint succeeds; `touch /` fails as expected under the read-only root filesystem. |
+| E-018 | Extract the rendered `init.sh` from `helm template` and run it inside the same locked-down `curlimages/curl` container | POSIX-`sh` syntax is valid (`sh -n`, `dash -n`); `check_service`/`check_ui` correctly accept a JSON-shaped body and correctly reject a non-JSON (HTML) body, matching the pre-rewrite `jq`/`bash` behavior without needing either tool. |
 
 ## Completed Work
 
@@ -144,7 +146,8 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 - [x] Enforce `65532:65532` and `runAsNonRoot: true` for WFX; stop using `latest`.
 - [ ] Run database migration images as `65532:65532`, non-root.
 - [ ] Run PostgreSQL migration helpers as `999:999`, non-root.
-- [ ] Run the Helm connectivity test toolbox as `65532:65532`, non-root.
+- [x] Run the Helm connectivity test as `65532:65532`, non-root, on a
+  public image instead of a chart-owned toolbox.
 - [x] Change KMS and its PKCS#11 sidecar from GID `0` to GID `65532`.
 - [ ] Add explicit `65532:65532` contracts to DMS, VA, and CA-to-KMS.
 - [ ] Enable Pod Security Admission gradually: `enforce=baseline`, then
@@ -154,7 +157,7 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 ### P2 - Filesystems And Supply Chain
 
 - [x] Add `fsGroup: 65532` to KMS when it uses a PVC or the PKCS#11 sidecar.
-- [ ] Add `fsGroup: 65532` and `OnRootMismatch` to VA when it uses a PVC.
+- [x] Add `fsGroup: 65532` and `OnRootMismatch` to VA when it uses a PVC.
 - [ ] Test `readOnlyRootFilesystem: true` for every service and provide explicit
   writable mounts for `/tmp`, caches, sockets, generated config, and state.
 - [ ] Replace runtime `apt-get` in the p11-kit init container with a prebuilt,
@@ -229,6 +232,42 @@ A security item is Done only when:
 7. The evidence and exception registers above are updated.
 
 ## Change Log
+
+- 2026-09-23: Retired the chart-owned `toolbox` image for the Helm
+  connectivity test. Deleted `ci/toolbox/dockerfile` and
+  `.github/workflows/dockerbuild-toolbox.yaml` (the Ubuntu-based image and
+  its build pipeline existed only to give the test hook `curl`+`jq`+`bash`).
+  Renamed the `values.toolbox` key to `values.connectivityTest` and pointed
+  it at the upstream-maintained `curlimages/curl` image, pinned by digest
+  (`sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69`),
+  with a `65532:65532`, non-root, all-capabilities-dropped,
+  `readOnlyRootFilesystem: true` default `securityContext` (tighter than
+  `serviceDefaults`, since this hook never writes to disk). Rewrote
+  `templates/tests/test-connections.yml`'s `init.sh` from `bash`+`jq` to
+  POSIX `sh` with a `grep`-based JSON-shape check
+  (`^[[:space:]]*[{[]`), since the new image ships neither `bash` nor `jq`.
+  Verified with `helm lint`/`helm template` and by running the rendered
+  script inside the pinned image under the exact `securityContext` the
+  chart applies (`-u 65532:65532 --cap-drop=ALL --security-opt=no-new-
+  privileges --read-only`): both the JSON-accept and JSON-reject paths
+  behave as before (E-017, E-018). `p11-kit-ssh-sidecar` and the SoftHSM CI
+  image remain chart-owned, but were left as-is: unlike `toolbox`, both
+  embed custom logic (SSH-forwarding proxy, SoftHSM build) that no public
+  image provides, so there's nothing generic to replace them with.
+
+- 2026-09-23: Closed the VA PVC-permission gap. `va-statefulset.yml` now sets
+  `fsGroup: 65532` and `fsGroupChangePolicy: OnRootMismatch` on the pod
+  whenever `services.va.fileStore.type` is `local` (i.e. the
+  `local-crl-file-storage` PVC is mounted), unless the user already supplies
+  either field via `services.va.podSecurityContext`. `OnRootMismatch` is used
+  instead of KMS's `Always` because VA has no pre-existing group-0-owned
+  volumes to force through a migration — new PVCs get chowned to `65532` once
+  and subsequent restarts skip the recursive chown. `fileStore.type=s3` gets
+  no PVC and no `fsGroup`, matching current behavior. Verified with
+  `helm template`: the default (local) values render `fsGroup: 65532`
+  and `fsGroupChangePolicy: OnRootMismatch`; an `s3` fileStore override
+  renders neither; a `podSecurityContext.fsGroup` override is preserved
+  and still gets the default `fsGroupChangePolicy`.
 
 - 2026-09-23: Closed the Authz `999:999` exception. The `lamassu-authz`
   image was rebuilt to declare UID/GID `65532` directly, so

@@ -2,6 +2,15 @@
 {{- $isLocal := eq $svc.fileStore.type "local" -}}
 {{- $storageDir := $svc.fileStore.local.storageDirectory | default "/data/crl" -}}
 {{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" "va") -}}
+{{- $podSecurityContext := deepCopy $svc.podSecurityContext -}}
+{{- if $isLocal -}}
+{{- if not (hasKey $podSecurityContext "fsGroup") -}}
+{{- $_ := set $podSecurityContext "fsGroup" 65532 -}}
+{{- end -}}
+{{- if not (hasKey $podSecurityContext "fsGroupChangePolicy") -}}
+{{- $_ := set $podSecurityContext "fsGroupChangePolicy" "OnRootMismatch" -}}
+{{- end -}}
+{{- end -}}
 {{- if and (gt (int $svc.replicaCount) 1) $isLocal }}
   {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
 {{- end }}
@@ -34,7 +43,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $svc.podSecurityContext }}
+      {{- with $podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
