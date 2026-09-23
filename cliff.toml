@@ -12,7 +12,9 @@ body = """
 ### {{ entry.group | striptags | trim | upper_first }}
 
 {% for commit in entry.commits %}
-* {{ commit.message | upper_first }}
+{% if commit.breaking %}* **BREAKING:** {% else %}* {% endif %}{{ commit.message | upper_first }}
+{% if commit.breaking and commit.breaking_description != commit.message %}  * {{ commit.breaking_description | upper_first }}
+{% endif %}
 {% endfor %}
 
 {% endfor %}
@@ -30,6 +32,7 @@ commit_preprocessors = [
 commit_parsers = [
     { message = "^feat", group = "Features" },
     { message = "^fix", group = "Bug Fixes" },
+    { message = "^revert", group = "Reverts" },
     { message = "^remove", group = "Removed" },
     { message = "^security", group = "Security Fixes" },
     { message = "^test", group = "Tests" },
