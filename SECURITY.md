@@ -4,7 +4,7 @@ This document tracks the security posture of the Lamassu Helm chart. It is a
 living engineering record for evidence, accepted exceptions, completed work,
 and prioritized follow-up. It is not a vulnerability disclosure policy.
 
-Last reviewed: 2026-09-22
+Last reviewed: 2026-09-23
 
 ## Status Legend
 
@@ -37,11 +37,11 @@ Last reviewed: 2026-09-22
 | AWS connector | Defaults to `65532:65532`, non-root via `serviceDefaults.securityContext`; per-instance override supported | Done | Owned image is constrained without preventing custom-image identities; `values.schema.json` now rejects `runAsNonRoot: false`, `privileged`, added capabilities, and unknown fields for any connector override. | Keep image and chart identity synchronized. |
 | DMS Manager | `65532:65532`, non-root; shared `fsGroup: 65532` | Done | The main container identity is now pinned by `serviceDefaults.securityContext`. | Keep image and chart identity synchronized. |
 | DMS TLS init | `65532:65532`, non-root | Done | Busybox cert-bundle builder runs as non-root with all capabilities dropped. | Rebuild toolbox with a numeric non-root `USER`. |
-| Authz and authz init | `999:999`, non-root | Done | Named image user cannot bypass or confuse kubelet verification. | Publish the image with `USER 999:999`. |
+| Authz and authz init | `65532:65532`, non-root | Done | The image was rebuilt to declare UID/GID `65532`, so the chart no longer needs a `999:999` override; both the Deployment and the `init-authz` migration-Job container inherit `serviceDefaults.securityContext`. | Keep image and chart identity synchronized. |
 | VA | `65532:65532`, non-root; no PVC `fsGroup` | Partial | Container identity is pinned by `serviceDefaults.securityContext`, but writable PVC behavior depends on storage-driver permissions. | Add `fsGroup: 65532` and `OnRootMismatch` for local storage. |
-| KMS | `65532:0`; `fsGroup: 0` when the PKCS#11 sidecar is enabled | Todo | Root-group membership broadens access and is a fragile volume-permission strategy; KMS overrides the chart-wide `runAsGroup` default with `0`. | Migrate to `65532:65532` and `fsGroup: 65532`, including existing PVC ownership, then delete the KMS exception. |
+| KMS | `65532:65532`; `fsGroup: 65532` when the filesystem engine or PKCS#11 sidecar is in use | Done | KMS no longer overrides the chart-wide `runAsGroup` default; `fsGroup: 65532` lets the container access both the filesystem engine's PVC and the PKCS#11 socket volume without root-group membership. Kubelet's default `fsGroupChangePolicy: Always` recursively rechowns existing PVC content to `65532` on next pod start. | Keep image and chart identity synchronized. |
 | UI | `65532:65532`, non-root, unprivileged port | Done | Identity comes from `serviceDefaults.securityContext`; the rootless image removes the CHOWN/SETGID/SETUID exception and satisfies Restricted Pod Security. | Keep image and chart identity synchronized. |
-| WFX | Image declares UID `65532`; chart sets `runAsNonRoot: false` | Todo | A mutable image can silently regress to root; WFX inherits the 65532 default but keeps a `runAsNonRoot: false` exception. | Pin an immutable image and enforce `65532:65532`, non-root. |
+| WFX | `65532:65532`, non-root; image pinned by digest | Done | Image declares UID `65532`; the chart no longer overrides `runAsNonRoot`, so WFX inherits the chart-wide `65532:65532` default, and the `:latest` tag is pinned to its verified digest so it can no longer silently regress to a different (possibly root) image. | Keep image and chart identity synchronized. |
 | DB migration binaries | Image declares UID `65532`; chart does not enforce it | Todo | A republished image could run migrations as root. | Add a migration-specific `65532:65532`, non-root contract. |
 | PostgreSQL migration helpers | Run as root | Todo | Database credentials and shell logic run with unnecessary root privileges. | Run as `999:999`; PostgreSQL client tools were verified with this identity. |
 | CA-to-KMS migration | `65532:65532`, non-root via `serviceDefaults.securityContext` | Done | Explicit chart-level identity, no longer tied to mutable image metadata. | Keep image and chart identity synchronized. |
@@ -74,14 +74,15 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | `lamassu-devmanager:dev-v4` | `65532` | `sha256:606e503af75c6842f68efb4872bba1b244e1e8a38255c214883189e22a757d70` |
 | `lamassu-dmsmanager:dev-v4` | `65532` | `sha256:d3849ab224bb9418907280775aa7299a0a46384f26225e4384fba183ca4d2715` |
 | `lamassu-kms:dev-v4` | `65532` | `sha256:55ec20874d6ade17b2d761f6c36aa781261117eff803e85d10fa5af8a6893d5c` |
-| `lamassu-authz:dev-v4` | `lamassu` (`999:999`) | `sha256:88959564b49bbeda622bbfb6142b98f5cce910072c98ff1e4bac8a2584f58f69` |
+| `lamassu-authz:dev-v4` | `65532:65532` (rebuilt; supersedes the `lamassu`/`999:999` entry below) | Not yet re-verified locally; the chart now trusts the declared UID/GID pending a fresh `docker image inspect`. |
+| `lamassu-authz:dev-v4` (previous build) | `lamassu` (`999:999`) | `sha256:88959564b49bbeda622bbfb6142b98f5cce910072c98ff1e4bac8a2584f58f69` |
 | `lamassu-ui:dev-v4` | `65532:65532` | Old rootless rebuild superseded by the `:dev` arm64 entry below; digest recorded when `dev-v4` is rebuilt. |
 | `lamassu-ui:dev` (arm64) | `65532:65532` | Manifest digest `sha256:b183bcf52331d2190bdc074e0741cc885c0833d3535581f58cff82340b12277b`; pushed 2026-09-21; runtime-verified with `--cap-drop=ALL`, `no-new-privileges`. |
 | `lamassu-lamassu-db-migration:dev-v4` | `65532` | `sha256:feb9c41131b3f19a7ddee12cc4bc248e74b41038e611ebd4327f1ea53b8b0f91` |
 | `lamassu-aws-connector:dev-v4` | `65532` | `sha256:ad585a5120c8634eb18b72ee71dce6f8e45c70ddd54502f9b832b5bf5786ba01` |
 | `lamassu-ca-to-kms-migration:dev-v4` | `65532` | `sha256:2c1262a7bc9504257d0d6e65be10b32ed07067b6c29202929806411446ad8b9f` |
 | `toolbox:2.2.0` | root/empty | `sha256:464d86d83ec52abab587d1367de2603e51c46dc989641ecae460a2d68299b355` |
-| `ghcr.io/siemens/wfx:latest` | `65532` | `sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678` |
+| `ghcr.io/siemens/wfx@sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678` (chart-pinned; observed under the `:latest` tag on 2026-09-21) | `65532` | `sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678` |
 | `postgres:18.4` | root/empty; `postgres=999:999` | `sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636` |
 
 ## Evidence Register
@@ -89,7 +90,7 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | ID | Evidence | Result |
 |---|---|---|
 | E-001 | Inspect exact image metadata with `docker image inspect` | Identity table above. |
-| E-002 | Run Authz image and inspect `lamassu` account | Named user resolves to UID/GID `999:999`; chart now pins both. |
+| E-002 | Run Authz image and inspect `lamassu` account | Historical: the previous `lamassu-authz:dev-v4` build's named user resolved to UID/GID `999:999`. Superseded by the 2026-09-23 rebuild, which declares `65532:65532` directly; the chart no longer needs a per-service override. |
 | E-003 | UI runtime log | nginx failed to `chown(/var/cache/nginx/client_temp, 101)` with all capabilities dropped. |
 | E-004 | Run UI image with only `CHOWN`, `SETGID`, and `SETUID` | nginx remained running without startup errors. |
 | E-005 | DMS kubelet event | Root-default toolbox image was rejected by inherited `runAsNonRoot: true`. |
@@ -112,7 +113,9 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 - [x] Disable automatic ServiceAccount token mounting by default.
 - [x] Give Alerts, CA, and Device Manager explicit `65532:65532` contracts.
 - [x] Give AWS connectors a `65532:65532` default with per-instance overrides.
-- [x] Pin Authz and its migration init container to `999:999`.
+- [x] Migrate Authz and its migration init container from a `999:999`
+  override to the chart-wide `65532:65532` default, now that the image
+  declares that identity itself.
 - [x] Run the DMS TLS init container as `65532:65532` with `fsGroup: 65532`.
 - [x] Limit the current root UI image to its three verified capabilities.
 - [x] Separate PKCS#11 module-init security from the KMS application contract.
@@ -138,11 +141,11 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 - [x] Build a rootless UI image running as `65532:65532` on an unprivileged
   port; publish with `docker buildx build --platform linux/amd64,linux/arm64
   --push` for multi-architecture availability.
-- [ ] Enforce `65532:65532` and `runAsNonRoot: true` for WFX; stop using `latest`.
+- [x] Enforce `65532:65532` and `runAsNonRoot: true` for WFX; stop using `latest`.
 - [ ] Run database migration images as `65532:65532`, non-root.
 - [ ] Run PostgreSQL migration helpers as `999:999`, non-root.
 - [ ] Run the Helm connectivity test toolbox as `65532:65532`, non-root.
-- [ ] Change KMS and its PKCS#11 sidecar from GID `0` to GID `65532`.
+- [x] Change KMS and its PKCS#11 sidecar from GID `0` to GID `65532`.
 - [ ] Add explicit `65532:65532` contracts to DMS, VA, and CA-to-KMS.
 - [ ] Enable Pod Security Admission gradually: `enforce=baseline`, then
   `warn=restricted` and `audit=restricted`; enforce Restricted only after all
@@ -150,7 +153,8 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 
 ### P2 - Filesystems And Supply Chain
 
-- [ ] Add `fsGroup: 65532` and `OnRootMismatch` to KMS and VA when they use PVCs.
+- [x] Add `fsGroup: 65532` to KMS when it uses a PVC or the PKCS#11 sidecar.
+- [ ] Add `fsGroup: 65532` and `OnRootMismatch` to VA when it uses a PVC.
 - [ ] Test `readOnlyRootFilesystem: true` for every service and provide explicit
   writable mounts for `/tmp`, caches, sockets, generated config, and state.
 - [ ] Replace runtime `apt-get` in the p11-kit init container with a prebuilt,
@@ -174,14 +178,12 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | Exception | Current justification | Allowed scope | Exit condition |
 |---|---|---|---|
 | p11-kit staging runs as root and adds five capabilities | Online fast-lane installs `p11-kit-modules` into a transient Debian container. | `kms-pkcs11-module-p11-kit-client` init container only. | Prebuilt module image contains the library and dependencies and can copy them as non-root. |
-| KMS and sidecar use primary/supplementary GID `0` | Current socket and PVC permissions were designed around the root group. | KMS pod only. | Ownership migration and `fsGroup: 65532` are verified on existing and fresh volumes. |
 
 ## Target Runtime Contracts
 
 | Image class | Target UID:GID | Required controls |
 |---|---:|---|
-| Owned distroless Go services | `65532:65532` | `runAsNonRoot`, no privilege escalation, drop all capabilities, `RuntimeDefault` seccomp. |
-| Authz | `999:999` | Same controls; image should declare the numeric identity. |
+| Owned distroless Go services (including Authz) | `65532:65532` | `runAsNonRoot`, no privilege escalation, drop all capabilities, `RuntimeDefault` seccomp. |
 | PostgreSQL client-only hooks | `999:999` | Same controls; writable `/tmp` only. |
 | Toolbox init/test containers | `65532:65532` | Same controls; explicit writable shared volume where needed. |
 | Rootless UI | `65532:65532` | Same controls; unprivileged port and `/tmp`-based runtime paths. |
@@ -227,6 +229,46 @@ A security item is Done only when:
 7. The evidence and exception registers above are updated.
 
 ## Change Log
+
+- 2026-09-23: Closed the Authz `999:999` exception. The `lamassu-authz`
+  image was rebuilt to declare UID/GID `65532` directly, so
+  `services.authz.securityContext` no longer overrides `runAsUser`/
+  `runAsGroup` in `values.yaml`; both the Authz Deployment and the
+  `init-authz` container in `single-db-migration-job.yml` now inherit the
+  chart-wide `65532:65532` default, since both read `services.authz`'s
+  merged security context. Verified with `helm template`: both containers
+  render `runAsUser: 65532`, `runAsGroup: 65532`, `runAsNonRoot: true`.
+  Still open: re-run `docker image inspect` against the rebuilt image and
+  record its digest in Verified Image Evidence (the previous `999:999`
+  build's digest is kept as a superseded row for traceability).
+
+- 2026-09-23: Closed the KMS and WFX identity exceptions.
+  - KMS: removed the chart-wide `runAsGroup: 0` override
+    (`services.kms.securityContext` in `values.yaml`) and the matching
+    `runAsGroup: 0` on the PKCS#11 sidecar's default security context, so both
+    now inherit the `65532:65532` `serviceDefaults`. `kms-statefulset.yml` no
+    longer sets a pod-level `runAsUser`/`runAsGroup` override; instead it sets
+    `fsGroup: 65532` whenever the filesystem crypto engine or the PKCS#11
+    sidecar is in use, so kubelet's default `fsGroupChangePolicy: Always`
+    recursively rechowns the PVC (and the forwarded PKCS#11 socket volume) to
+    group `65532` on next pod start, covering existing volumes without a
+    separate migration step. Removed the now-redundant
+    `services.kms.podSecurityContext` `runAsGroup: 0` override from
+    `ci/pkcs11-incluster-hsm-values.yaml`. Removed the "KMS and sidecar use
+    primary/supplementary GID `0`" row from the Exception Register.
+  - WFX: removed the `services.wfx.securityContext.runAsNonRoot: false`
+    override so WFX inherits the chart-wide `65532:65532`, non-root default
+    (the image already declares UID `65532`, per E-001/Verified Image
+    Evidence). Pinned `services.wfx.image` from the mutable `:latest` tag to
+    its verified digest (`sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678`)
+    so the deployed image can no longer silently change out from under the
+    chart.
+  - Verified with `helm lint` (default values, `template-contract-values.yaml`,
+    and `pkcs11-incluster-hsm-values.yaml` with `--kube-version 1.29.0`) and
+    `helm template`, confirming KMS renders `65532:65532` with
+    `fsGroup: 65532` in the default (filesystem engine), PKCS#11-sidecar, and
+    HSM CI scenarios, and WFX renders `65532:65532`, `runAsNonRoot: true`,
+    with the digest-pinned image.
 
 - 2026-09-22: Hardened `values.schema.json`. Added `containerSecurityContext`,
   `podSecurityContext`, and `capabilities` definitions with

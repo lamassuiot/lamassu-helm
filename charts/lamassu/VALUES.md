@@ -91,7 +91,7 @@ Kubernetes: `>=1.24.0-0`
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods. |
 | serviceAccount.create | bool | `true` | Create a dedicated ServiceAccount for Lamassu workloads. |
 | serviceAccount.name | string | `""` | ServiceAccount name. Defaults to the release-scoped chart name when create=true, otherwise default. |
-| serviceDefaults | object | `{"affinity":{},"annotations":{},"autoscaling":{"enabled":false,"maxReplicas":5,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":80},"extraEnv":[],"imagePullSecrets":[],"labels":{},"livenessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":10,"path":"/health","periodSeconds":10,"successThreshold":1,"timeoutSeconds":5},"nodeSelector":{},"pdb":{"minAvailable":1},"podAnnotations":{},"podLabels":{},"podSecurityContext":{"seccompProfile":{"type":"RuntimeDefault"}},"port":8085,"readinessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":3,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"replicaCount":1,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsNonRoot":true},"startupProbe":{"enabled":true,"failureThreshold":60,"initialDelaySeconds":0,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"tolerations":[],"topologySpreadConstraints":[]}` | Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts, deviceManager, dmsManager, authz, wfx and aws connector instances). Any key here can be overridden per service under `services.<name>` — the per-service block is deep-merged on top of these defaults. Maps are merged key by key; lists (tolerations, topologySpreadConstraints, extraEnv, ...) replace the default wholesale. |
+| serviceDefaults | object | `{"affinity":{},"annotations":{},"autoscaling":{"enabled":false,"maxReplicas":5,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":80},"extraEnv":[],"imagePullSecrets":[],"labels":{},"livenessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":10,"path":"/health","periodSeconds":10,"successThreshold":1,"timeoutSeconds":5},"nodeSelector":{},"pdb":{"minAvailable":1},"podAnnotations":{},"podLabels":{},"podSecurityContext":{"seccompProfile":{"type":"RuntimeDefault"}},"port":8085,"readinessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":3,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"replicaCount":1,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532},"startupProbe":{"enabled":true,"failureThreshold":60,"initialDelaySeconds":0,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"tolerations":[],"topologySpreadConstraints":[]}` | Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts, deviceManager, dmsManager, authz, wfx and aws connector instances). Any key here can be overridden per service under `services.<name>` — the per-service block is deep-merged on top of these defaults. Maps are merged key by key; lists (tolerations, topologySpreadConstraints, extraEnv, ...) replace the default wholesale. |
 | serviceDefaults.affinity | object | `{}` | Pod affinity configuration. |
 | serviceDefaults.annotations | object | `{}` | Extra annotations for the Deployment/StatefulSet |
 | serviceDefaults.autoscaling.enabled | bool | `false` | Enable a HorizontalPodAutoscaler for the service |
@@ -108,7 +108,7 @@ Kubernetes: `>=1.24.0-0`
 | serviceDefaults.readinessProbe.enabled | bool | `true` | Enable the readiness probe. |
 | serviceDefaults.replicaCount | int | `1` | Number of replicas. Ignored when autoscaling is enabled. |
 | serviceDefaults.resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Container resource requests/limits. CPU and memory requests are required for utilization-based HPA metrics. |
-| serviceDefaults.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Container-level security context. Owned distroless images run with their declared non-root UID/GID. Override per service when an image declares a different identity (authz) or needs a special group (KMS filesystem engine). |
+| serviceDefaults.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Container-level security context. Owned distroless images run with their declared non-root UID/GID. Override per service (or per connector instance) when a custom image declares a different identity. |
 | serviceDefaults.startupProbe.enabled | bool | `true` | Enable the startup probe so liveness checks do not kill slow-starting services. |
 | serviceDefaults.tolerations | list | `[]` | Tolerations for pod scheduling |
 | serviceDefaults.topologySpreadConstraints | list | `[]` | Topology spread constraints. |
@@ -126,8 +126,6 @@ Kubernetes: `>=1.24.0-0`
 | services.authz.database | string | `"authz"` | PostgreSQL database name for authz principals, grants, and policies |
 | services.authz.image | string | `"ghcr.io/lamassuiot/lamassu-authz:dev-v4"` | Docker image for the Authz connector component |
 | services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
-| services.authz.securityContext.runAsGroup | int | `999` |  |
-| services.authz.securityContext.runAsUser | int | `999` |  |
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domain to be used while signing/generating new CAs and certificates |
 | services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:dev-v4"` | Docker image for the CA component |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term |
@@ -135,7 +133,8 @@ Kubernetes: `>=1.24.0-0`
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:dev-v4"` | Docker image for the Device Manager component |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4"` | Docker image for the DMS Manager component |
 | services.dmsManager.podSecurityContext.fsGroup | int | `65532` | Filesystem group that lets the cert-bundle init container and DMS container share generated certificates. |
-| services.dmsManager.tlsInitContainer.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the busybox container that builds the downstream CA bundle. |
+| services.dmsManager.tlsInitContainer.image | string | `"busybox:1.37"` | Image for the container that builds the downstream CA bundle. |
+| services.dmsManager.tlsInitContainer.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the container that builds the downstream CA bundle. |
 | services.kms.args | list | `[]` | Optional arguments override for the KMS container |
 | services.kms.autoscaling.maxReplicas | int | `3` |  |
 | services.kms.command | list | `[]` | Optional command override for the KMS container |
@@ -145,7 +144,6 @@ Kubernetes: `>=1.24.0-0`
 | services.kms.cryptoEngines.engines[0].storage_directory | string | `"/crypto/fs"` |  |
 | services.kms.cryptoEngines.engines[0].type | string | `"filesystem"` |  |
 | services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:dev-v4"` | Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC). |
-| services.kms.securityContext.runAsGroup | int | `0` | The filesystem engine's PVC data is group-owned by 0. Match the pod-level default until the group contract migrates to 65532 (see SECURITY.md). |
 | services.kms.pkcs11Modules | list | `[]` | Optional PKCS#11 modules to inject into KMS at runtime. Each entry runs a    short-lived init container that stages a module and optional config in a    shared volume mounted read-only into KMS. Fields: name (unique), image,    imagePullPolicy, securityContext, command, args, env, and mountPath. |
 | services.kms.pkcs11Sidecar.args | list | `[]` | Arguments for the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.command | list | `[]` | Command for the PKCS#11 sidecar |
@@ -154,11 +152,11 @@ Kubernetes: `>=1.24.0-0`
 | services.kms.pkcs11Sidecar.image | string | `""` | Sidecar image used to create the forwarded PKCS#11 socket |
 | services.kms.pkcs11Sidecar.imagePullPolicy | string | `"IfNotPresent"` | Image pull policy for the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.resources | object | `{}` | Resource requests and limits for the PKCS#11 sidecar |
-| services.kms.pkcs11Sidecar.securityContext | object | `{"runAsGroup":0,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the PKCS#11 sidecar. The forwarded mode-0660    Unix socket is accessible to KMS through the pod's fsGroup. |
+| services.kms.pkcs11Sidecar.securityContext | object | `{}` | Security context for the PKCS#11 sidecar. Defaults to KMS's own    securityContext (65532:65532); the forwarded mode-0660 Unix socket    is accessible to KMS through the pod's fsGroup. |
 | services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory where the sidecar should create the PKCS#11 socket |
 | services.kms.pkcs11Sidecar.volumeMounts | list | `[]` | Extra sidecar volume mounts, for example SSH key secrets |
 | services.kms.pkcs11Sidecar.volumes | list | `[]` | Extra pod volumes needed by the PKCS#11 sidecar |
-| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:dev-v4"` | Docker image for the UI component |
+| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:dev"` | Docker image for the UI component |
 | services.ui.port | int | `8085` |  |
 | services.va.autoscaling.maxReplicas | int | `3` |  |
 | services.va.fileStore.id | string | `"local-1"` | Unique identifier for this storage engine instance |
@@ -172,7 +170,7 @@ Kubernetes: `>=1.24.0-0`
 | services.wfx.enabled | bool | `true` | Enable the Siemens WFX workflow service |
 | services.wfx.extraArgs | list | `[]` | Additional command line arguments for the WFX container. |
 | services.wfx.extraEnv | list | `[]` |  |
-| services.wfx.image | string | `"ghcr.io/siemens/wfx:latest"` | Docker image for the WFX component |
+| services.wfx.image | string | `"ghcr.io/siemens/wfx@sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678"` | Docker image for the WFX component, pinned by digest for immutability.    The image declares UID 65532, so it runs under the chart-wide 65532:65532,    non-root default (see SECURITY.md). |
 | services.wfx.logs.format | string | `"json"` | WFX log format. |
 | services.wfx.logs.level | string | `"debug"` | WFX log level. |
 | services.wfx.managementPort | int | `9081` | WFX northbound/management API port. |
@@ -186,7 +184,6 @@ Kubernetes: `>=1.24.0-0`
 | services.wfx.routing.rewritePath | string | `"/api/wfx/"` | Path used when rewriting Gateway routes to WFX. |
 | services.wfx.routing.rewriteSbiPath | string | `"/api/wfx/"` | Explicit rewrite path for WFX southbound/client API. |
 | services.wfx.routing.sbiPath | string | `"/api/wfx/sbi/"` | Gateway path for the WFX southbound/client API. |
-| services.wfx.securityContext.runAsNonRoot | bool | `false` |  |
 | tls.certManagerOptions.certSpec | object | `{"addresses":null,"commonName":"dev.lamassu.io","duration":"2160h","hostnames":["dev.lamassu.io"]}` | Duration for the certificate to be valid |
 | tls.certManagerOptions.certSpec.duration | string | `"2160h"` | 2160h == 90days |
 | tls.certManagerOptions.clusterIssuer | string | `""` | CertManager ClusterIssuer to use to sign the certificate for the API Gateway. |

@@ -28,7 +28,7 @@ spec:
       {{- end }}
       initContainers:
         - name: build-cert-bundle
-          image: busybox:1.37
+          image: {{ $svc.tlsInitContainer.image | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
           {{- with $svc.tlsInitContainer.securityContext }}
           securityContext:
