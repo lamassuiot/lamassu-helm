@@ -1,4 +1,4 @@
-from node:18
+from node:25
 WORKDIR /app
 COPY . .
 ENTRYPOINT ["node", "index.js"]
