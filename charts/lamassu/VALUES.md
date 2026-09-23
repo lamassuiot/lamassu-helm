@@ -43,7 +43,7 @@ Kubernetes: `>=1.24.0-0`
 | auth.oidc.frontend.clientId | string | `"frontend"` | Client ID to be used as the OIDC client for the frontend |
 | commonAnnotations | object | `{}` | Annotations added to every chart-managed object. |
 | commonLabels | object | `{}` | Labels added to every chart-managed object. Selector labels remain chart controlled. |
-| connectivityTest.image | string | `"curlimages/curl@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69"` | Image for the `helm test` connectivity-check hook. The public,    upstream-maintained curl image (pinned by digest) rather than a    chart-owned image, since the hook only needs curl and a POSIX shell. |
+| connectivityTest.image | string | `"curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"` | Image for the `helm test` connectivity-check hook. The public,    upstream-maintained curl image (pinned by digest) rather than a    chart-owned image, since the hook only needs curl and a POSIX shell. |
 | connectivityTest.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the connectivity-check hook container. |
 | fullnameOverride | string | `""` | Fully override the release-scoped resource-name prefix. |
 | gateway.addresses | string | `nil` |  |
