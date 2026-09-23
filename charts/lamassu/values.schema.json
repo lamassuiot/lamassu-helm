@@ -129,6 +129,7 @@
                 "tlsInitContainer": {
                   "type": "object",
                   "properties": {
+                    "image": { "type": "string", "minLength": 1 },
                     "securityContext": { "$ref": "#/definitions/containerSecurityContext" }
                   },
                   "additionalProperties": false

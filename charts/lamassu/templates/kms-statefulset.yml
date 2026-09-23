@@ -1,10 +1,9 @@
 {{- $hasFilesystemEngine := include "kms.hasFilesystemEngine" . | eq "true" -}}
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "kms") | fromYaml -}}
-{{- $defaultPodSecurityContext := ternary (dict "runAsUser" 65532 "runAsGroup" 0) dict $hasFilesystemEngine -}}
-{{- $podSecurityContext := mustMergeOverwrite (deepCopy $defaultPodSecurityContext) (deepCopy $svc.podSecurityContext) -}}
+{{- $podSecurityContext := deepCopy $svc.podSecurityContext -}}
 {{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" "kms") -}}
-{{- if and $svc.pkcs11Sidecar.enabled (not (hasKey $podSecurityContext "fsGroup")) -}}
-{{- $_ := set $podSecurityContext "fsGroup" 0 -}}
+{{- if and (or $hasFilesystemEngine $svc.pkcs11Sidecar.enabled) (not (hasKey $podSecurityContext "fsGroup")) -}}
+{{- $_ := set $podSecurityContext "fsGroup" 65532 -}}
 {{- end -}}
 
 {{- if and $hasFilesystemEngine (gt (int $svc.replicaCount) 1) -}}

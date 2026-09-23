@@ -195,8 +195,8 @@ serviceDefaults:
     seccompProfile:
       type: RuntimeDefault
   # -- Container-level security context. Owned distroless images run with their
-  # declared non-root UID/GID. Override per service when an image declares a
-  # different identity (authz) or needs a special group (KMS filesystem engine).
+  # declared non-root UID/GID. Override per service (or per connector instance)
+  # when a custom image declares a different identity.
   securityContext:
     allowPrivilegeEscalation: false
     runAsNonRoot: true
@@ -288,10 +288,6 @@ services:
     image: ghcr.io/lamassuiot/lamassu-kms:dev-v4
     autoscaling:
       maxReplicas: 3
-    securityContext:
-      # -- The filesystem engine's PVC data is group-owned by 0. Match the
-      # pod-level default until the group contract migrates to 65532 (see SECURITY.md).
-      runAsGroup: 0
     # -- Optional command override for the KMS container
     command: []
     # -- Optional arguments override for the KMS container
@@ -304,12 +300,10 @@ services:
       image: ""
       # -- Image pull policy for the PKCS#11 sidecar
       imagePullPolicy: IfNotPresent
-      # -- Security context for the PKCS#11 sidecar. The forwarded mode-0660
-      #    Unix socket is accessible to KMS through the pod's fsGroup.
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 0
+      # -- Security context for the PKCS#11 sidecar. Defaults to KMS's own
+      #    securityContext (65532:65532); the forwarded mode-0660 Unix socket
+      #    is accessible to KMS through the pod's fsGroup.
+      securityContext: {}
       # -- Shared directory where the sidecar should create the PKCS#11 socket
       socketDir: /run/p11-kit
       # -- Command for the PKCS#11 sidecar
@@ -349,7 +343,9 @@ services:
       # -- Filesystem group that lets the cert-bundle init container and DMS container share generated certificates.
       fsGroup: 65532
     tlsInitContainer:
-      # -- Security context for the busybox container that builds the downstream CA bundle.
+      # -- Image for the container that builds the downstream CA bundle.
+      image: busybox:1.37
+      # -- Security context for the container that builds the downstream CA bundle.
       securityContext:
         allowPrivilegeEscalation: false
         runAsNonRoot: true
@@ -362,11 +358,10 @@ services:
   wfx:
     # -- Enable the Siemens WFX workflow service
     enabled: true
-    # -- Docker image for the WFX component
-    image: ghcr.io/siemens/wfx:latest
-    # The upstream WFX image does not declare a non-root user.
-    securityContext:
-      runAsNonRoot: false
+    # -- Docker image for the WFX component, pinned by digest for immutability.
+    #    The image declares UID 65532, so it runs under the chart-wide 65532:65532,
+    #    non-root default (see SECURITY.md).
+    image: ghcr.io/siemens/wfx@sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678
     # -- WFX command override. The explicit command avoids conflicting flags baked into the image entrypoint.
     command:
       - wfx
@@ -428,10 +423,6 @@ services:
   authz:
     # -- Docker image for the Authz connector component
     image: ghcr.io/lamassuiot/lamassu-authz:dev-v4
-    # The image declares USER lamassu (UID/GID 999), so it overrides the 65532 default.
-    securityContext:
-      runAsUser: 999
-      runAsGroup: 999
     # -- JWKS endpoint used by authz to validate JWTs
     jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
     # -- PostgreSQL database name for authz principals, grants, and policies
