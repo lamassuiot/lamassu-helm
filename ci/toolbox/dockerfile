@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 
 RUN apt-get update > /dev/null \
         && apt-get install openssl unzip curl jq inotify-tools -y > /dev/null
