@@ -175,10 +175,13 @@
       "required": ["ui", "va", "ca", "kms", "deviceManager", "dmsManager", "alerts", "authz", "wfx", "connectors"],
       "additionalProperties": false
     },
-    "toolbox": {
+    "connectivityTest": {
       "type": "object",
       "required": ["image"],
-      "properties": { "image": { "type": "string", "minLength": 1 } },
+      "properties": {
+        "image": { "type": "string", "minLength": 1 },
+        "securityContext": { "$ref": "#/definitions/containerSecurityContext" }
+      },
       "additionalProperties": false
     },
     "migrations": {
@@ -207,7 +210,7 @@
       "additionalProperties": false
     }
   },
-  "required": ["global", "serviceAccount", "tls", "gateway", "postgres", "amqp", "auth", "serviceDefaults", "services", "toolbox", "migrations"],
+  "required": ["global", "serviceAccount", "tls", "gateway", "postgres", "amqp", "auth", "serviceDefaults", "services", "connectivityTest", "migrations"],
   "additionalProperties": false,
   "definitions": {
     "port": { "type": "integer", "minimum": 1, "maximum": 65535 },

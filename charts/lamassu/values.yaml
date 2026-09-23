@@ -457,8 +457,21 @@ services:
               value: "pki-admin"
   # -- AWS connector instances keyed by stable connector ID.
   connectors: {}
-toolbox:
-  image: ghcr.io/lamassuiot/toolbox:2.2.0
+connectivityTest:
+  # -- Image for the `helm test` connectivity-check hook. The public,
+  #    upstream-maintained curl image (pinned by digest) rather than a
+  #    chart-owned image, since the hook only needs curl and a POSIX shell.
+  image: curlimages/curl@sha256:8.22.0
+  # -- Security context for the connectivity-check hook container.
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 migrations:
   db:
     image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4
