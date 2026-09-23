@@ -461,7 +461,7 @@ connectivityTest:
   # -- Image for the `helm test` connectivity-check hook. The public,
   #    upstream-maintained curl image (pinned by digest) rather than a
   #    chart-owned image, since the hook only needs curl and a POSIX shell.
-  image: curlimages/curl@sha256:8.22.0
+  image: curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
   # -- Security context for the connectivity-check hook container.
   securityContext:
     allowPrivilegeEscalation: false

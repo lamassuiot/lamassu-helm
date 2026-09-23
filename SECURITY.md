@@ -81,7 +81,7 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | `lamassu-lamassu-db-migration:dev-v4` | `65532` | `sha256:feb9c41131b3f19a7ddee12cc4bc248e74b41038e611ebd4327f1ea53b8b0f91` |
 | `lamassu-aws-connector:dev-v4` | `65532` | `sha256:ad585a5120c8634eb18b72ee71dce6f8e45c70ddd54502f9b832b5bf5786ba01` |
 | `lamassu-ca-to-kms-migration:dev-v4` | `65532` | `sha256:2c1262a7bc9504257d0d6e65be10b32ed07067b6c29202929806411446ad8b9f` |
-| `curlimages/curl@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69` (chart-pinned; replaces the retired `ghcr.io/lamassuiot/toolbox:2.2.0`, previously `root/empty`, `sha256:464d86d83ec52abab587d1367de2603e51c46dc989641ecae460a2d68299b355`) | `curl_user` (`100:101`); chart pins `65532:65532` via `securityContext` | `sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69` |
+| `curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777` (chart-pinned, `8.22.0`; replaces the retired `ghcr.io/lamassuiot/toolbox:2.2.0`, previously `root/empty`, `sha256:464d86d83ec52abab587d1367de2603e51c46dc989641ecae460a2d68299b355`) | `curl_user` (`100:101`); chart pins `65532:65532` via `securityContext` | `sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777` |
 | `ghcr.io/siemens/wfx@sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678` (chart-pinned; observed under the `:latest` tag on 2026-09-21) | `65532` | `sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678` |
 | `postgres:18.4` | root/empty; `postgres=999:999` | `sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636` |
 
@@ -105,8 +105,9 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | E-014 | `helm lint` a connector override with `securityContext.privileged: true` | Rejected: `privileged` is not an allowed property. |
 | E-015 | `helm lint` a connector override with `runAsNonRoot: true`, `runAsUser: 65532`, `runAsGroup: 65532` | Accepted; confirms the tightened schema does not reject a compliant override. |
 | E-016 | `helm lint` and `helm template` the default chart after tightening `values.schema.json` | Both pass, including the WFX `runAsNonRoot: false` exception, which the schema still permits as a plain boolean pending E-001/WFX remediation. |
-| E-017 | Run `curlimages/curl:8.11.1` with `-u 65532:65532 --cap-drop=ALL --security-opt=no-new-privileges --read-only` | `sh`, `curl`, and `grep` all work; a live `curl` to an external HTTPS endpoint succeeds; `touch /` fails as expected under the read-only root filesystem. |
-| E-018 | Extract the rendered `init.sh` from `helm template` and run it inside the same locked-down `curlimages/curl` container | POSIX-`sh` syntax is valid (`sh -n`, `dash -n`); `check_service`/`check_ui` correctly accept a JSON-shaped body and correctly reject a non-JSON (HTML) body, matching the pre-rewrite `jq`/`bash` behavior without needing either tool. |
+| E-017 | Run `curlimages/curl:8.11.1` (initial pin) and `curlimages/curl:8.22.0` (current pin, after the image was bumped post-review) with `-u 65532:65532 --cap-drop=ALL --security-opt=no-new-privileges --read-only` | `sh`, `curl`, and `grep` all work on both versions; a live `curl` to an external HTTPS endpoint succeeds; `touch /` fails as expected under the read-only root filesystem. |
+| E-018 | Extract the rendered `init.sh` from `helm template` and run it inside the same locked-down `curlimages/curl:8.22.0` container | POSIX-`sh` syntax is valid (`sh -n`, `dash -n`); `check_service`/`check_ui` correctly accept a JSON-shaped body and correctly reject a non-JSON (HTML) body, matching the pre-rewrite `jq`/`bash` behavior without needing either tool. |
+| E-019 | Found `services.connectivityTest.image` set to the malformed reference `curlimages/curl@sha256:8.22.0` (a version string is not a valid digest) after a post-review image bump; re-pulled `curlimages/curl:8.22.0` and corrected the pin to its real digest, `sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777` | `docker image inspect --format '{{json .RepoDigests}}'` confirms the digest; `helm template` renders the corrected reference. |
 
 ## Completed Work
 
@@ -232,6 +233,38 @@ A security item is Done only when:
 7. The evidence and exception registers above are updated.
 
 ## Change Log
+
+- 2026-09-23: Diagnosed and recovered a post-upgrade data-loss incident on
+  the `lamassu-dev` lab cluster (main/3.8.0 → `code-quality`/4.0.0). Root
+  cause: the chart-wide resource-naming refactor (`lamassu.fullname` /
+  `lamassu.componentName`) release-scopes every workload name (`kms` →
+  `lamassu-kms`, `va` → `lamassu-va`, ...); for the KMS and VA StatefulSets,
+  which use local PVCs, this changed the pod name and therefore the
+  auto-generated PVC name, so `helm upgrade` bound new, empty PVCs instead of
+  the existing ones. Confirmed via `kubectl get pvc`: both the pre-upgrade
+  (`golang-engine-storage-kms-0`, `local-crl-file-storage-va-0`) and
+  post-upgrade (`golang-engine-storage-lamassu-kms-0`,
+  `local-crl-file-storage-lamassu-va-0`) PVCs existed side by side, with the
+  old ones holding the real KMS key material and VA CRLs. This is separate
+  from — but compounded by — this session's non-root hardening: the
+  pre-upgrade data was owned by UID/GID `999` (a mutable `dev-v4` tag's
+  then-current image identity, per SECURITY.md Principle 6, not `65532`),
+  so it also needed re-owning for the new non-root pods to read it.
+  Recovered the lab data with a short-lived `alpine:3.20` pod mounting all
+  four PVCs, `cp -a` from old to new, `chown -R 65532:65532`, then recycled
+  the `lamassu-kms-0`/`lamassu-va-0` pods; verified clean startup logs and a
+  `200` from VA's `GET /crl/<ca-ski>` for the previously-`NotFound` CRL. Old
+  PVCs were left in place (not deleted) pending the user's own follow-up
+  verification. Wrote `charts/lamassu/CHANGELOG/3.8.0->4.0.0.md` with a
+  generalized version of this recovery procedure, plus the `toolbox` →
+  `connectivityTest` and `services.kms`/`services.authz` security-context
+  key removals, matching this repo's existing per-version migration-guide
+  convention. Also found and fixed a live bug while writing that guide:
+  `values.yaml`'s `connectivityTest.image` had been bumped to
+  `curlimages/curl@sha256:8.22.0` — an invalid OCI reference, since `@sha256`
+  requires a 64-hex digest, not a version string — corrected to the real
+  digest for that tag, `sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777`
+  (verified via `docker image inspect`, and re-ran E-017/E-018 against it).
 
 - 2026-09-23: Retired the chart-owned `toolbox` image for the Helm
   connectivity test. Deleted `ci/toolbox/dockerfile` and
