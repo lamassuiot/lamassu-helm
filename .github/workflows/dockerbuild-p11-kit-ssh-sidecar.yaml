@@ -1,4 +1,4 @@
-name: "Build Docker (multi-arch): p11-kit SSH sidecar"
+name: "Build Docker (multi-arch): P11-Kit SSH Sidecar"
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ on:
       - code-quality
 
 run-name: >-
-  ${{ format('Build Docker (multi-arch): p11-kit SSH sidecar: {0}', github.event.inputs.tag || 'PR') }}
+  ${{ format('Build Docker (multi-arch): P11-Kit SSH Sidecar: {0}', github.event.inputs.tag || 'PR') }}
 
 permissions:
   contents: read
@@ -23,52 +23,56 @@ permissions:
 
 jobs:
   validate_tag:
-    runs-on: ubuntu-latest
-    permissions: {}
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - name: Validate tag input
+      - name: Resolve and validate tag
+        id: tag
+        shell: bash
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            TAG="ci-test"
+            TAG="ci-pr-${{ github.event.number }}"
           else
             TAG="${{ github.event.inputs.tag }}"
           fi
 
-          # Disallow reserved tag
           if [[ "${TAG,,}" == "latest" ]]; then
             echo "Error: tag 'latest' is not allowed." >&2
             exit 1
           fi
 
-          # Docker tag allowlist + prevents newline/env injection
           if ! [[ "$TAG" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,127}$ ]]; then
-            echo "Error: tag must match ^[A-Za-z_][A-Za-z0-9_.-]{0,127}$ (got '$TAG')." >&2
+            echo "Error: invalid Docker tag '$TAG'." >&2
             exit 1
           fi
 
-          printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   build:
     needs: validate_tag
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+
+    runs-on: ${{ matrix.runner }}
+
     permissions:
       contents: read
       packages: write
-    runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - name: Resolve tag
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            TAG="ci-test"
-          else
-            TAG="${{ github.event.inputs.tag }}"
-          fi
-          echo "TAG=$TAG" >> $GITHUB_ENV
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -80,13 +84,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push multi-architecture image
+      - name: Build and push ${{ matrix.platform }}
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: ci/softhsm
           file: ci/softhsm/proxy.dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
           sbom: true
           tags: |
-            ghcr.io/lamassuiot/p11-kit-ssh-sidecar:${{ env.TAG }}
+            ghcr.io/lamassuiot/p11-kit-ssh-sidecar:${{ needs.validate_tag.outputs.tag }}-${{ matrix.arch }}
+
+  manifest:
+    needs:
+      - validate_tag
+      - build
+
+    runs-on: ubuntu-24.04
+
+    permissions:
+      packages: write
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-architecture manifest
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/lamassuiot/p11-kit-ssh-sidecar:${{ needs.validate_tag.outputs.tag }}" \
+            "ghcr.io/lamassuiot/p11-kit-ssh-sidecar:${{ needs.validate_tag.outputs.tag }}-amd64" \
+            "ghcr.io/lamassuiot/p11-kit-ssh-sidecar:${{ needs.validate_tag.outputs.tag }}-arm64"
+
+      - name: Inspect manifest
+        run: |
+          docker buildx imagetools inspect \
+            "ghcr.io/lamassuiot/p11-kit-ssh-sidecar:${{ needs.validate_tag.outputs.tag }}"
