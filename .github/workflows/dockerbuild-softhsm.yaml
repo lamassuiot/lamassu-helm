@@ -2,36 +2,77 @@ name: "Build Docker (multi-arch): SoftHSM"
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker image tag (example: dev, 3.8.0). Cannot be 'latest' or start with a number."
+        required: true
+
+run-name: >-
+  ${{ format('Build Docker (multi-arch): SoftHSM: {0}', github.event.inputs.tag) }}
 
 permissions:
   contents: read
   packages: write
 
 jobs:
+  validate_tag:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Validate tag input
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+
+          # Disallow reserved tag
+          if [[ "${TAG,,}" == "latest" ]]; then
+            echo "Error: tag 'latest' is not allowed." >&2
+            exit 1
+          fi
+
+          # Docker tag allowlist + prevents newline/env injection
+          if ! [[ "$TAG" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Error: tag must match ^[A-Za-z_][A-Za-z0-9_.-]{0,127}$ (got '$TAG')." >&2
+            exit 1
+          fi
+
+          printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
+
   build:
+    needs: validate_tag
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Resolve tag
+        run: |
+          echo "TAG=${{ github.event.inputs.tag }}" >> $GITHUB_ENV
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push multi-architecture image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: ci/softhsm
           file: ci/softhsm/dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/lamassuiot/softhsm:dev
+          sbom: true
+          tags: |
+            ghcr.io/lamassuiot/softhsm:${{ env.TAG }}
