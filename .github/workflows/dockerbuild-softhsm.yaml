@@ -7,12 +7,6 @@ on:
         description: "Docker image tag (example: dev, 3.8.0). Cannot be 'latest' or start with a number."
         required: true
 
-  pull_request:
-    # Temporary: build from PRs while testing; remove before merge
-    branches:
-      - main
-      - v4
-      - code-quality
 
 run-name: >-
   ${{ format('Build Docker (multi-arch): SoftHSM: {0}', github.event.inputs.tag || 'PR') }}
@@ -73,7 +67,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 

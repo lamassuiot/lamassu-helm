@@ -7,13 +7,6 @@ on:
         description: "Docker image tag (example: dev, 3.8.0). Cannot be 'latest' or start with a number."
         required: true
 
-  pull_request:
-    # Temporary: build from PRs while testing; remove before merge
-    branches:
-      - main
-      - v4
-      - code-quality
-
 run-name: >-
   ${{ format('Build Docker (multi-arch): P11-Kit SSH Sidecar: {0}', github.event.inputs.tag || 'PR') }}
 
