@@ -338,7 +338,7 @@ function prepare_softhsm_ssh_keypair() {
 function create_softhsm_kms_override_file() {
 target_file="$1"
 
-sidecar_image="ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest"
+sidecar_image="ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-test"
 sidecar_pull_policy="Always"
 nethsm_module_image="curlimages/curl:8.11.0"
 nethsm_module_pull_policy="IfNotPresent"

@@ -125,6 +125,7 @@ jobs:
             --from-file=.key="$key_dir/ssh-key" \
             -n lamassu-test
           helm install hsm charts/softhsm -n lamassu-test \
+            --set-string image="ghcr.io/lamassuiot/softhsm:ci-test" \
             --set-string ssh.authorizedKeys="$(cat "$key_dir/ssh-key.pub")" \
             --set-string softhsm.pin="1234" \
             --set-string softhsm.so_pin="5432" \

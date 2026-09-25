@@ -56,7 +56,7 @@ restarts, enable `nethsm.persistence.enabled` and use a persistent image.
 | softhsm.pin | string | `"1234"` |  |
 | softhsm.slot | string | `"0"` |  |
 | softhsm.so_pin | string | `"5432"` |  |
-| image | string | `"ghcr.io/lamassuiot/softhsm:latest"` |  |
+| image | string | `"ghcr.io/lamassuiot/softhsm:ci-test"` |  |
 | ssh.port | int | `22` | Service port for the internal SSH endpoint |
 | ssh.authorizedKeys | string | `""` | Authorized public keys for the in-cluster SSH endpoint |
 | nethsm.enabled | bool | `false` | Deploy a Nitrokey NetHSM alongside SoftHSM |
