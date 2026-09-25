@@ -12,7 +12,6 @@ DOMAIN=dev.lamassu.io
 DOMAIN_OVERRIDE=false
 NAMESPACE=lamassu-dev
 NAMESPACE_OVERRIDE=false
-OFFLINE=false
 NON_INTERACTIVE=false
 OTEL=false
 HTTPS_PORT=443
@@ -25,6 +24,9 @@ HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
 SOFTHSM_CHART_PATH="./charts/softhsm"
 WITH_HSM=false
+# NetHSM (nitrokey/nethsm:testing) ships amd64-only images, so it is skipped
+# on ARM clusters even when --with-hsm is set. SoftHSM/PKCS#11 still deploy.
+WITH_NETHSM=true
 SOFTHSM_SSH_PRIVATE_KEY_FILE=""
 SOFTHSM_SSH_PUBLIC_KEY=""
 SOFTHSM_LABEL="lamassuHSM"
@@ -69,20 +71,6 @@ SAMPLE_DATA_CLIENT_SECRET=$(
     echo
 )
 
-OFFLINE_HELMCHART_LAMASSU=""
-OFFLINE_HELMCHART_RABBITMQ=""
-OFFLINE_HELMCHART_KEYCLOAK=""
-OFFLINE_HELMCHART_POSTGRES=""
-OFFLINE_HELMCHART_VICTORIA_LOGS=""
-OFFLINE_HELMCHART_VICTORIA_TRACES=""
-OFFLINE_HELMCHART_JAEGER=""
-OFFLINE_HELMCHART_OTEL_COLLECTOR=""
-OFFLINE_HELMCHART_SOFTHSM=""
-OFFLINE_IMAGE_NETHSM_PKCS11=""
-OFFLINE_IMAGE_P11_KIT_CLIENT=""
-OFFLINE_IMAGE_P11_KIT_SIDECAR=""
-
-
 function main() {
     init
 
@@ -96,66 +84,6 @@ function main() {
         HELM_CONTEXT_ARGS=(--kube-context "$KUBE_CONTEXT")
     elif [ "$dist" == "microk8s" ]; then
         kube="microk8s"
-    elif [ "$KUBE_CONTEXT" != "" ]; then
-        kubectl="kubectl --context $KUBE_CONTEXT"
-        helm="helm --kube-context $KUBE_CONTEXT"
-    fi
-
-    if [ "$OFFLINE" = true ]; then
-        echo -e "${ORANGE}Offline mode enabled. Images must be already imported${NOCOLOR}"
-
-        if [ "$OFFLINE_HELMCHART_LAMASSU" = "" ]; then
-            echo -e "\n${RED}Lamassu helm chart path is empty${NOCOLOR}"
-            exit 1
-        fi
-        if [ "$OFFLINE_HELMCHART_RABBITMQ" = "" ]; then
-            echo -e "\n${RED}RabbitMQ helm chart path is empty${NOCOLOR}"
-            exit 1
-        fi
-        if [ "$OFFLINE_HELMCHART_KEYCLOAK" = "" ]; then
-            echo -e "\n${RED}Keycloak helm chart path is empty${NOCOLOR}"
-            exit 1
-        fi
-        if [ "$OFFLINE_HELMCHART_POSTGRES" = "" ]; then
-            echo -e "\n${RED}Postgres helm chart path is empty${NOCOLOR}"
-            exit 1
-        fi
-        if [ "$OTEL" = true ]; then
-            if [ "$OFFLINE_HELMCHART_VICTORIA_LOGS" = "" ]; then
-                echo -e "\n${RED}Victoria Logs helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
-                exit 1
-            fi
-            if [ "$OFFLINE_HELMCHART_VICTORIA_TRACES" = "" ]; then
-                echo -e "\n${RED}VictoriaTraces helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
-                exit 1
-            fi
-            if [ "$OFFLINE_HELMCHART_JAEGER" = "" ]; then
-                echo -e "\n${RED}Jaeger helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
-                exit 1
-            fi
-            if [ "$OFFLINE_HELMCHART_OTEL_COLLECTOR" = "" ]; then
-                echo -e "\n${RED}OTel Collector helm chart path is empty (required with --otel and --offline)${NOCOLOR}"
-                exit 1
-            fi
-        fi
-        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_HELMCHART_SOFTHSM" = "" ]; then
-            echo -e "\n${RED}SoftHSM helm chart path is empty${NOCOLOR}"
-            exit 1
-        fi
-        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_IMAGE_NETHSM_PKCS11" = "" ]; then
-            echo -e "\n${RED}NetHSM PKCS#11 offline image is empty (required with --with-hsm and --offline)${NOCOLOR}"
-            exit 1
-        fi
-        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_IMAGE_P11_KIT_CLIENT" = "" ]; then
-            echo -e "\n${RED}p11-kit-client offline image is empty (required with --with-hsm and --offline)${NOCOLOR}"
-            exit 1
-        fi
-        if [ "$WITH_HSM" = true ] && [ "$OFFLINE_IMAGE_P11_KIT_SIDECAR" = "" ]; then
-            echo -e "\n${RED}p11-kit-ssh-sidecar offline image is empty (required with --with-hsm and --offline)${NOCOLOR}"
-            exit 1
-        fi
-    else
-        echo -e "${ORANGE}ONLINE MODE ENABLED${NOCOLOR}"
     fi
 
     echo -e "${BLUE}=== Installing Lamassu IoT using Fast Lane ===${NOCOLOR}"
@@ -164,6 +92,7 @@ function main() {
     echo -e "\n${BLUE}2) Provide minimal config info${NOCOLOR}"
     request_config_data
     if [ "$WITH_HSM" = true ]; then
+        detect_nethsm_support
         echo -e "\n${BLUE}2.1) Prepare SoftHSM SSH credentials${NOCOLOR}"
         prepare_softhsm_ssh_keypair
     fi
@@ -218,27 +147,14 @@ function usage() {
     echo " -v, --version                Version of the Lamassu Helm Chart to be installed. Default is latest"
     echo " --https-port                 HTTPS port to be used for Lamassu IoT. Default is 443"
     echo " --http-port                  HTTP port to be used for Lamassu IoT. Default is 80"
-    echo " --offline                    Offline mode enabled. Use local helm charts (--helm-chart-rabbitmq, --helm-chart-postgres and --helm-chart-lamassu flags will be required)"
     echo " --tls-crt                    Path to the PEM encoded certificate used for downstream communications"
     echo " --tls-key                    Path to the PEM encoded key used for downstream communications"
-    echo " --helm-chart-lamassu         (Only needed while using --offline) Path to the Lamassu helm chart (.tgz format)"
-    echo " --helm-chart-postgres        (Only needed while using --offline) Path to the Posgtres helm chart (.tgz format)"
-    echo " --helm-chart-keycloak        (Only needed while using --offline) Path to the Keycloak helm chart (.tgz format)"
-    echo " --helm-chart-rabbitmq        (Only needed while using --offline) Path to the RabbitMQ helm chart (.tgz format)"
-    echo " --helm-chart-softhsm         (Only needed while using --offline and --with-hsm) Path to the SoftHSM helm chart (.tgz format)"
-    echo " --offline-image-nethsm-pkcs11 (Only needed while using --offline and --with-hsm) Pre-built image bundling libnethsm_pkcs11.so, already imported into the cluster"
-    echo " --offline-image-p11-kit-client (Only needed while using --offline and --with-hsm) Pre-built image with the p11-kit-modules package already installed, already imported into the cluster"
-    echo " --offline-image-p11-kit-sidecar (Only needed while using --offline and --with-hsm) p11-kit-ssh-sidecar image, already imported into the cluster"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
-    echo " --helm-chart-victoria-logs   (Only needed while using --offline with --otel) Path to the victoria-logs-single helm chart (.tgz format)"
-    echo " --helm-chart-victoria-traces (Only needed while using --offline with --otel) Path to the victoria-traces-single helm chart (.tgz format)"
-    echo " --helm-chart-jaeger          (Only needed while using --offline with --otel) Path to the Jaeger helm chart (.tgz format)"
-    echo " --helm-chart-otel-collector  (Only needed while using --offline with --otel) Path to the opentelemetry-collector helm chart (.tgz format)"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: ./charts/softhsm"
-    echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11"
+    echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
 }
 
 function has_argument() {
@@ -265,9 +181,6 @@ function process_flags() {
             KUBE_CONTEXT=$(extract_argument $@)
 
             shift
-            ;;
-        --offline)
-            OFFLINE=true
             ;;
         --with-hsm)
             WITH_HSM=true
@@ -299,86 +212,6 @@ function process_flags() {
                 exit 1
             fi
             TLS_KEY=$(extract_argument $@)
-
-            shift
-            ;;
-         --helm-chart-lamassu)
-              if ! has_argument $@; then
-                echo -e "\n${RED}Lamassu Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_LAMASSU=$(extract_argument $@)
-
-            shift
-            ;;
-         --helm-chart-postgres)
-              if ! has_argument $@; then
-                echo -e "\n${RED}Postgres Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_POSTGRES=$(extract_argument $@)
-
-            shift
-            ;;
-         --helm-chart-rabbitmq)
-              if ! has_argument $@; then
-                echo -e "\n${RED}Rabbitmq Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_RABBITMQ=$(extract_argument $@)
-
-            shift
-            ;;
-         --helm-chart-keycloak)
-              if ! has_argument $@; then
-                echo -e "\n${RED}Keycloak Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_KEYCLOAK=$(extract_argument $@)
-
-            shift
-            ;;
-         --helm-chart-softhsm)
-              if ! has_argument $@; then
-                echo -e "\n${RED}SoftHSM Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_SOFTHSM=$(extract_argument $@)
-
-            shift
-            ;;
-         --offline-image-nethsm-pkcs11)
-              if ! has_argument $@; then
-                echo -e "\n${RED}NetHSM PKCS#11 offline image not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_IMAGE_NETHSM_PKCS11=$(extract_argument $@)
-
-            shift
-            ;;
-         --offline-image-p11-kit-client)
-              if ! has_argument $@; then
-                echo -e "\n${RED}p11-kit-client offline image not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_IMAGE_P11_KIT_CLIENT=$(extract_argument $@)
-
-            shift
-            ;;
-         --offline-image-p11-kit-sidecar)
-              if ! has_argument $@; then
-                echo -e "\n${RED}p11-kit-ssh-sidecar offline image not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_IMAGE_P11_KIT_SIDECAR=$(extract_argument $@)
 
             shift
             ;;
@@ -468,46 +301,6 @@ function process_flags() {
         --sample-data)
             SAMPLE_DATA=true
             ;;
-        --helm-chart-victoria-logs)
-            if ! has_argument $@; then
-                echo -e "\n${RED}Victoria Logs Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_VICTORIA_LOGS=$(extract_argument $@)
-
-            shift
-            ;;
-        --helm-chart-victoria-traces)
-            if ! has_argument $@; then
-                echo -e "\n${RED}VictoriaTraces Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_VICTORIA_TRACES=$(extract_argument $@)
-
-            shift
-            ;;
-        --helm-chart-jaeger)
-            if ! has_argument $@; then
-                echo -e "\n${RED}Jaeger Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_JAEGER=$(extract_argument $@)
-
-            shift
-            ;;
-        --helm-chart-otel-collector)
-            if ! has_argument $@; then
-                echo -e "\n${RED}OTel Collector Helm Chart not specified.${NOCOLOR}" >&2
-                usage
-                exit 1
-            fi
-            OFFLINE_HELMCHART_OTEL_COLLECTOR=$(extract_argument $@)
-
-            shift
-            ;;
         *)
             echo -e "\n${RED}Invalid option: $1${NOCOLOR}" >&2
             usage
@@ -545,20 +338,12 @@ function prepare_softhsm_ssh_keypair() {
 function create_softhsm_kms_override_file() {
 target_file="$1"
 
-sidecar_image="ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest"
+sidecar_image="ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-pr-87"
 sidecar_pull_policy="Always"
 nethsm_module_image="curlimages/curl:8.11.0"
 nethsm_module_pull_policy="IfNotPresent"
 p11kit_module_image="debian:12-slim"
 p11kit_module_pull_policy="IfNotPresent"
-if [ "$OFFLINE" = true ]; then
-    sidecar_image="$OFFLINE_IMAGE_P11_KIT_SIDECAR"
-    sidecar_pull_policy="Never"
-    nethsm_module_image="$OFFLINE_IMAGE_NETHSM_PKCS11"
-    nethsm_module_pull_policy="Never"
-    p11kit_module_image="$OFFLINE_IMAGE_P11_KIT_CLIENT"
-    p11kit_module_pull_policy="Never"
-fi
 
 cat >"$target_file" <<EOF
 services:
@@ -587,9 +372,13 @@ services:
             secretName: kms-pkcs11-sidecar-ssh-key
 EOF
 
-# NetHSM engine: stage libnethsm_pkcs11.so and its config in a shared volume.
 cat >>"$target_file" <<EOF
     pkcs11Modules:
+EOF
+
+if [ "$WITH_NETHSM" = true ]; then
+# NetHSM engine: stage libnethsm_pkcs11.so and its config in a shared volume.
+cat >>"$target_file" <<EOF
       - name: nethsm
         image: ${nethsm_module_image}
         imagePullPolicy: ${nethsm_module_pull_policy}
@@ -600,37 +389,6 @@ cat >>"$target_file" <<EOF
           - |
 EOF
 
-if [ "$OFFLINE" = true ]; then
-cat >>"$target_file" <<'EOF'
-            set -eu
-            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/nethsm}"
-            mkdir -p "${TARGET_DIR}"
-            SRC="${NETHSM_PKCS11_SO_PATH:-/opt/nethsm-pkcs11/libnethsm_pkcs11.so}"
-            [ -f "${SRC}" ] || { echo "libnethsm_pkcs11.so not found at ${SRC}; supply an offline image with the module baked in (see --offline-image-nethsm-pkcs11)" >&2; exit 1; }
-            cp -L "${SRC}" "${TARGET_DIR}/libnethsm_pkcs11.so"
-            chmod 0555 "${TARGET_DIR}/libnethsm_pkcs11.so"
-            cat > "${TARGET_DIR}/p11nethsm.yaml" <<CFG
-            log_level: ${NETHSM_LOG_LEVEL:-Info}
-            slots:
-              - label: ${NETHSM_SLOT_LABEL:-LocalHSM}
-                operator:
-                  username: "${NETHSM_OPERATOR_USER:-operator}"
-                  password: "${NETHSM_OPERATOR_PASSWORD:-}"
-                administrator:
-                  username: "${NETHSM_ADMIN_USER:-admin}"
-                  password: "${NETHSM_ADMIN_PASSWORD:-}"
-                instances:
-                  - url: "${NETHSM_URL:-https://hsm-nethsm:8443/api/v1}"
-                    danger_insecure_cert: ${NETHSM_INSECURE_CERT:-true}
-                retries:
-                  count: 3
-                  delay_seconds: 1
-                timeout_seconds: 10
-            CFG
-            chmod 0444 "${TARGET_DIR}/p11nethsm.yaml"
-            ls -l "${TARGET_DIR}"
-EOF
-else
 cat >>"$target_file" <<'EOF'
             set -eu
             TARGET_DIR="${PKCS11_MODULE_DIR:-/run/nethsm}"
@@ -665,7 +423,6 @@ cat >>"$target_file" <<'EOF'
             chmod 0444 "${TARGET_DIR}/p11nethsm.yaml"
             ls -l "${TARGET_DIR}"
 EOF
-fi
 
 cat >>"$target_file" <<EOF
         env:
@@ -690,6 +447,7 @@ cat >>"$target_file" <<EOF
                 name: hsm-nethsm-provision
                 key: adminPassphrase
 EOF
+fi
 
 # SoftHSM engine: stage p11-kit-client.so and its non-core dependencies.
 cat >>"$target_file" <<EOF
@@ -698,32 +456,25 @@ cat >>"$target_file" <<EOF
         imagePullPolicy: ${p11kit_module_pull_policy}
         mountPath: /run/p11-kit-modules
         securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: false
           runAsUser: 0
+          runAsGroup: 0
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - CHOWN
+              - DAC_OVERRIDE
+              - FOWNER
+              - SETGID
+              - SETUID
         command:
           - /bin/sh
           - -ec
           - |
 EOF
 
-if [ "$OFFLINE" = true ]; then
-cat >>"$target_file" <<'EOF'
-            set -eu
-            TARGET_DIR="${PKCS11_MODULE_DIR:-/run/p11-kit-modules}"
-            mkdir -p "${TARGET_DIR}"
-            MOD="$(dpkg -L p11-kit-modules 2>/dev/null | grep -m1 '/p11-kit-client\.so$')"
-            [ -n "${MOD}" ] || { echo "p11-kit-client.so not found; supply an offline image with p11-kit-modules already installed (see --offline-image-p11-kit-client)" >&2; exit 1; }
-            echo "Staging ${MOD} -> ${TARGET_DIR}/p11-kit-client.so"
-            cp -L "${MOD}" "${TARGET_DIR}/p11-kit-client.so"
-            ldd "${MOD}" | sed -n 's/.*=> \(\/[^ ]*\).*/\1/p' | while read -r lib; do
-              case "${lib}" in
-                */libc.so*|*/libm.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/ld-linux*) continue ;;
-              esac
-              cp -L "${lib}" "${TARGET_DIR}/" 2>/dev/null || true
-            done
-            chmod -R 0555 "${TARGET_DIR}"
-            ls -l "${TARGET_DIR}"
-EOF
-else
 cat >>"$target_file" <<'EOF'
             set -eu
             TARGET_DIR="${PKCS11_MODULE_DIR:-/run/p11-kit-modules}"
@@ -744,7 +495,6 @@ cat >>"$target_file" <<'EOF'
             chmod -R 0555 "${TARGET_DIR}"
             ls -l "${TARGET_DIR}"
 EOF
-fi
 
 cat >>"$target_file" <<EOF
     cryptoEngines:
@@ -759,6 +509,10 @@ cat >>"$target_file" <<EOF
             env:
               P11_KIT_SERVER_ADDRESS: "unix:path=/run/p11-kit/pkcs11"
               LD_LIBRARY_PATH: "/run/p11-kit-modules"
+EOF
+
+if [ "$WITH_NETHSM" = true ]; then
+cat >>"$target_file" <<EOF
         - id: "pkcs11-nethsm"
           type: "pkcs11"
           token: "${NETHSM_TOKEN_LABEL}"
@@ -767,6 +521,10 @@ cat >>"$target_file" <<EOF
           module_extra_options:
             env:
               P11NETHSM_CONFIG_FILE: "/run/nethsm/p11nethsm.yaml"
+EOF
+fi
+
+cat >>"$target_file" <<EOF
         - id: "filesystem-1"
           type: "filesystem"
           storage_directory: "/crypto/fs"
@@ -890,7 +648,7 @@ EOF
 else
     echo -e "${ORANGE}Deploying Lamassu with SelfSigned TLS Certificates${NOCOLOR}"
     yq -i '.tls.type = "certManager"' lamassu.yaml
-    yq -i '.tls.certManagerOptions.issuer = "downstream-ca-selfsigned-issuer"' lamassu.yaml
+    yq -i '.tls.certManagerOptions.issuer = ""' lamassu.yaml
     yq -i '.tls.certManagerOptions.certSpec.commonName = (env(DOMAIN))' lamassu.yaml
     yq -i '.tls.certManagerOptions.certSpec.addresses = (env(IP_LIST) | split(" "))' lamassu.yaml
 fi
@@ -929,20 +687,10 @@ fi
     fi
 
     helm_path=$LAMASSU_CHART_PATH
-    if [ "$OFFLINE" = false ]; then
-      if [ "$LAMASSU_USE_LOCAL_PATH" = false ]; then
+    if [ "$LAMASSU_USE_LOCAL_PATH" = false ]; then
         run_helm repo add lamassuiot http://www.lamassu.io/lamassu-helm/
-      else
-        echo -e "${ORANGE}Using local chart path ${LAMASSU_CHART_PATH} ${NOCOLOR}"
-      fi
     else
-        cat >offline.yaml <<"EOF"
-global:
-  imagePullPolicy: Never
-EOF
-        yq eval-all '. as $item ireduce ({}; . * $item )' lamassu.yaml offline.yaml -i
-        rm offline.yaml
-        helm_path=$OFFLINE_HELMCHART_LAMASSU
+        echo -e "${ORANGE}Using local chart path ${LAMASSU_CHART_PATH} ${NOCOLOR}"
     fi
 
     helm_version=""
@@ -996,10 +744,7 @@ EOF
    yq -i '.auth.password = env(RABBIT_PWD)' rabbitmq.yaml
 
     helm_path=oci://registry-1.docker.io/cloudpirates/rabbitmq
-    if [ "$OFFLINE" = true ]; then
-        helm_path=$OFFLINE_HELMCHART_RABBITMQ
-    fi
-   
+
     run_helm install rabbitmq $helm_path --version 0.21.4 -n $NAMESPACE -f rabbitmq.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT"
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}RabbitMQ installed${NOCOLOR}"
@@ -1130,8 +875,7 @@ EOF
         unset SAMPLE_DATA_REALM_CONFIG
     fi
 
-    if [ "$OFFLINE" = false ]; then
-        cat >>keycloak.yaml <<"EOF"
+    cat >>keycloak.yaml <<"EOF"
 extraInitContainers:
 - name: init-custom-theme
   image: curlimages/curl:8.10.1
@@ -1144,8 +888,6 @@ extraInitContainers:
   - mountPath: "/opt/keycloak/providers"
     name: keycloak-providers
 EOF
-    fi
-
 
     export POSTGRES_USER=$POSTGRES_USER
     export POSTGRES_PWD=$POSTGRES_PWD
@@ -1159,9 +901,6 @@ EOF
 
 
     helm_path=oci://registry-1.docker.io/cloudpirates/keycloak
-    if [ "$OFFLINE" = true ]; then
-        helm_path=$OFFLINE_HELMCHART_KEYCLOAK
-    fi
 
     run_helm install auth $helm_path --version 0.21.9 -n $NAMESPACE --wait --timeout "$HELM_INSTALL_TIMEOUT" -f keycloak.yaml
     if [ $? -eq 0 ]; then
@@ -1206,9 +945,6 @@ EOF
     yq -i '.auth.password = env(POSTGRES_PWD)' postgres.yaml
 
     helm_path=oci://registry-1.docker.io/cloudpirates/postgres
-    if [ "$OFFLINE" = true ]; then
-        helm_path=$OFFLINE_HELMCHART_POSTGRES
-    fi
 
     run_helm install postgres $helm_path -n $NAMESPACE --version 0.19.5 -f postgres.yaml --wait --timeout "$HELM_INSTALL_TIMEOUT"
     if [ $? -eq 0 ]; then
@@ -1243,11 +979,6 @@ function install_softhsm() {
     fi
 
     helm_path="$SOFTHSM_CHART_PATH"
-    softhsm_extra_args=()
-    if [ "$OFFLINE" = true ]; then
-        helm_path="$OFFLINE_HELMCHART_SOFTHSM"
-        softhsm_extra_args+=(--set global.imagePullPolicy=Never)
-    fi
 
     run_helm install hsm "$helm_path" -n "$NAMESPACE" \
         --set-string ssh.authorizedKeys="$SOFTHSM_SSH_PUBLIC_KEY" \
@@ -1255,16 +986,19 @@ function install_softhsm() {
         --set-string softhsm.pin="$SOFTHSM_PIN" \
         --set-string softhsm.slot="$SOFTHSM_SLOT" \
         --set-string softhsm.so_pin="$SOFTHSM_SO_PIN" \
-        --set nethsm.enabled=true \
+        --set nethsm.enabled=$WITH_NETHSM \
         --set-string nethsm.tokenLabel="$NETHSM_TOKEN_LABEL" \
         --set-string nethsm.provision.unlockPassphrase="$NETHSM_UNLOCK_PASSPHRASE" \
         --set-string nethsm.provision.adminPassphrase="$NETHSM_ADMIN_PASSPHRASE" \
         --set-string nethsm.provision.systemTime="$NETHSM_SYSTEM_TIME" \
         --set-string nethsm.provision.operator.passphrase="$NETHSM_OPERATOR_PASSPHRASE" \
-        "${softhsm_extra_args[@]}" \
         --wait
     if [ $? -eq 0 ]; then
-        echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
+        if [ "$WITH_NETHSM" = true ]; then
+            echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
+        else
+            echo -e "\n${GREEN}SoftHSM installed (NetHSM skipped on ARM cluster)${NOCOLOR}"
+        fi
     else
         echo -e "\n${RED}Error installing SoftHSM${NOCOLOR}"
         exit 1
@@ -1350,6 +1084,7 @@ function request_keycloak_pwd() {
 
 function request_namespace() {
     echo -n "Kubernetes namespace ($NAMESPACE): "
+
     read req
     if [ "$req" != "" ]; then
         NAMESPACE=$req
@@ -1420,6 +1155,44 @@ function check_dependencies() {
         check_envoy_gateway_helm
     fi
 
+}
+
+function detect_nethsm_support() {
+    local node_arches
+    local node_arch
+    local has_amd64=false
+    local has_arm64=false
+
+    if ! node_arches=$(run_kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.architecture}{"\n"}{end}' 2>/dev/null) || [ -z "$node_arches" ]; then
+        echo -e "${RED}Unable to determine the architecture of every Kubernetes node; refusing to deploy NetHSM.${NOCOLOR}" >&2
+        exit 1
+    fi
+
+    while IFS=$'\t' read -r _ node_arch; do
+        case "$node_arch" in
+            amd64)
+                has_amd64=true
+                ;;
+            arm64 | aarch64)
+                has_arm64=true
+                ;;
+            *)
+                echo -e "${RED}Unsupported or missing Kubernetes node architecture: ${node_arch:-unknown}; refusing to deploy NetHSM.${NOCOLOR}" >&2
+                exit 1
+                ;;
+        esac
+    done <<< "$node_arches"
+
+    if [ "$has_amd64" = false ]; then
+        WITH_NETHSM=false
+        if [ "$has_arm64" = true ]; then
+            echo -e "${ORANGE}ARM Kubernetes cluster detected: NetHSM has no ARM image, skipping its deployment. SoftHSM/PKCS#11 will still be installed.${NOCOLOR}"
+        else
+            echo -e "${ORANGE}No amd64 Kubernetes node detected: skipping NetHSM deployment. SoftHSM/PKCS#11 will still be installed.${NOCOLOR}"
+        fi
+    elif [ "$has_arm64" = true ]; then
+        echo -e "${ORANGE}Mixed-architecture cluster detected: NetHSM will be restricted to amd64 nodes.${NOCOLOR}"
+    fi
 }
 
 function check_microk8s_minimum_requirements() {
@@ -1588,12 +1361,8 @@ server:
 EOF
 
     victoria_logs_helm_path=vm/victoria-logs-single
-    if [ "$OFFLINE" = false ]; then
-        run_helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
-        run_helm repo update vm 2>/dev/null || true
-    else
-        victoria_logs_helm_path=$OFFLINE_HELMCHART_VICTORIA_LOGS
-    fi
+    run_helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
+    run_helm repo update vm 2>/dev/null || true
 
     run_helm install victoria-logs $victoria_logs_helm_path -n $NAMESPACE -f victoria-logs.yaml --wait
     if [ $? -eq 0 ]; then
@@ -1612,12 +1381,8 @@ server:
 EOF
 
     victoria_traces_helm_path=vm/victoria-traces-single
-    if [ "$OFFLINE" = false ]; then
-        run_helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
-        run_helm repo update vm 2>/dev/null || true
-    else
-        victoria_traces_helm_path=$OFFLINE_HELMCHART_VICTORIA_TRACES
-    fi
+    run_helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
+    run_helm repo update vm 2>/dev/null || true
 
     run_helm install victoria-traces $victoria_traces_helm_path -n $NAMESPACE -f victoria-traces.yaml --wait
     if [ $? -eq 0 ]; then
@@ -1667,12 +1432,8 @@ userconfig:
 EOF
 
     jaeger_helm_path=jaegertracing/jaeger
-    if [ "$OFFLINE" = false ]; then
-        run_helm repo add jaegertracing https://jaegertracing.github.io/helm-charts 2>/dev/null || true
-        run_helm repo update jaegertracing 2>/dev/null || true
-    else
-        jaeger_helm_path=$OFFLINE_HELMCHART_JAEGER
-    fi
+    run_helm repo add jaegertracing https://jaegertracing.github.io/helm-charts 2>/dev/null || true
+    run_helm repo update jaegertracing 2>/dev/null || true
 
     run_helm install jaeger $jaeger_helm_path -n $NAMESPACE -f jaeger.yaml --wait
     if [ $? -eq 0 ]; then
@@ -1707,12 +1468,8 @@ config:
 EOF
 
     otel_collector_helm_path=open-telemetry/opentelemetry-collector
-    if [ "$OFFLINE" = false ]; then
-        run_helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
-        run_helm repo update open-telemetry 2>/dev/null || true
-    else
-        otel_collector_helm_path=$OFFLINE_HELMCHART_OTEL_COLLECTOR
-    fi
+    run_helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
+    run_helm repo update open-telemetry 2>/dev/null || true
 
     run_helm install otel-collector $otel_collector_helm_path -n $NAMESPACE -f otel-collector.yaml --wait
     if [ $? -eq 0 ]; then

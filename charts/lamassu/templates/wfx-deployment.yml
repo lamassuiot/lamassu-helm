@@ -1,50 +1,59 @@
 {{- if .Values.services.wfx.enabled }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "wfx") | fromYaml -}}
+{{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" "wfx") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wfx
-  namespace: {{ .Release.Namespace }}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  labels:
-    app: wfx
+  name: {{ $resourceName }}
+  {{- include "lamassu.workloadMetadata" (dict "root" $ "name" "wfx" "svc" $svc) | nindent 2 }}
 spec:
-  replicas: {{ .Values.services.wfx.replicas }}
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
-      app: wfx
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" "wfx") | nindent 6 }}
   template:
     metadata:
-      labels:
-        app: wfx
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" "wfx" "svc" $svc) | nindent 6 }}
     spec:
+      serviceAccountName: {{ include "lamassu.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with $svc.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: wfx
-          image: {{ .Values.services.wfx.image }}
+          image: {{ $svc.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-          # The image's own ENTRYPOINT bakes in "--mgmt-host=0.0.0.0" (a bare
-          # host with no scheme/port), and wfx's CLI flags take precedence
-          # over its WFX_MGMT_HOST/WFX_CLIENT_HOST env vars. Without this
-          # override, that baked-in flag silently wins over WFX_MGMT_HOST and
-          # the management API never actually binds, while the client API
-          # (no such conflicting baked flag) works fine.
+          # Override flags baked into the image entrypoint so both APIs bind to
+          # their configured ports.
+          {{- with $svc.command }}
           command:
-            - wfx
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           args:
-            - {{ printf "--client-host=http://0.0.0.0:%v" .Values.services.wfx.clientPort | quote }}
-            - {{ printf "--mgmt-host=http://0.0.0.0:%v" .Values.services.wfx.managementPort | quote }}
-{{- with .Values.services.wfx.extraArgs }}
-{{- range . }}
+            - {{ printf "--client-host=http://0.0.0.0:%v" $svc.clientPort | quote }}
+            - {{ printf "--mgmt-host=http://0.0.0.0:%v" $svc.managementPort | quote }}
+            {{- range $svc.extraArgs }}
             - {{ . | quote }}
-{{- end }}
-{{- end }}
+            {{- end }}
+          {{- with $svc.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             - name: WFX_STORAGE
               value: "postgres"
             - name: WFX_LOG_FORMAT
-              value: {{ .Values.services.wfx.logs.format | quote }}
+              value: {{ $svc.logs.format | quote }}
             - name: WFX_LOG_LEVEL
-              value: {{ .Values.services.wfx.logs.level | quote }}
+              value: {{ $svc.logs.level | quote }}
             - name: PGHOST
               value: {{ .Values.postgres.hostname | quote }}
             - name: PGPORT
@@ -54,26 +63,24 @@ spec:
             - name: PGPASSWORD
               value: {{ .Values.postgres.password | quote }}
             - name: PGDATABASE
-              value: {{ .Values.services.wfx.postgres.database | quote }}
+              value: {{ $svc.postgres.database | quote }}
             - name: PGSSLMODE
-              value: {{ .Values.services.wfx.postgres.sslmode | quote }}
-{{- with .Values.services.wfx.extraEnv }}
-{{ toYaml . | nindent 12 }}
-{{- end }}
-          readinessProbe:
-            tcpSocket:
-              port: {{ .Values.services.wfx.clientPort }}
-            initialDelaySeconds: 3
-            periodSeconds: 5
-          livenessProbe:
-            tcpSocket:
-              port: {{ .Values.services.wfx.clientPort }}
-            initialDelaySeconds: 10
-            periodSeconds: 10
+              value: {{ $svc.postgres.sslmode | quote }}
+            {{- with $svc.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- include "lamassu.tcpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.clientPort) | nindent 10 }}
+          {{- include "lamassu.tcpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.clientPort) | nindent 10 }}
+          {{- include "lamassu.tcpProbe" (dict "name" "startupProbe" "probe" $svc.startupProbe "port" $svc.clientPort) | nindent 10 }}
+          {{- with $svc.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: client
-              containerPort: {{ .Values.services.wfx.clientPort }}
+              containerPort: {{ $svc.clientPort }}
             - name: management
-              containerPort: {{ .Values.services.wfx.managementPort }}
+              containerPort: {{ $svc.managementPort }}
       restartPolicy: Always
+      {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
 {{- end }}

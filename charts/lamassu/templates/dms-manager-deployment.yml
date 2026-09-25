@@ -1,34 +1,119 @@
-{{- define "lamassu.dmsManager.initContainers" -}}
-- name: init-tls-certs
-  image: {{ .Values.toolbox.image }}
-  imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
-  command: ["/bin/bash", "/docker-entrypoint.sh"]
-  volumeMounts:
-    - name: downstream-tls-certificate
-      mountPath: /certs/downstream.crt
-      subPath: tls.crt
-    - name: downstream-tls-certificate
-      mountPath: /certs/downstream-ca.crt
-      subPath: ca.crt
-    - name: api-config
-      mountPath: /docker-entrypoint.sh
-      subPath: init.sh
-    - name: shared
-      mountPath: /shared
-{{- end -}}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "dmsManager") | fromYaml -}}
+{{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" "dms-manager") -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $resourceName }}
+  {{- include "lamassu.workloadMetadata" (dict "root" $ "name" "dms-manager" "svc" $svc) | nindent 2 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" "dms-manager") | nindent 6 }}
+  template:
+    metadata:
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" "dms-manager" "svc" $svc) | nindent 6 }}
+    spec:
+      serviceAccountName: {{ include "lamassu.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with $svc.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: build-cert-bundle
+          image: {{ $svc.tlsInitContainer.image | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+          {{- with $svc.tlsInitContainer.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+            - sh
+            - -c
+            - |
+              cat /certs/downstream.crt > /shared/bundle.crt
 
-{{- define "lamassu.dmsManager.volumes" -}}
-- name: downstream-tls-certificate
-  secret:
-    secretName: {{ ternary .Values.tls.externalOptions.secretName "downstream-cert" (eq .Values.tls.type "external") }}
-- name: shared
-  emptyDir: {}
-{{- end -}}
+              if [ -f /certs/downstream-ca.crt ]; then
+                cat /certs/downstream-ca.crt >> /shared/bundle.crt
+              fi
 
-{{ include "lamassu.workload" (dict
-  "root" $
-  "name" "dms-manager"
-  "svcKey" "dmsManager"
-  "initContainers" (include "lamassu.dmsManager.initContainers" $)
-  "volumeMounts" "- name: shared\n  mountPath: /shared"
-  "volumes" (include "lamassu.dmsManager.volumes" $)) }}
+              CERT_COUNT=$(grep -c 'END CERTIFICATE' /shared/bundle.crt)
+
+              awk "BEGIN {p=0;} /BEGIN CERTIFICATE/ {p++;} p==$CERT_COUNT" \
+                /shared/bundle.crt > /shared/root.crt
+
+              echo "Bundle:"
+              cat /shared/bundle.crt
+
+              echo "Root:"
+              cat /shared/root.crt
+          volumeMounts:
+            - name: cert-input
+              mountPath: /certs
+              readOnly: true
+            - name: cert-output
+              mountPath: /shared
+      containers:
+        - name: dms-manager
+          image: {{ $svc.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "startupProbe" "probe" $svc.startupProbe "port" $svc.port) | nindent 10 }}
+          {{- with $svc.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: api-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+            - name: cert-output
+              mountPath: /shared
+          ports:
+            - containerPort: {{ $svc.port }}
+      restartPolicy: Always
+      {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
+      volumes:
+        - name: api-config
+          configMap:
+            name: {{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager-config") }}
+        - name: cert-input
+          projected:
+            sources:
+              - secret:
+                  name: {{ include "downstream.certSecret" . }}
+                  items:
+                    - key: tls.crt
+                      path: downstream.crt
+              - secret:
+                  name: {{ include "downstream.certSecret" . }}
+                  items:
+                    - key: ca.crt
+                      path: downstream-ca.crt
+                  optional: true
+        - name: cert-output
+          emptyDir: {}

@@ -13,12 +13,44 @@ PKI for Industrial IoT for Kubernetes
 * <https://github.com/lamassuiot>
 * <https://github.com/lamassuiot/lamassu-kubernetes-chart>
 
+### Template conventions
+
+Every Deployment and StatefulSet is an explicit manifest. Each component owns
+its replicas, selectors, containers, probes, ports, volumes, and pod behavior,
+so its runtime contract can be read and changed in one file.
+
+Shared helpers are limited to small policies such as effective service values,
+metadata, probes, pod placement, Services, HPAs, PDBs, and HTTPRoutes. They do
+not render complete workloads or accept pre-rendered YAML. `values.schema.json`
+defines the common value types and constraints checked by `helm lint` and
+`helm template`.
+
+All chart-owned names are release-scoped and carry the recommended Kubernetes
+application labels. Workload pods do not mount service account tokens by
+default, use the RuntimeDefault seccomp profile, and drop Linux capabilities.
+The chart leaves affinity and topology spread empty unless configured by the
+operator.
+
+> **Upgrade notice:** this version changes chart-owned resource names to the
+> release-scoped form `<release>-lamassu-<component>`. StatefulSet PVCs are not
+> renamed by Kubernetes; plan a data migration or bind existing data before an
+> in-place upgrade. AWS connectors are now configured as a map keyed by their
+> stable connector ID instead of a list containing `id` fields.
 
 ## Values
+
+The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | global.imagePullPolicy | string | `"Always"` | Image pull policy for all containers |
+| global.imagePullSecrets | list | `[]` | Image pull secrets applied to every Lamassu pod |
+| nameOverride | string | `""` | Partially override release-scoped names |
+| fullnameOverride | string | `""` | Fully override the release-scoped name prefix |
+| commonLabels | object | `{}` | Labels added to chart-managed resources |
+| commonAnnotations | object | `{}` | Annotations added to chart-managed resources |
+| serviceAccount.create | bool | `true` | Create a release-scoped ServiceAccount |
+| serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods |
 | **TLS Configuration** | | | |
 | tls.type | string | `"certManager"` | TLS certificate provider. Allowed values: `certManager`, `external` |
 | tls.certManagerOptions.clusterIssuer | string | `""` | CertManager ClusterIssuer to use to sign the certificate |
@@ -29,6 +61,7 @@ PKI for Industrial IoT for Kubernetes
 | tls.certManagerOptions.certSpec.duration | string | `"2160h"` | Certificate validity duration (90 days) |
 | tls.externalOptions.secretName | string | `""` | Secret name for external TLS certificate (must have `tls.crt` and `tls.key` keys) |
 | **Gateway Configuration** | | | |
+| gateway.className | string | `"eg"` | GatewayClass used by the generated Gateway |
 | gateway.addresses | list | `[]` | IP addresses for Envoy Gateway (for non-LoadBalancer scenarios) |
 | gateway.ports.http | int | `80` | HTTP port for the Gateway |
 | gateway.ports.https | int | `443` | HTTPS port for the Gateway |
@@ -48,21 +81,20 @@ PKI for Industrial IoT for Kubernetes
 | auth.oidc.frontend.clientId | string | `"frontend"` | OIDC client ID for the frontend |
 | auth.oidc.frontend.authority | string | `"https://${window.location.host}/auth/realms/lamassu"` | OIDC provider base URL (can be a JS expression) |
 | auth.externalAuthorization.enabled | bool | `true` | Protect routes labeled `auth=external` with Envoy Gateway external authorization |
-| auth.externalAuthorization.serviceName | string | `"authz"` | Kubernetes Service name for the external authorization endpoint |
-| auth.externalAuthorization.servicePort | int | `8085` | Kubernetes Service port for the external authorization endpoint |
+| auth.externalAuthorization.serviceName | string | `""` | Kubernetes Service name for external authorization; empty derives the release-scoped authz Service |
+| auth.externalAuthorization.servicePort | int or null | `null` | Kubernetes Service port for the external authorization endpoint. Defaults to the effective `services.authz.port` |
 | auth.externalAuthorization.path | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+ |
 | auth.externalAuthorization.failOpen | bool | `false` | Allow traffic when the external authorization service cannot be reached |
 | **Service Images** | | | |
-| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:4.3.0"` | Docker image for UI component |
-| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:3.8.0"` | Docker image for CA component |
-| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:3.8.0"` | Docker image for VA component |
-| services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.8.0"` | Docker image for KMS component |
-| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.0"` | Docker image for Device Manager component |
-| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0"` | Docker image for DMS Manager component |
+| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:dev-v4"` | Docker image for UI component |
+| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:dev-v4"` | Docker image for CA component |
+| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:dev-v4"` | Docker image for VA component |
+| services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:dev-v4"` | Docker image for KMS component |
+| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:dev-v4"` | Docker image for Device Manager component |
+| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4"` | Docker image for DMS Manager component |
 | services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
 | services.wfx.enabled | bool | `true` | Enable the Siemens WFX workflow service |
 | services.wfx.image | string | `"ghcr.io/siemens/wfx:latest"` | Docker image for WFX component |
-| services.wfx.replicas | int | `1` | Number of WFX replicas |
 | services.wfx.clientPort | int | `9080` | WFX southbound/client API port |
 | services.wfx.managementPort | int | `9081` | WFX northbound/management API port |
 | services.wfx.logs.format | string | `"json"` | WFX log format |
@@ -77,19 +109,22 @@ PKI for Industrial IoT for Kubernetes
 | services.wfx.routing.rewritePath | string | `"/api/wfx/"` | Path used when rewriting Gateway routes to WFX |
 | services.wfx.extraEnv | list | `[]` | Additional WFX container environment variables |
 | services.wfx.extraArgs | list | `[]` | Additional WFX command line arguments |
-| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.0"` | Docker image for Alerts component |
+| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:dev-v4"` | Docker image for Alerts component |
 | **Replicas & Autoscaling** | | | |
-| services.\<svc\>.replicaCount | int | `1` | Number of replicas for the service. Ignored when `autoscaling.enabled` is `true`. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.replicaCount | int | `1` | Number of replicas for the service. Ignored when `autoscaling.enabled` is `true`. Applies to all services, including `authz` and `wfx` |
 | services.\<svc\>.autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the service. When `true`, the `replicas` field is omitted from the Deployment/StatefulSet and managed by the HPA |
 | services.\<svc\>.autoscaling.minReplicas | int | `1` | Minimum number of replicas for the HPA |
 | services.\<svc\>.autoscaling.maxReplicas | int | `5` | Maximum number of replicas for the HPA |
 | services.\<svc\>.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for HPA scaling |
 | services.\<svc\>.autoscaling.targetMemoryUtilizationPercentage | int | `80` | Target memory utilization percentage for HPA scaling |
 | **PodDisruptionBudget** | | | |
-| services.\<svc\>.pdb.minAvailable | int | `1` | Minimum number of pods that must remain available during node drains and rolling upgrades. PDB is only created when the effective replica count is greater than 1. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.pdb.minAvailable | int | `1` | Minimum number of pods that must remain available during node drains and rolling upgrades. PDB is only created when the effective replica count is greater than 1. Applies to all services, including `authz` and `wfx` |
 | **Pod Affinity & Topology Spread** | | | |
-| services.\<svc\>.affinity | object | `{}` | Pod affinity override. `{}` uses the chart default: soft (`preferredDuringScheduling`) pod anti-affinity on `kubernetes.io/hostname`, spreading replicas across nodes. Provide a full [affinity spec](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity) to replace it. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
-| services.\<svc\>.topologySpreadConstraints | list | `[]` | Topology spread constraints override. `[]` uses the chart defaults: two `ScheduleAnyway` constraints spreading pods across `topology.kubernetes.io/zone` and `kubernetes.io/hostname`. Provide a list of [TopologySpreadConstraint](https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/) objects to replace them. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
+| services.\<svc\>.affinity | object | `{}` | Kubernetes affinity configuration; no policy is injected by default |
+| services.\<svc\>.topologySpreadConstraints | list | `[]` | Kubernetes topology spread constraints; none are injected by default |
+| services.\<svc\>.livenessProbe | object | see `values.yaml` | Independent liveness probe configuration |
+| services.\<svc\>.readinessProbe | object | see `values.yaml` | Independent readiness probe configuration |
+| services.\<svc\>.startupProbe | object | see `values.yaml` | Startup probe configuration for slow-starting services |
 | **Resource Requests & Limits** | | | |
 | services.\<svc\>.resources.requests.cpu | string | `"100m"` | Default CPU request used by pods and utilization-based HPA metrics |
 | services.\<svc\>.resources.requests.memory | string | `"128Mi"` | Default memory request used by pods and utilization-based HPA metrics |
@@ -100,12 +135,10 @@ PKI for Industrial IoT for Kubernetes
 | **⚠️ VA HA Constraint** | | | |
 | — | — | — | `services.va.replicaCount > 1` requires `fileStore.type` to be changed from `local` to a shared backend (e.g., S3). With `local`, each replica has its own volume and CRL files are not shared across replicas |
 | **AWS Connector Replicas & Autoscaling** | | | |
-| services.connectors[\*].replicaCount | int | `1` | Number of replicas for a connector instance. Ignored when `autoscaling.enabled` is `true` |
-| services.connectors[\*].autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the connector instance |
-| services.connectors[\*].autoscaling.minReplicas | int | `1` | Minimum number of replicas for the connector HPA |
-| services.connectors[\*].autoscaling.maxReplicas | int | `3` | Maximum number of replicas for the connector HPA |
-| services.connectors[\*].autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage for connector HPA scaling |
-| services.connectors[\*].autoscaling.targetMemoryUtilizationPercentage | int | `""` | Target memory utilization percentage for connector HPA scaling. Optional |
+| services.connectors.\<id\>.type | string | required | Connector type; the map key is the stable connector ID |
+| services.connectors.\<id\>.image | string | required | Connector container image |
+| services.connectors.\<id\>.replicaCount | int | `1` | Number of replicas for a connector instance. Ignored when `autoscaling.enabled` is `true` |
+| services.connectors.\<id\>.autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the connector instance |
 | **CA Service Configuration** | | | |
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domains for signing/generating CAs and certificates |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | CA health check frequency (CRON syntax, can include seconds) |
@@ -125,7 +158,7 @@ PKI for Industrial IoT for Kubernetes
 | services.kms.pkcs11Sidecar.enabled | bool | `false` | Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS. Requires Kubernetes 1.29+ |
 | services.kms.pkcs11Sidecar.image | string | `""` | Sidecar image used to create the forwarded PKCS#11 socket |
 | services.kms.pkcs11Sidecar.imagePullPolicy | string | `"IfNotPresent"` | Image pull policy for the PKCS#11 sidecar |
-| services.kms.pkcs11Sidecar.securityContext | object | `{runAsNonRoot: true, runAsUser: 65532, runAsGroup: 0}` | Security context that keeps the forwarded mode-0600 socket accessible to KMS |
+| services.kms.pkcs11Sidecar.securityContext | object | `{runAsNonRoot: true, runAsUser: 65532, runAsGroup: 0}` | Security context for the PKCS#11 sidecar; its forwarded socket is mode-0660 and accessible to KMS through the pod's fsGroup |
 | services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory where the sidecar should create the PKCS#11 socket |
 | services.kms.pkcs11Sidecar.command | list | `[]` | Command for the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.args | list | `[]` | Arguments for the PKCS#11 sidecar |
@@ -161,9 +194,9 @@ This keeps token state, socket ownership, and failure domains isolated.
 | services.alerts.smtp_server.insecure | bool | `false` | Skip TLS certificate verification |
 | **Toolbox & Migrations** | | | |
 | toolbox.image | string | `"ghcr.io/lamassuiot/toolbox:2.2.0"` | Docker image for toolbox utility |
-| migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:3.8.0"` | Docker image for database migrations |
+| migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4"` | Docker image for database migrations |
 | migrations.db.databases | list | `["alerts", "ca", "va", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
-| migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:3.8.0"` | Docker image for the CA-to-KMS migration tool |
+| migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4"` | Docker image for the CA-to-KMS migration tool |
 
 ### In-Cluster HSM over `p11-kit`
 
@@ -192,16 +225,16 @@ Build the proxy image from [ci/softhsm/proxy.dockerfile](/home/ubuntu/dev/lamass
 ```yaml
 services:
   kms:
-    # Must match the PKCS#11 sidecar's securityContext: the sidecar forwards the
-    # socket as a mode-0600 file owned by this UID, so KMS needs the same UID to
-    # read/write it.
+    # The sidecar forwards the socket as a mode-0660 file with group 0, so any
+    # UID in group 0 (as here) can read/write it without matching the
+    # sidecar's UID.
     podSecurityContext:
       runAsNonRoot: true
       runAsUser: 65532
       runAsGroup: 0
     pkcs11Sidecar:
       enabled: true
-      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:latest
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-pr-87
       env:
         - name: SSH_DESTINATION
           value: root@hsm-softhsm

@@ -40,6 +40,40 @@ jobs:
         if: steps.list-changed.outputs.changed == 'true'
         run: ct lint --charts charts/lamassu --github-groups --target-branch ${{ github.base_ref || 'main' }}
 
+      - name: Install manifest and documentation validators
+        if: steps.list-changed.outputs.changed == 'true'
+        env:
+          KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+          HELM_DOCS_VERSION: 1.14.2
+          HELM_DOCS_SHA256: a8cf72ada34fad93285ba2a452b38bdc5bd52cc9a571236244ec31022928d6cc
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            --output /tmp/kubeconform.tar.gz
+          curl --fail --location --silent --show-error \
+            "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
+            --output /tmp/helm-docs.tar.gz
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum --check
+          echo "${HELM_DOCS_SHA256}  /tmp/helm-docs.tar.gz" | sha256sum --check
+          sudo tar --extract --gzip --directory /usr/local/bin --file /tmp/kubeconform.tar.gz kubeconform
+          sudo tar --extract --gzip --directory /usr/local/bin --file /tmp/helm-docs.tar.gz helm-docs
+
+      - name: Validate rendered manifests
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          helm template lamassu charts/lamassu --namespace lamassu-test \
+            | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
+          helm template lamassu charts/lamassu --namespace lamassu-test \
+            -f charts/lamassu/ci/template-contract-values.yaml \
+            | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
+
+      - name: Check generated values documentation
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          helm-docs --chart-search-root charts/lamassu --output-file VALUES.md
+          git diff --exit-code -- charts/lamassu/VALUES.md
+
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         uses: helm/kind-action@v1.12.0
@@ -91,6 +125,7 @@ jobs:
             --from-file=.key="$key_dir/ssh-key" \
             -n lamassu-test
           helm install hsm charts/softhsm -n lamassu-test \
+            --set-string image="ghcr.io/lamassuiot/softhsm:ci-pr-87" \
             --set-string ssh.authorizedKeys="$(cat "$key_dir/ssh-key.pub")" \
             --set-string softhsm.pin="1234" \
             --set-string softhsm.so_pin="5432" \

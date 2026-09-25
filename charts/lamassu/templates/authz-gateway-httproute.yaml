@@ -1,12 +1,12 @@
-apiVersion: gateway.networking.k8s.io/v1beta1
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "authz") | fromYaml -}}
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: api-authz
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "api-authz") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "api-authz") | nindent 2 }}
 spec:
   parentRefs:
-    - name: eg
-      sectionName: https  # The specific listener
+    {{- include "lamassu.gatewayParentRef" (dict "root" $) | nindent 4 }}
   rules:
     - matches:
       - path:
@@ -17,7 +17,7 @@ spec:
         urlRewrite:
           path:
             type: ReplacePrefixMatch
-            replacePrefixMatch: "/"
+            replacePrefixMatch: /
       backendRefs:
-        - name: authz
-          port: 8085
+        - name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz") }}
+          port: {{ $svc.port }}

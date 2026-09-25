@@ -1,26 +1,75 @@
-{{- define "lamassu.ui.env" -}}
-- name: CHART_VERSION
-  value: {{ .Chart.Version }}
-- name: HELM_REVISION
-  value: "{{ .Release.Revision }}"
-- name: LAMASSU_API
-  value: "https://${window.location.host}/api"
-- name: OIDC_ENABLED
-  value: "true"
-- name: OIDC_AUTHORITY
-  value: {{ .Values.auth.oidc.frontend.authority }}
-- name: OIDC_CLIENT_ID
-  value: {{ .Values.auth.oidc.frontend.clientId }}
-- name: CLOUD_CONNECTORS
-  value: "[{{- range $index, $element := .Values.services.connectors -}}{{- if $index }}, {{ end }}\"{{ $element.id }}\"{{- end }}]"
-- name: UI_FOOTER_ENABLED
-  value: "false"
-{{- end -}}
-
-{{ include "lamassu.workload" (dict
-  "root" $
-  "name" "ui"
-  "svcKey" "ui"
-  "tty" false
-  "configMapName" ""
-  "env" (include "lamassu.ui.env" $)) }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "ui") | fromYaml -}}
+{{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" "ui") -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $resourceName }}
+  {{- include "lamassu.workloadMetadata" (dict "root" $ "name" "ui" "svc" $svc) | nindent 2 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" "ui") | nindent 6 }}
+  template:
+    metadata:
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" "ui" "svc" $svc) | nindent 6 }}
+    spec:
+      serviceAccountName: {{ include "lamassu.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with $svc.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ui
+          image: {{ $svc.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $svc.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: CHART_VERSION
+              value: {{ .Chart.Version | quote }}
+            - name: HELM_REVISION
+              value: {{ .Release.Revision | quote }}
+            - name: LAMASSU_API
+              value: "https://${window.location.host}/api"
+            - name: OIDC_ENABLED
+              value: "true"
+            - name: OIDC_AUTHORITY
+              value: {{ .Values.auth.oidc.frontend.authority | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.auth.oidc.frontend.clientId | quote }}
+            - name: CLOUD_CONNECTORS
+              value: "[{{- range $index, $instanceID := keys .Values.services.connectors | sortAlpha -}}{{- if $index }}, {{ end }}\"{{ $instanceID }}\"{{- end }}]"
+            - name: UI_FOOTER_ENABLED
+              value: "false"
+            {{- with $svc.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.port) | nindent 10 }}
+          {{- include "lamassu.httpProbe" (dict "name" "startupProbe" "probe" $svc.startupProbe "port" $svc.port) | nindent 10 }}
+          {{- with $svc.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: {{ $svc.port }}
+      restartPolicy: Always
+      {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}

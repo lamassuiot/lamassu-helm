@@ -1,1 +1,13 @@
-{{ include "lamassu.pdb" (dict "root" $ "name" "ca" "svcKey" "ca") }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "ca") | fromYaml -}}
+{{- if eq (include "lamassu.pdb.enabled" $svc) "true" }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "ca") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "ca") | nindent 2 }}
+spec:
+  minAvailable: {{ $svc.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" "ca") | nindent 6 }}
+{{- end }}

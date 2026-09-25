@@ -1,2 +1,23 @@
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "ca") | fromYaml -}}
-{{ include "lamassu.httproute" (dict "root" $ "name" "api-ca" "backend" "ca" "port" $svc.port "path" "/api/ca/" "rewrite" "/") }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "api-ca") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "api-ca") | nindent 2 }}
+spec:
+  parentRefs:
+    {{- include "lamassu.gatewayParentRef" (dict "root" $) | nindent 4 }}
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /api/ca/
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /
+      backendRefs:
+        - name: {{ include "lamassu.componentName" (dict "root" $ "component" "ca") }}
+          port: {{ $svc.port }}

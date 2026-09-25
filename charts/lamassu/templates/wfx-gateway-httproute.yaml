@@ -1,14 +1,14 @@
 {{- if and .Values.services.wfx.enabled .Values.services.wfx.routing.enabled }}
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: api-wfx-sbi
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "api-wfx-sbi") }}
   labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" "api-wfx-sbi") | nindent 4 }}
     auth: "external"
 spec:
   parentRefs:
-    - name: eg
+    - name: {{ include "lamassu.componentName" (dict "root" $ "component" "gateway") }}
       sectionName: https  # The specific listener
   rules:
     - matches:
@@ -22,19 +22,19 @@ spec:
             type: ReplacePrefixMatch
             replacePrefixMatch: {{ default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteSbiPath | quote }}
       backendRefs:
-        - name: wfx
+        - name: {{ include "lamassu.componentName" (dict "root" $ "component" "wfx") }}
           port: {{ .Values.services.wfx.clientPort }}
 ---
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: api-wfx-nbi
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "api-wfx-nbi") }}
   labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" "api-wfx-nbi") | nindent 4 }}
     auth: "external"
 spec:
   parentRefs:
-    - name: eg
+    - name: {{ include "lamassu.componentName" (dict "root" $ "component" "gateway") }}
       sectionName: https  # The specific listener
   rules:
     - matches:
@@ -48,6 +48,6 @@ spec:
             type: ReplacePrefixMatch
             replacePrefixMatch: {{ default .Values.services.wfx.routing.rewritePath .Values.services.wfx.routing.rewriteNbiPath | quote }}
       backendRefs:
-        - name: wfx
+        - name: {{ include "lamassu.componentName" (dict "root" $ "component" "wfx") }}
           port: {{ .Values.services.wfx.managementPort }}
 {{- end }}
