@@ -234,7 +234,7 @@ services:
       runAsGroup: 0
     pkcs11Sidecar:
       enabled: true
-      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-test
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-pr-87
       env:
         - name: SSH_DESTINATION
           value: root@hsm-softhsm
