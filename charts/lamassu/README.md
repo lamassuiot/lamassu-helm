@@ -225,9 +225,9 @@ Build the proxy image from [ci/softhsm/proxy.dockerfile](/home/ubuntu/dev/lamass
 ```yaml
 services:
   kms:
-    # Must match the PKCS#11 sidecar's securityContext: the sidecar forwards the
-    # socket as a mode-0600 file owned by this UID, so KMS needs the same UID to
-    # read/write it.
+    # The sidecar forwards the socket as a mode-0660 file with group 0, so any
+    # UID in group 0 (as here) can read/write it without matching the
+    # sidecar's UID.
     podSecurityContext:
       runAsNonRoot: true
       runAsUser: 65532
