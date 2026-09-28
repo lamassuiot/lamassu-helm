@@ -81,6 +81,14 @@ jobs:
           wait: 180s
           verbosity: 10
 
+      - name: Build and load HSM images from this checkout
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          docker build --file ci/softhsm/dockerfile --tag ghcr.io/lamassuiot/softhsm:ci-local ci/softhsm
+          docker build --file ci/softhsm/proxy.dockerfile --tag ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-local ci/softhsm
+          cluster_name=$(kind get clusters)
+          kind load docker-image --name "$cluster_name" ghcr.io/lamassuiot/softhsm:ci-local ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-local
+
       - name: Prepare kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         run: |
@@ -125,7 +133,8 @@ jobs:
             --from-file=.key="$key_dir/ssh-key" \
             -n lamassu-test
           helm install hsm charts/softhsm -n lamassu-test \
-            --set-string image="ghcr.io/lamassuiot/softhsm:ci-pr-87" \
+            --set-string image="ghcr.io/lamassuiot/softhsm:ci-local" \
+            --set-string global.imagePullPolicy=IfNotPresent \
             --set-string ssh.authorizedKeys="$(cat "$key_dir/ssh-key.pub")" \
             --set-string softhsm.pin="1234" \
             --set-string softhsm.so_pin="5432" \
