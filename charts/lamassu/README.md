@@ -53,12 +53,12 @@ PKI for Industrial IoT for Kubernetes
 | auth.authorization.roles.admin | string | `"pki-admin"` | Role for Lamassu admin users |
 | **Service Images** | | | |
 | services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:4.3.0"` | Docker image for UI component |
-| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:3.8.0"` | Docker image for CA component |
-| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:3.8.0"` | Docker image for VA component |
-| services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.8.0"` | Docker image for KMS component |
-| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.0"` | Docker image for Device Manager component |
-| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.0"` | Docker image for DMS Manager component |
-| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.0"` | Docker image for Alerts component |
+| services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:3.8.1"` | Docker image for CA component |
+| services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:3.8.1"` | Docker image for VA component |
+| services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:3.8.1"` | Docker image for KMS component |
+| services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:3.8.1"` | Docker image for Device Manager component |
+| services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:3.8.1"` | Docker image for DMS Manager component |
+| services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:3.8.1"` | Docker image for Alerts component |
 | **Replicas & Autoscaling** | | | |
 | services.\<svc\>.replicaCount | int | `1` | Number of replicas for the service. Ignored when `autoscaling.enabled` is `true`. Applies to: `ui`, `ca`, `va`, `kms`, `deviceManager`, `dmsManager`, `alerts` |
 | services.\<svc\>.autoscaling.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the service. When `true`, the `replicas` field is omitted from the Deployment/StatefulSet and managed by the HPA |

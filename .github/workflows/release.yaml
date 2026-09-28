@@ -132,6 +132,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
 
+      - name: Find previous chart release tag
+        id: previous-chart-tag
+        run: |
+          chart_name=${{ github.event.inputs.chart_to_release }}
+          previous_tag=$(git describe --tags --match "${chart_name}-[0-9]*" --abbrev=0 HEAD)
+          echo "tag=${previous_tag}" >> "$GITHUB_OUTPUT"
+
       - name: Generate chart changelog
         uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
         with:
@@ -140,7 +147,8 @@ jobs:
             --tag-pattern "${{ github.event.inputs.chart_to_release }}-[0-9].*"
             --include-path "charts/${{ github.event.inputs.chart_to_release }}/**"
             --tag "${{ github.event.inputs.chart_to_release }}-${{ github.event.inputs.release_version }}"
-            --output "charts/${{ github.event.inputs.chart_to_release }}/CHANGELOG.md"
+            ${{ steps.previous-chart-tag.outputs.tag }}..HEAD
+            --prepend "charts/${{ github.event.inputs.chart_to_release }}/CHANGELOG.md"
         env:
           GITHUB_REPO: ${{ github.repository }}
 
