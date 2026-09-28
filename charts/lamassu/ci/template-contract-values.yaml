@@ -1,4 +1,34 @@
 # Exercises non-default ports and autoscaling branches during chart-testing.
+
+postgres:
+  hostname: "postgresql"
+  port: 5432
+  username: "admin"
+  password: "admin"
+
+amqp:
+  hostname: "rabbitmq"
+  port: 5672
+  username: "admin"
+  password: "admin"
+
+auth:
+  oidc:
+    frontend:
+      authority: https://ci.lamassu.io/auth/realms/lamassu
+
+gateway:
+  extraRouting:
+    - path: /auth
+      name: auth
+      target:
+        host: auth-keycloak
+        port: 80  # If no sidecar is used
+  ports:
+    http: 80
+    https: 443
+  addresses:
+
 services:
   ca:
     port: 9999
