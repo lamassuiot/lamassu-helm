@@ -225,16 +225,15 @@ Build the proxy image from [ci/softhsm/proxy.dockerfile](/home/ubuntu/dev/lamass
 ```yaml
 services:
   kms:
-    # The sidecar forwards the socket as a mode-0660 file with group 0, so any
-    # UID in group 0 (as here) can read/write it without matching the
-    # sidecar's UID.
+    # The sidecar forwards the socket as mode 0660. Set fsGroup to the
+    # sidecar's group when KMS and the sidecar use different UIDs.
     podSecurityContext:
-      runAsNonRoot: true
-      runAsUser: 65532
-      runAsGroup: 0
+      fsGroup: 0
     pkcs11Sidecar:
       enabled: true
-      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-pr-87
+      securityContext:
+        runAsGroup: 0
+      image: ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-test
       env:
         - name: SSH_DESTINATION
           value: root@hsm-softhsm
