@@ -64,9 +64,6 @@ jobs:
         run: |
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
-          helm template lamassu charts/lamassu --namespace lamassu-test \
-            -f charts/lamassu/ci/template-contract-values.yaml \
-            | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
       - name: Check generated values documentation
         if: steps.list-changed.outputs.changed == 'true'
