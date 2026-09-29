@@ -1,74 +1,76 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: "helm-test-lamassu-connectivity-hckek"
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "connectivity-test") }}
+  labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" "test") | nindent 4 }}
   annotations:
     "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
+  serviceAccountName: {{ include "lamassu.serviceAccountName" . }}
+  automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: hcheck
-      image: {{ .Values.toolbox.image }}
-      command: ['bash']
-      args: ["/etc/scripts/init.sh"]
-      volumeMounts:
-        - name: hckek-script
-          mountPath: /etc/scripts/init.sh
-          subPath: init.sh
-  volumes:
-  - name: hckek-script
-    configMap:
-      name: helm-test-lamassu-connectivity-hckek-script
+      image: {{ .Values.connectivityTest.image }}
+
+      {{- with .Values.connectivityTest.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      command:
+        - /bin/sh
+        - -c
+
+      args:
+        - |
+          check_service() {
+              url="$1"
+
+              if curl \
+                  --max-time 10 \
+                  --silent \
+                  --show-error \
+                  --fail \
+                  --output /dev/null \
+                  "$url"; then
+                  echo "successfully validated $url"
+              else
+                  echo "health check failed for $url"
+                  exit 1
+              fi
+          }
+
+          check_ui() {
+              url="$1"
+
+              response=$(curl \
+                  --max-time 10 \
+                  --silent \
+                  --show-error \
+                  --fail \
+                  "$url") || {
+                      echo "health check failed for $url"
+                      exit 1
+                  }
+
+              echo "$response" |
+                  grep -q '<title>LamassuIoT Certificate Manager</title>' || {
+                      echo "invalid UI response from $url"
+                      exit 1
+                  }
+
+              echo "successfully validated $url"
+          }
+
+          check_service "http://{{ include "lamassu.componentName" (dict "root" $ "component" "ca") }}:{{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "ca") }}/health"
+          check_service "http://{{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager") }}:{{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "dmsManager") }}/health"
+          check_service "http://{{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}:{{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "deviceManager") }}/health"
+          check_service "http://{{ include "lamassu.componentName" (dict "root" $ "component" "va") }}:{{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "va") }}/health"
+          check_ui "http://{{ include "lamassu.componentName" (dict "root" $ "component" "ui") }}:{{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "ui") }}"
+
   restartPolicy: Never
----
-
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: helm-test-lamassu-connectivity-hckek-script
-  namespace: {{.Release.Namespace}}
-data:
-  init.sh: |
-    #!/bin/bash
-    function curl_or_exit() {
-        response=$(curl -k -m 10 -sS --fail-early $1)
-        if [ $? -ne 0 ]; then
-            echo "curl failed for $1: exiting 1"
-            exit 1
-        fi
-
-        echo "$response"
-    }
-    
-    function curl_and_analyze_json() {
-        response=$(curl_or_exit $1)
-
-        # Check if response is valid JSON
-        if ! jq empty <<< "$response" &>/dev/null; then
-            echo "NO valid JSON found in the response for $1 serivce. exiting 1"
-            exit 1
-        fi
-
-        echo "sucessfully validated $1"
-    }
- 
- 
-    function curl_and_analyze_ui() {
-        ui_response=$(curl_or_exit $1)
-        keyword="<title>LamassuIoT Certificate Manager</title>"
-        if echo "$ui_response" | grep -q "$keyword"; then
-            echo "sucessfully validated $1"
-        else
-            echo "NO valid response for $1. exiting 1"
-            echo "$ui_response"
-            exit 1
-        fi
-
-    }
-    
-    curl_and_analyze_json http://ca:8085/health
-    curl_and_analyze_json http://dms-manager:8085/health
-    curl_and_analyze_json http://device-manager:8085/health
-    curl_and_analyze_json http://va:8085/health
-
-    #UI Health Check
-    curl_and_analyze_ui http://ui:80

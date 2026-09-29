@@ -18,6 +18,10 @@ spec:
       labels:
         app: {{ include "soft.nethsm.fullname" . }}
     spec:
+      {{- with .Values.nethsm.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: nethsm
           image: {{ .Values.nethsm.image }}

@@ -1,7 +1,22 @@
-{{ range $instance := $.Values.services.connectors }}
+{{- range $connectorID, $instance := $.Values.services.connectors }}
 {{- if eq $instance.type "awsiot" }}
-{{- $instanceID := $instance.id | replace "aws." "" }}
-{{ include "lamassu.service" (dict "root" $ "name" (printf "aws-connector-%s" $instanceID) "svc" $instance) }}
+{{- $instanceID := $connectorID | replace "aws." "" }}
+{{- $component := printf "aws-connector-%s" $instanceID }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svc" $instance) | fromYaml }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" $component) }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" $component) | nindent 2 }}
+spec:
+  selector:
+    {{- include "lamassu.selectorLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      protocol: TCP
 ---
 {{- end -}}
 {{- end -}}

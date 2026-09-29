@@ -1,11 +1,12 @@
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "kms") | fromYaml -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: kms-config
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "kms-config") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "kms") | nindent 2 }}
 data:
   config: |
-    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false) | nindent 4 }}
+    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false "port" $svc.port) | nindent 4 }}
 
     {{- include "lamassu.config.eventbus" (dict "root" $ "key" "publisher_event_bus") | nindent 4 }}
 

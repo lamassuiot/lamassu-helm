@@ -1,7 +1,7 @@
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: selfsigned-issuer
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "selfsigned-issuer") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "tls") | nindent 2 }}
 spec:
   selfSigned: {}

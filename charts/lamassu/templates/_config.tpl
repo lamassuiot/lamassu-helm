@@ -1,14 +1,15 @@
 {{/*
 Shared partials for the per-service app config rendered into each ConfigMap's
 `data.config` block. These are genuinely repeated blocks (HTTP server, DB
-storage, AMQP event bus, OTel), not selector/scheduling boilerplate — kept
-separate from _lib.tpl on purpose.
+storage, AMQP event bus, and OTel), kept separate from Kubernetes resource
+helpers on purpose.
 */}}
 
 {{/*
 Common server/openapi header. Context dict:
   logsLevel    top-level `logs.level` value
   healthCheck  server.health_check value; key is omitted entirely if unset
+  port         service listen port
   sse          set true to emit `sse_enabled: true` (device-manager only)
 */}}
 {{- define "lamassu.config.header" -}}
@@ -21,7 +22,7 @@ server:
   health_check: {{ .healthCheck }}
   {{- end }}
   listen_address: "0.0.0.0"
-  port: 8085
+  port: {{ .port }}
   protocol: "http" #http | https
 {{- if .sse }}
 
@@ -30,6 +31,12 @@ sse_enabled: true
 
 openapi:
   enabled: true
+{{- end -}}
+
+{{/* Resolve a service's effective port after serviceDefaults and overrides are merged. */}}
+{{- define "lamassu.config.servicePort" -}}
+{{- $svc := include "lamassu.svc.merged" . | fromYaml -}}
+{{- $svc.port -}}
 {{- end -}}
 
 {{/*
@@ -72,8 +79,8 @@ authz_client:
   log_level: debug
   auth_mode: noauth
   protocol: http
-  hostname: authz
-  port: 8085
+  hostname: {{ include "lamassu.componentName" (dict "root" . "component" "authz") }}
+  port: {{ include "lamassu.config.servicePort" (dict "root" . "svcKey" "authz") }}
 {{- end -}}
 
 {{/* OTel traces/logging block, guarded by observability.enabled. Context: chart root ($) */}}

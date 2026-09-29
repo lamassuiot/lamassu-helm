@@ -1,1 +1,18 @@
-{{ include "lamassu.hpa" (dict "root" $ "name" "device-manager" "svcKey" "deviceManager") }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "deviceManager") | fromYaml -}}
+{{- if $svc.autoscaling.enabled }}
+{{- include "lamassu.autoscaling.validate" (dict "name" "device-manager" "autoscaling" $svc.autoscaling) }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "device-manager") | nindent 2 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
+  minReplicas: {{ $svc.autoscaling.minReplicas }}
+  maxReplicas: {{ $svc.autoscaling.maxReplicas }}
+  metrics:
+    {{- include "lamassu.autoscaling.metrics" $svc.autoscaling | nindent 4 }}
+{{- end }}

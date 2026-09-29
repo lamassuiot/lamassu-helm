@@ -1,17 +1,19 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: root-downstream-cert
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "root-downstream-cert") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "tls") | nindent 2 }}
 spec:
   isCA: true
-  duration: {{.Values.tls.certManagerOptions.duration}}
+  {{- if .Values.tls.certManagerOptions.certSpec.duration}}
+  duration: {{.Values.tls.certManagerOptions.certSpec.duration}}
+  {{- end}}
   commonName: "downstream-selfsigned-cert"
-  secretName: root-downstream-cert
+  secretName: {{ include "lamassu.componentName" (dict "root" $ "component" "root-downstream-cert") }}
   privateKey:
     algorithm: ECDSA
     size: 256
   issuerRef:
-    name: selfsigned-issuer
+    name: {{ include "lamassu.componentName" (dict "root" $ "component" "selfsigned-issuer") }}
     kind: Issuer
     group: cert-manager.io

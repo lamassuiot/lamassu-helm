@@ -1,9 +1,12 @@
 {{- if .Values.auth.externalAuthorization.enabled }}
+{{- $authz := include "lamassu.svc.merged" (dict "root" $ "svcKey" "authz") | fromYaml }}
+{{- $servicePort := .Values.auth.externalAuthorization.servicePort | default $authz.port }}
+{{- $serviceName := .Values.auth.externalAuthorization.serviceName | default (include "lamassu.componentName" (dict "root" $ "component" "authz")) }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: external-authz
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "external-authz") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "authz") | nindent 2 }}
 spec:
   targetSelectors:
   - group: gateway.networking.k8s.io
@@ -14,7 +17,7 @@ spec:
     failOpen: {{ .Values.auth.externalAuthorization.failOpen }}
     http:
       backendRefs:
-        - name: {{ .Values.auth.externalAuthorization.serviceName }}
-          port: {{ .Values.auth.externalAuthorization.servicePort }}
+        - name: {{ $serviceName }}
+          port: {{ $servicePort }}
       path: {{ .Values.auth.externalAuthorization.path | quote }}
 {{- end }}

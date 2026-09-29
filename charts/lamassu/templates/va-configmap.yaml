@@ -1,11 +1,12 @@
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "va") | fromYaml -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: va-config
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "va-config") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "va") | nindent 2 }}
 data:
   config: |
-    {{- include "lamassu.config.header" (dict "logsLevel" "info") | nindent 4 }}
+    {{- include "lamassu.config.header" (dict "logsLevel" "info" "port" $svc.port) | nindent 4 }}
 
     {{- if eq .Values.services.va.fileStore.type "local" }}
     filesystem_storage:
@@ -39,15 +40,14 @@ data:
       log_level: debug
       auth_mode: noauth
       protocol: http
-      hostname: kms
-      port: 8085
+      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "kms") }}
+      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "kms") }}
 
     ca_client:
       log_level: debug
       auth_mode: "noauth"
       protocol: "http"
-      hostname: "ca"
-      port: 8085
-
+      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "ca") | quote }}
+      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "ca") }}
     {{- include "lamassu.config.authzClient" $ | nindent 4 }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}

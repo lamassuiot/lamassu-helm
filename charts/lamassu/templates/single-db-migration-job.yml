@@ -1,13 +1,15 @@
 {{- $authz := .Values.services.authz | default dict }}
-{{- $authzImage := dig "image" "" $authz }}
+{{- $authzSvc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "authz") | fromYaml }}
+{{- $authzImage := dig "image" "" $authzSvc }}
 {{- $authzDB := dig "database" "authz" $authz }}
 {{- $wfxDB := dig "postgres" "database" "wfx" (.Values.services.wfx | default dict) }}
 {{- if $authzImage }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: "authz-init-config-{{ .Release.Name }}"
-  namespace: "{{ .Release.Namespace }}"
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-init-config") }}
+  labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" "migration") | nindent 4 }}
   annotations:
     # Must exist before the upgrade Job runs, so it is a hook with a lower weight
     # than the Job. Carries only what `authz init` reads — connection, preload
@@ -36,8 +38,9 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "single-db-migration-job-{{ .Release.Name }}"
-  namespace: "{{ .Release.Namespace }}"
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "db-migration") }}
+  labels:
+    {{- include "lamassu.labels" (dict "root" $ "component" "migration") | nindent 4 }}
   annotations:
     # Single entry point for preparing the database, run as one Job so the steps
     # are strictly ordered and the whole thing either succeeds or fails together:
@@ -53,13 +56,23 @@ metadata:
 spec:
   template:
     metadata:
-      name: "single-db-migration-job-{{ .Release.Name }}"
+      labels:
+        {{- include "lamassu.selectorLabels" (dict "root" $ "component" "migration") | nindent 8 }}
     spec:
+      # Pre-install hooks run before the chart-managed ServiceAccount exists.
+      # This Job does not access the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.serviceDefaults.podSecurityContext | nindent 8 }}
       restartPolicy: Never
       initContainers:
         # Step 1 — databases, schemas and the 3.8.0 consolidation.
         - name: create-databases
           image: docker.io/postgres:18.4
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: POSTGRES_USER
               value: "{{ .Values.postgres.username }}"
@@ -263,6 +276,10 @@ spec:
         - name: migrate-{{ $schema }}
           image: {{ $.Values.migrations.db.image }}
           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           args:
             - >-
               host={{ $.Values.postgres.hostname }}
@@ -282,6 +299,8 @@ spec:
         - name: init-authz
           image: {{ $authzImage }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml $authzSvc.securityContext | nindent 12 }}
           # The image declares the binary as CMD with no ENTRYPOINT, so args
           # alone would replace it instead of adding to it.
           command: ["/authz"]
@@ -295,10 +314,14 @@ spec:
       containers:
         - name: done
           image: docker.io/postgres:18.4
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           command: ["bash", "-c", "echo 'Database upgrade completed.'"]
       {{- if $authzImage }}
       volumes:
         - name: authz-init-config
           configMap:
-            name: "authz-init-config-{{ .Release.Name }}"
+            name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-init-config") }}
       {{- end }}
