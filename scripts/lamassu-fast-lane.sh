@@ -997,7 +997,7 @@ function install_softhsm() {
         if [ "$WITH_NETHSM" = true ]; then
             echo -e "\n${GREEN}SoftHSM installed${NOCOLOR}"
         else
-            echo -e "\n${GREEN}SoftHSM installed (NetHSM skipped on ARM cluster)${NOCOLOR}"
+            echo -e "\n${GREEN}SoftHSM installed (NetHSM skipped)${NOCOLOR}"
         fi
     else
         echo -e "\n${RED}Error installing SoftHSM${NOCOLOR}"
@@ -1164,8 +1164,9 @@ function detect_nethsm_support() {
     local has_arm64=false
 
     if ! node_arches=$(run_kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.architecture}{"\n"}{end}' 2>/dev/null) || [ -z "$node_arches" ]; then
-        echo -e "${RED}Unable to determine the architecture of every Kubernetes node; refusing to deploy NetHSM.${NOCOLOR}" >&2
-        exit 1
+        echo -e "${ORANGE}Unable to determine Kubernetes node architectures; skipping NetHSM. SoftHSM/PKCS#11 will still be installed.${NOCOLOR}" >&2
+        WITH_NETHSM=false
+        return 0
     fi
 
     while IFS=$'\t' read -r _ node_arch; do
@@ -1177,8 +1178,9 @@ function detect_nethsm_support() {
                 has_arm64=true
                 ;;
             *)
-                echo -e "${RED}Unsupported or missing Kubernetes node architecture: ${node_arch:-unknown}; refusing to deploy NetHSM.${NOCOLOR}" >&2
-                exit 1
+                echo -e "${ORANGE}Unsupported or missing Kubernetes node architecture: ${node_arch:-unknown}; skipping NetHSM. SoftHSM/PKCS#11 will still be installed.${NOCOLOR}" >&2
+                WITH_NETHSM=false
+                return 0
                 ;;
         esac
     done <<< "$node_arches"
