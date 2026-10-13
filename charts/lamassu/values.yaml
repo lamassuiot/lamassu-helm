@@ -187,7 +187,7 @@ services:
   ui:
     # -- Docker image for the UI component
     image: "ghcr.io/lamassuiot/lamassu-ui:dev"
-    port: 80
+    port: 8085
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).
     image: ghcr.io/lamassuiot/lamassu-va:dev
