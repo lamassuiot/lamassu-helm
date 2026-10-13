@@ -71,4 +71,4 @@ data:
     curl_and_analyze_json http://va:8085/health
 
     #UI Health Check
-    curl_and_analyze_ui http://ui:80
+    curl_and_analyze_ui http://ui:8085
