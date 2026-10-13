@@ -133,7 +133,7 @@ jobs:
           GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
 
       - name: Generate chart changelog
-        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
           version: v2.14.1
           args: >-
@@ -145,7 +145,7 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
 
       - name: Generate chart release notes
-        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
           version: v2.14.1
           args: >-
@@ -219,7 +219,7 @@ jobs:
           GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
 
       - name: Run Chart Releaser
-        uses: helm/chart-releaser-action@a917fd15b20e8b64b94d9158ad54cd6345335584 # v1.6.0
+        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
         env:
           CR_TOKEN: "${{ steps.release-bot-token.outputs.token }}"
           CR_RELEASE_NOTES_FILE: RELEASE-NOTES.md # Relative to the chart directory
