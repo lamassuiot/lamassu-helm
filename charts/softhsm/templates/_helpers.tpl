@@ -31,6 +31,14 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
+Fully qualified name for the NetHSM resources.
+*/}}
+{{- define "soft.nethsm.fullname" -}}
+{{- $base := default .Release.Name .Values.fullnameOverride -}}
+{{- printf "%s-nethsm" $base | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
 Common labels
 */}}
 {{- define "soft.labels" -}}

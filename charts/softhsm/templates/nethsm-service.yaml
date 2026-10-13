@@ -1,0 +1,19 @@
+{{- if .Values.nethsm.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "soft.nethsm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soft.labels" . | nindent 4 }}
+    app: {{ include "soft.nethsm.fullname" . }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.nethsm.port }}
+      targetPort: {{ .Values.nethsm.port }}
+      protocol: TCP
+      name: https
+  selector:
+    app: {{ include "soft.nethsm.fullname" . }}
+{{- end }}

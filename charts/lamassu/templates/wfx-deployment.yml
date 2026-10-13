@@ -1,0 +1,79 @@
+{{- if .Values.services.wfx.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wfx
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  labels:
+    app: wfx
+spec:
+  replicas: {{ .Values.services.wfx.replicas }}
+  selector:
+    matchLabels:
+      app: wfx
+  template:
+    metadata:
+      labels:
+        app: wfx
+    spec:
+      containers:
+        - name: wfx
+          image: {{ .Values.services.wfx.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
+          # The image's own ENTRYPOINT bakes in "--mgmt-host=0.0.0.0" (a bare
+          # host with no scheme/port), and wfx's CLI flags take precedence
+          # over its WFX_MGMT_HOST/WFX_CLIENT_HOST env vars. Without this
+          # override, that baked-in flag silently wins over WFX_MGMT_HOST and
+          # the management API never actually binds, while the client API
+          # (no such conflicting baked flag) works fine.
+          command:
+            - wfx
+          args:
+            - {{ printf "--client-host=http://0.0.0.0:%v" .Values.services.wfx.clientPort | quote }}
+            - {{ printf "--mgmt-host=http://0.0.0.0:%v" .Values.services.wfx.managementPort | quote }}
+{{- with .Values.services.wfx.extraArgs }}
+{{- range . }}
+            - {{ . | quote }}
+{{- end }}
+{{- end }}
+          env:
+            - name: WFX_STORAGE
+              value: "postgres"
+            - name: WFX_LOG_FORMAT
+              value: {{ .Values.services.wfx.logs.format | quote }}
+            - name: WFX_LOG_LEVEL
+              value: {{ .Values.services.wfx.logs.level | quote }}
+            - name: PGHOST
+              value: {{ .Values.postgres.hostname | quote }}
+            - name: PGPORT
+              value: {{ .Values.postgres.port | quote }}
+            - name: PGUSER
+              value: {{ .Values.postgres.username | quote }}
+            - name: PGPASSWORD
+              value: {{ .Values.postgres.password | quote }}
+            - name: PGDATABASE
+              value: {{ .Values.services.wfx.postgres.database | quote }}
+            - name: PGSSLMODE
+              value: {{ .Values.services.wfx.postgres.sslmode | quote }}
+{{- with .Values.services.wfx.extraEnv }}
+{{ toYaml . | nindent 12 }}
+{{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.services.wfx.clientPort }}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.services.wfx.clientPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          ports:
+            - name: client
+              containerPort: {{ .Values.services.wfx.clientPort }}
+            - name: management
+              containerPort: {{ .Values.services.wfx.managementPort }}
+      restartPolicy: Always
+{{- end }}

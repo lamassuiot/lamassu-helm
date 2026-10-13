@@ -1,6 +1,44 @@
 #!/bin/bash
 
+set -euo pipefail
+
 service syslog-ng start
+
+mkdir -p /var/run/sshd /root/.ssh
+chmod 700 /root/.ssh
+
+if [[ -n "${SSH_AUTHORIZED_KEYS:-}" ]]; then
+    printf '%s\n' "$SSH_AUTHORIZED_KEYS" > /root/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys
+    echo "SSH authorized_keys configured for root login."
+else
+    echo "SSH_AUTHORIZED_KEYS is empty. sshd will listen on port 22, but key-based login will fail until a public key is provided."
+fi
+
+ssh-keygen -A
+
+cat >/etc/ssh/sshd_config.d/softhsm.conf <<'EOF'
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+PubkeyAuthentication yes
+KbdInteractiveAuthentication no
+UsePAM no
+AllowTcpForwarding yes
+X11Forwarding no
+PermitTunnel no
+# VERBOSE logs each accepted connection and key used — visible in container logs
+# via 'kubectl logs' because sshd is started with -e (log to stderr)
+LogLevel VERBOSE
+EOF
+
+echo "Validating sshd configuration..."
+/usr/sbin/sshd -t
+echo "Starting sshd on port 22..."
+# -D: don't daemonize  -e: log to stderr instead of syslog
+# Running in background so p11-kit can run in foreground below.
+/usr/sbin/sshd -D -e &
+SSHD_PID=$!
+echo "sshd started successfully (pid $SSHD_PID) and is listening on port 22."
 
 function chck_empty(){
     if [[ "$2" == "" ]]; then
@@ -21,11 +59,9 @@ echo "config file content:"
 cat  /etc/softhsm2.conf 
 
 echo "=========================="
-chck_empty "Label" $LABEL
-chck_empty "PIN" $PIN
-chck_empty "SO PIN" $SO_PIN
-chck_empty "Connection Protocol" $CONNECTION_PROTOCOL
-echo "PSK: $PSK"
+chck_empty "Label" "$LABEL"
+chck_empty "PIN" "$PIN"
+chck_empty "SO PIN" "$SO_PIN"
 echo "=========================="
 
 requires_init=false
@@ -44,25 +80,19 @@ if [[ "$requires_init" == "false" ]]; then
     echo "SoftHSM already initialized. Skipping init."
 else
     echo "Initializing SoftHSM..."
-    softhsm2-util --init-token --free --label $LABEL --pin $PIN --so-pin $SO_PIN
+    softhsm2-util --init-token --free --label "$LABEL" --pin "$PIN" --so-pin "$SO_PIN"
     echo "Init process completed."
 fi
 
 echo "=========================="
-if [[ "$CONNECTION_PROTOCOL" == "tcp" ]]; then
-    echo "HSM Connection Protocol (tcp/tls): tcp"
-    export PKCS11_DAEMON_SOCKET="tcp://0.0.0.0:5657"
-elif [[ "$CONNECTION_PROTOCOL" == "tls" ]]; then
-    echo "HSM Connection Protocol (tcp/tls): tls"
-    export PKCS11_DAEMON_SOCKET="tls://0.0.0.0:5657"
-    echo "$PSK" > /sym.psk 
-    export PKCS11_PROXY_TLS_PSK_FILE=/sym.psk
-else
-    echo "INVALID CONNECTION_PROTOCOL '$CONNECTION_PROTOCOL' !!PANIC!!"
-    exit 1
-fi
+mkdir -p /run/p11-kit
+chown root:root /run/p11-kit
+chmod 700 /run/p11-kit
 
-echo "Connection URI: $PKCS11_DAEMON_SOCKET"
+P11_SOCKET_PATH="unix:path=/run/p11-kit/pkcs11"
+echo "Starting p11-kit server on unix socket: $P11_SOCKET_PATH"
+echo "Module provider: /usr/local/lib/softhsm/libsofthsm2.so"
+echo "Token selector: pkcs11:token=$LABEL"
 
 echo "
  ___  ___  ________  _____ ______           ________  _______   ________  ________      ___    ___ 
@@ -73,9 +103,27 @@ echo "
    \ \__\ \__\____\_\  \ \__\    \ \__\       \ \__\\ _\\ \_______\ \__\ \__\ \_______\__/  / /    
     \|__|\|__|\_________\|__|     \|__|        \|__|\|__|\|_______|\|__|\|__|\|_______|\___/ /     
 
+                     +------------------------------------------------------+
+                     |                SoftHSM Container Stack               |
+                     +------------------------------------------------------+
+                     | SSH client key  ->  sshd  ->  p11-kit server         |
+                     |                                 |                    |
+                     |                                 v                    |
+                     |                         /run/p11-kit/pkcs11          |
+                     |                                 |                    |
+                     |                                 v                    |
+                     |                           libsofthsm2.so             |
+                     |                                 |                    |
+                     |                                 v                    |
+                     |                        /softhsm/tokens (PVC)         |
+                     +------------------------------------------------------+
+
 "
 
-/usr/local/bin/pkcs11-daemon /usr/local/lib/softhsm/libsofthsm2.so &
-echo "PKCS11 Daemon started. Printing logs..."
-echo "=========================="
-tail -f /var/log/syslog
+echo "SoftHSM startup complete. SSH is enabled on port 22 and p11-kit server is starting in the foreground."
+
+p11-kit server --foreground \
+    --name "$P11_SOCKET_PATH" \
+    --provider /usr/local/lib/softhsm/libsofthsm2.so \
+    "pkcs11:token=$LABEL"
+

@@ -1,0 +1,304 @@
+{{- $authz := .Values.services.authz | default dict }}
+{{- $authzImage := dig "image" "" $authz }}
+{{- $authzDB := dig "database" "authz" $authz }}
+{{- $wfxDB := dig "postgres" "database" "wfx" (.Values.services.wfx | default dict) }}
+{{- if $authzImage }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "authz-init-config-{{ .Release.Name }}"
+  namespace: "{{ .Release.Namespace }}"
+  annotations:
+    # Must exist before the upgrade Job runs, so it is a hook with a lower weight
+    # than the Job. Carries only what `authz init` reads — connection, preload
+    # directory and bootstrap entries — not the full service configuration.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  config: |
+    logs:
+      level: "info"
+    authz_db:
+      provider: "postgres"
+      hostname: {{ .Values.postgres.hostname }}
+      port: {{ .Values.postgres.port }}
+      username: "{{ .Values.postgres.username }}"
+      password: "{{ .Values.postgres.password }}"
+      database: {{ $authzDB }}
+    preload_dir: /etc/lamassuiot/authz/preload
+    {{- if $authz.bootstrap }}
+    bootstrap:
+      {{ $authz.bootstrap | toYaml | nindent 6 | trim }}
+    {{- end }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "single-db-migration-job-{{ .Release.Name }}"
+  namespace: "{{ .Release.Namespace }}"
+  annotations:
+    # Single entry point for preparing the database, run as one Job so the steps
+    # are strictly ordered and the whole thing either succeeds or fails together:
+    #   1. create databases and schemas (and, on upgrade, fold the 3.8.0
+    #      per-service databases into the pki database as schemas)
+    #   2. apply goose migrations to every pki schema
+    #   3. migrate authz and seed its policies and bootstrap principals
+    # Being a pre-install/pre-upgrade hook, Helm waits for it before applying any
+    # Deployment, so no service ever starts against an unprepared database.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-3"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "single-db-migration-job-{{ .Release.Name }}"
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # Step 1 — databases, schemas and the 3.8.0 consolidation.
+        - name: create-databases
+          image: docker.io/postgres:18.4
+          env:
+            - name: POSTGRES_USER
+              value: "{{ .Values.postgres.username }}"
+            - name: POSTGRES_PASSWORD
+              value: "{{ .Values.postgres.password }}"
+            - name: POSTGRES_HOST
+              value: "{{ .Values.postgres.hostname }}"
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+
+              echo "=========================================="
+              echo "Starting Database Schema Migration"
+              echo "From: Separate databases per service"
+              echo "To: Single 'pki' database with schemas"
+              echo "=========================================="
+              echo ""
+
+              # List of services and their databases
+              SERVICES="{{ join " " .Values.migrations.db.databases }}"
+              TARGET_DB="pki"
+              AUTHZ_DB="{{ $authzDB }}"
+              WFX_DB="{{ $wfxDB }}"
+
+              # Function to check if database exists
+              check_db_exists() {
+                local db_name=$1
+                local result=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='$db_name'" | tr -d ' ')
+                echo "$result"
+              }
+
+              # Function to check if schema exists
+              check_schema_exists() {
+                local db_name=$1
+                local schema_name=$2
+                local result=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$db_name" -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name='$schema_name'" | tr -d ' ')
+                echo "$result"
+              }
+
+              # Function to check if database has any tables
+              check_db_has_tables() {
+                local db_name=$1
+                local count=$(PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$db_name" -tc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'" | tr -d ' ')
+                echo "$count"
+              }
+
+              # Step 1: Check if migration has already been performed
+              echo "Step 1: Checking if migration has already been performed..."
+              if [ "$(check_db_exists $TARGET_DB)" == "1" ]; then
+                echo "  >> Target database '$TARGET_DB' already exists."
+                
+                # Check if all schemas exist
+                all_schemas_exist=true
+                for service in $SERVICES; do
+                  if [ "$(check_schema_exists $TARGET_DB $service)" != "1" ]; then
+                    all_schemas_exist=false
+                    break
+                  fi
+                done
+                
+                if [ "$all_schemas_exist" == "true" ] && [ "$(check_db_exists $AUTHZ_DB)" == "1" ] && [ "$(check_db_exists $WFX_DB)" == "1" ]; then
+                  echo "  >> All service schemas already exist in '$TARGET_DB'."
+                  echo "  >> Authz database '$AUTHZ_DB' already exists."
+                  echo "  >> WFX database '$WFX_DB' already exists."
+                  echo "  >> Migration appears to be already completed. Skipping..."
+                  exit 0
+                fi
+              fi
+              echo ""
+
+              # Step 2: Create required databases if they don't exist
+              echo "Step 2: Ensuring required databases exist..."
+              for database in $TARGET_DB $AUTHZ_DB $WFX_DB; do
+                if [ "$(check_db_exists $database)" == "1" ]; then
+                  echo "  >> Database '$database' already exists. Skipping creation."
+                else
+                  echo "  >> Creating database '$database'..."
+                  PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d postgres -c "CREATE DATABASE $database;"
+                  echo "  >> Database '$database' created successfully."
+                fi
+              done
+              echo ""
+
+              # Principals and policy grants are seeded by the init-authz step
+              # below, from services.authz.bootstrap. They cannot be inserted
+              # here: authz owns its own migrations, so at this point its
+              # database exists but has no tables yet.
+
+              # Step 3: Ensure each service schema exists, importing legacy data when present
+              IMPORTED_SERVICES=""
+              for service in $SERVICES; do
+                echo "=========================================="
+                echo "Ensuring schema: $service"
+                echo "=========================================="
+
+                # Decide whether there is legacy data to import BEFORE creating the
+                # target schema, since creating it first would mask the check below.
+                needs_import=true
+                if [ "$(check_db_exists $service)" != "1" ]; then
+                  echo "  >> No legacy database '$service'. Nothing to import."
+                  needs_import=false
+                elif [ "$(check_db_has_tables $service)" == "0" ]; then
+                  echo "  >> Legacy database '$service' has no tables. Nothing to import."
+                  needs_import=false
+                elif [ "$(check_schema_exists $TARGET_DB $service)" == "1" ]; then
+                  echo "  >> Schema '$service' already exists in '$TARGET_DB'. Leaving it untouched."
+                  needs_import=false
+                fi
+
+                # Create schema in target database
+                echo "  >> Ensuring schema '$service' exists in database '$TARGET_DB'..."
+                PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "CREATE SCHEMA IF NOT EXISTS $service;"
+
+                if [ "$needs_import" != "true" ]; then
+                  echo ""
+                  continue
+                fi
+
+                echo "  >> Legacy database '$service' has $(check_db_has_tables $service) table(s) to import."
+                IMPORTED_SERVICES="$IMPORTED_SERVICES $service"
+
+                # Dump the source database (schema and data)
+                echo "  >> Dumping data from database '$service'..."
+                PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d "$service" --schema=public --no-owner --no-acl > /tmp/${service}_dump.sql
+                
+                # Modify the dump to use the new schema
+                echo "  >> Adapting dump for schema '$service'..."
+                # Replace common pg_dump references to the 'public' schema with the service schema
+                sed -E -i "s/\bSCHEMA public\b/SCHEMA $service/g" /tmp/${service}_dump.sql
+                sed -E -i "s/^SET search_path = public, pg_catalog;$/SET search_path = $service, pg_catalog;/" /tmp/${service}_dump.sql
+                sed -E -i "s/^SET search_path = public;$/SET search_path = $service;/" /tmp/${service}_dump.sql
+                sed -E -i "s/\bIN SCHEMA public\b/IN SCHEMA $service/g" /tmp/${service}_dump.sql
+                sed -E -i "s/\bON SCHEMA public\b/ON SCHEMA $service/g" /tmp/${service}_dump.sql
+                # Replace public. schema qualifiers with the service schema using a basic sed-compatible boundary match
+                 sed -i "s/\(^\|[^[:alnum:]_]\)public\./\1$service\./g" /tmp/${service}_dump.sql
+                # Make CREATE SCHEMA idempotent
+                sed -E -i "s/CREATE SCHEMA $service;/CREATE SCHEMA IF NOT EXISTS $service;/g" /tmp/${service}_dump.sql
+                
+                # Import the modified dump into the new schema
+                echo "  >> Importing data into schema '$service' in database '$TARGET_DB'..."
+                PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" < /tmp/${service}_dump.sql
+                
+                # Verify the migration
+                echo "  >> Verifying migration..."
+                target_table_count=$(PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -tc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$service'" | tr -d ' ')
+                echo "  >> Migrated $target_table_count table(s) to schema '$service'."
+                
+                # Clean up dump file
+                rm -f /tmp/${service}_dump.sql
+                
+                echo "  >> Migration completed for service '$service'."
+                echo ""
+              done
+
+              # Step 4: Create migration marker table
+              echo "=========================================="
+              echo "Step 4: Creating migration marker..."
+              echo "=========================================="
+              PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "
+                CREATE TABLE IF NOT EXISTS public.migration_history (
+                  id SERIAL PRIMARY KEY,
+                  migration_name VARCHAR(255) NOT NULL,
+                  applied_at TIMESTAMP DEFAULT NOW() NOT NULL,
+                  description TEXT
+                );
+              "
+
+              # Only record a migration when legacy data was actually imported, so a
+              # fresh install does not leave a marker claiming a migration happened.
+              if [ -n "$IMPORTED_SERVICES" ]; then
+                PGPASSWORD=$POSTGRES_PASSWORD psql -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "
+                  INSERT INTO public.migration_history (migration_name, description)
+                  VALUES ('schema_migration_v1', 'Migrated from separate databases to single database with schemas for:$IMPORTED_SERVICES');
+                "
+                echo "  >> Migration marker created for:$IMPORTED_SERVICES"
+              else
+                echo "  >> No legacy data imported. No migration marker recorded."
+              fi
+              echo ""
+
+              echo "=========================================="
+              echo "Database Schema Migration Completed!"
+              echo "=========================================="
+              echo ""
+              echo "Summary:"
+              echo "  - Target database: $TARGET_DB"
+              echo "  - Authz database: $AUTHZ_DB"
+              echo "  - WFX database: $WFX_DB"
+              echo "  - Schemas ensured: $SERVICES"
+              echo "  - Imported from legacy databases:${IMPORTED_SERVICES:- none}"
+              echo ""
+              echo "IMPORTANT: Update your application configuration to use:"
+              echo "  - Database: $TARGET_DB"
+              echo "  - Schema search path: <service_name> (e.g., 'ca', 'devicemanager', etc.)"
+              echo "=========================================="
+
+        # Step 2 — goose migrations, one container per pki schema. They run in
+        # order and each must exit 0 before the next starts.
+        {{- range $schema := .Values.migrations.db.databases }}
+        - name: migrate-{{ $schema }}
+          image: {{ $.Values.migrations.db.image }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          args:
+            - >-
+              host={{ $.Values.postgres.hostname }}
+              user={{ $.Values.postgres.username }}
+              password={{ $.Values.postgres.password }}
+              dbname=pki
+              search_path={{ $schema }}
+              port={{ $.Values.postgres.port }}
+              sslmode=disable
+            - "up"
+        {{- end }}
+
+        {{- if $authzImage }}
+        # Step 3 — authz migrations, policy preload and bootstrap principals.
+        # Same image as the authz Deployment, so the embedded migrations can
+        # never drift from the service that reads them.
+        - name: init-authz
+          image: {{ $authzImage }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          # The image declares the binary as CMD with no ENTRYPOINT, so args
+          # alone would replace it instead of adding to it.
+          command: ["/authz"]
+          args: ["init"]
+          volumeMounts:
+            - name: authz-init-config
+              mountPath: /etc/lamassuiot/config.yml
+              subPath: config
+        {{- end }}
+
+      containers:
+        - name: done
+          image: docker.io/postgres:18.4
+          command: ["bash", "-c", "echo 'Database upgrade completed.'"]
+      {{- if $authzImage }}
+      volumes:
+        - name: authz-init-config
+          configMap:
+            name: "authz-init-config-{{ .Release.Name }}"
+      {{- end }}

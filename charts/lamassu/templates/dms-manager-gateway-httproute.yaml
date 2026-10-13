@@ -1,2 +1,2 @@
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "dmsManager") | fromYaml -}}
-{{ include "lamassu.httproute" (dict "root" $ "name" "api-dms-manager" "backend" "dms-manager" "port" $svc.port "path" "/api/dmsmanager/" "rewrite" "/" "authLabel" "private") }}
+{{ include "lamassu.httproute" (dict "root" $ "name" "api-dms-manager" "backend" "dms-manager" "port" $svc.port "path" "/api/dmsmanager/" "rewrite" "/") }}
