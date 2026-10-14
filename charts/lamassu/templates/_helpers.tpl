@@ -23,7 +23,13 @@
 {{- if .component -}}
 {{- $suffix := printf "-%s" .component -}}
 {{- $maxBase := sub 63 (len $suffix) | int -}}
+{{- if ge $maxBase 8 -}}
 {{- printf "%s%s" ($base | trunc $maxBase | trimSuffix "-") $suffix -}}
+{{- else -}}
+{{- /* Component too long: keep an 8-char base, a trimmed component and a stable hash of the full name. */ -}}
+{{- $hash := printf "%s%s" $base $suffix | sha256sum | trunc 8 -}}
+{{- printf "%s-%s-%s" ($base | trunc 8 | trimSuffix "-") (.component | trunc 45 | trimSuffix "-") $hash -}}
+{{- end -}}
 {{- else -}}
 {{- $base -}}
 {{- end -}}
