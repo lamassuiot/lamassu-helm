@@ -37,6 +37,9 @@ spec:
       volumes:
         - name: kms-config
           configMap:
+            # Optional so the migration tool fails fast with a clear error, instead
+            # of the pod hanging in ContainerCreating, once the legacy ConfigMap is gone.
+            optional: true
             # This one-time pre-upgrade migration consumes the ConfigMap created
             # by chart versions prior to release-scoped resource naming.
             name: kms-config

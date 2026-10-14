@@ -55,7 +55,7 @@ Kubernetes: `>=1.24.0-0`
 | gateway.responseOverride.unauthorized | object | `{"body":"{\"error\": \"Unauthorized\"}","contentType":"application/json","enabled":true}` | Rewrite 401 responses with a custom body |
 | global.imagePullPolicy | string | `"Always"` |  |
 | global.imagePullSecrets | list | `[]` | Image pull secrets applied to every Lamassu pod. |
-| migrations.caToKms.enabled | bool | `false` | Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. |
+| migrations.caToKms.enabled | bool | `false` | Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It reads the legacy unscoped `kms-config` ConfigMap, so remove this flag once the release uses release-scoped names (4.0.0+). |
 | migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4"` | Docker image for the CA-to-KMS migration tool |
 | migrations.db.databases[0] | string | `"alerts"` |  |
 | migrations.db.databases[1] | string | `"ca"` |  |
