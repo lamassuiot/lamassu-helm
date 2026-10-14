@@ -51,9 +51,9 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
-          {{- include "lamassu.httpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.port) | nindent 10 }}
-          {{- include "lamassu.httpProbe" (dict "name" "startupProbe" "probe" $svc.startupProbe "port" $svc.port) | nindent 10 }}
+          # The connector only consumes events and calls the Lamassu APIs: it
+          # listens on no port, so it has no Service, containerPort or HTTP
+          # probes. A fatal error exits the process and the pod restarts.
           {{- with $svc.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -62,8 +62,6 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
-          ports:
-            - containerPort: {{ $svc.port }}
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
