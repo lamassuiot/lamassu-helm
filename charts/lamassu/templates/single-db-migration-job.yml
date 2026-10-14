@@ -184,11 +184,9 @@ spec:
                   needs_import=false
                 fi
 
-                # Create schema in target database
-                echo "  >> Ensuring schema '$service' exists in database '$TARGET_DB'..."
-                PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "CREATE SCHEMA IF NOT EXISTS $service;"
-
                 if [ "$needs_import" != "true" ]; then
+                  echo "  >> Ensuring schema '$service' exists in database '$TARGET_DB'..."
+                  PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" -c "CREATE SCHEMA IF NOT EXISTS $service;"
                   echo ""
                   continue
                 fi
@@ -212,10 +210,14 @@ spec:
                  sed -i "s/\(^\|[^[:alnum:]_]\)public\./\1$service\./g" /tmp/${service}_dump.sql
                 # Make CREATE SCHEMA idempotent
                 sed -E -i "s/CREATE SCHEMA $service;/CREATE SCHEMA IF NOT EXISTS $service;/g" /tmp/${service}_dump.sql
-                
-                # Import the modified dump into the new schema
+                # The schema is created by the dump itself, inside the import transaction
+                sed -i "1i CREATE SCHEMA IF NOT EXISTS $service;" /tmp/${service}_dump.sql
+
+                # Create the schema and import the dump as a single transaction. A failed
+                # import then leaves no schema behind, so a retried Job or the next
+                # upgrade imports again instead of taking the schema as already migrated.
                 echo "  >> Importing data into schema '$service' in database '$TARGET_DB'..."
-                PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" < /tmp/${service}_dump.sql
+                PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 --single-transaction -h $POSTGRES_HOST -U $POSTGRES_USER -d "$TARGET_DB" < /tmp/${service}_dump.sql
                 
                 # Verify the migration
                 echo "  >> Verifying migration..."
