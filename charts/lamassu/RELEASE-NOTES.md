@@ -11,7 +11,10 @@
 - The chart no longer injects pod anti-affinity or topology spread rules.
   Configure `affinity` and `topologySpreadConstraints` explicitly when needed.
 - The gateway now rewrites 401 and 403 responses with a JSON body
-  (`{"error": "Unauthorized"}` / `{"error": "Forbidden"}`) by default. Set
+  (`{"error": "Unauthorized"}` / `{"error": "Forbidden"}`) by default on the
+  routes behind external authorization (`auth: external`). Other routes,
+  including `gateway.extraRouting`
+  targets such as Keycloak, keep their own error bodies. Set
   `gateway.responseOverride.unauthorized.enabled` and/or
   `gateway.responseOverride.forbidden.enabled` to `false` to keep the previous
   bodies.

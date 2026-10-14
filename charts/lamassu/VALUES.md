@@ -47,8 +47,8 @@ Kubernetes: `>=1.24.0-0`
 | gateway.extraRouting | string | `nil` |  |
 | gateway.ports.http | int | `80` |  |
 | gateway.ports.https | int | `443` |  |
-| gateway.responseOverride.forbidden | object | `{"body":"{\"error\": \"Forbidden\"}","contentType":"application/json","enabled":true}` | Rewrite 403 responses with a custom body |
-| gateway.responseOverride.unauthorized | object | `{"body":"{\"error\": \"Unauthorized\"}","contentType":"application/json","enabled":true}` | Rewrite 401 responses with a custom body |
+| gateway.responseOverride.forbidden | object | `{"body":"{\"error\": \"Forbidden\"}","contentType":"application/json","enabled":true}` | Rewrite 403 responses with a custom body on routes behind external authorization (auth=external) |
+| gateway.responseOverride.unauthorized | object | `{"body":"{\"error\": \"Unauthorized\"}","contentType":"application/json","enabled":true}` | Rewrite 401 responses with a custom body on routes behind external authorization (auth=external) |
 | global.imagePullPolicy | string | `"Always"` |  |
 | global.imagePullSecrets | list | `[]` | Image pull secrets applied to every Lamassu pod. |
 | migrations.caToKms.enabled | bool | `false` | Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It reads the legacy unscoped `kms-config` ConfigMap, so remove this flag once the release uses release-scoped names (4.0.0+). |

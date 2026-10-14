@@ -66,8 +66,8 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | gateway.ports.http | int | `80` | HTTP port for the Gateway |
 | gateway.ports.https | int | `443` | HTTPS port for the Gateway |
 | gateway.extraRouting | list | `[]` | Additional HTTP routes to expose through the Gateway |
-| gateway.responseOverride.unauthorized | object | `{"enabled":true,"contentType":"application/json","body":"{\"error\": \"Unauthorized\"}"}` | Rewrite 401 responses with a custom body |
-| gateway.responseOverride.forbidden | object | `{"enabled":true,"contentType":"application/json","body":"{\"error\": \"Forbidden\"}"}` | Rewrite 403 responses with a custom body |
+| gateway.responseOverride.unauthorized | object | `{"enabled":true,"contentType":"application/json","body":"{\"error\": \"Unauthorized\"}"}` | Rewrite 401 responses with a custom body on routes behind external authorization (auth=external) |
+| gateway.responseOverride.forbidden | object | `{"enabled":true,"contentType":"application/json","body":"{\"error\": \"Forbidden\"}"}` | Rewrite 403 responses with a custom body on routes behind external authorization (auth=external) |
 | **Database Configuration** | | | |
 | postgres.hostname | string | `""` | PostgreSQL server hostname |
 | postgres.port | int | `5432` | PostgreSQL server port |
