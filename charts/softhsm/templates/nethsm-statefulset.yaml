@@ -47,7 +47,9 @@ spec:
         name: nethsm-data
       spec:
         accessModes: [ "ReadWriteOnce" ]
-        storageClassName: {{ .Values.nethsm.persistence.storageClassName | quote }}
+        {{- with .Values.nethsm.persistence.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .Values.nethsm.persistence.size }}

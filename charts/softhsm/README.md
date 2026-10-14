@@ -65,7 +65,7 @@ restarts, enable `nethsm.persistence.enabled` and use a persistent image.
 | nethsm.tokenLabel | string | `"LocalHSM"` | Token/slot label exposed by the p11nethsm PKCS#11 module |
 | nethsm.persistence.enabled | bool | `false` | Persist the NetHSM `/data` directory |
 | nethsm.persistence.size | string | `"2Gi"` | Size of the NetHSM data volume |
-| nethsm.persistence.storageClassName | string | `""` | Storage class for the NetHSM data volume |
+| nethsm.persistence.storageClassName | string | `""` | Storage class for the NetHSM data volume. Empty uses the cluster's default StorageClass |
 | nethsm.provision.image | string | `"curlimages/curl:8.11.0"` | Image used by the provisioning Job |
 | nethsm.provision.unlockPassphrase | string | `"a0b1c2d3e4f5"` | Unlock passphrase set during provisioning |
 | nethsm.provision.adminPassphrase | string | `"abcdefghijklm"` | Administrator passphrase set during provisioning |
