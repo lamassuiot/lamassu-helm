@@ -90,8 +90,13 @@
     "auth": {
       "type": "object",
       "properties": {
-        "oidc": { "type": "object" },
-        "authorization": { "type": "object" },
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "frontend": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
         "externalAuthorization": {
           "type": "object",
           "properties": {

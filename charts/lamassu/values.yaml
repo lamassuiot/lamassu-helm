@@ -133,18 +133,6 @@ auth:
       clientId: "frontend"
       # -- URL pointing to the OIDC provider's base path to build the OIDC well-known URL (This is the complete URL preceding the "/.well-known/openid-configuration" URL). Can be a JS expression
       authority: https://${window.location.host}/auth/realms/lamassu
-    apiGateway:
-      # -- URL pointing to the issuer's public key set to validate the JWT tokens.
-      jwks:
-        - name: oidc-authn
-          # -- URI to use to fetch the public key set
-          uri: http://keycloak/auth/realms/lamassu/protocol/openid-connect/certs
-  authorization:
-    # -- Claim to use to find and filter the user's roles
-    rolesClaim: realm_access.roles
-    roles:
-      # -- Role association to be used to authorize the user as LAMASSU's admin
-      admin: pki-admin
   externalAuthorization:
     # -- Protect routes labeled auth=external with Envoy Gateway external authorization.
     enabled: true

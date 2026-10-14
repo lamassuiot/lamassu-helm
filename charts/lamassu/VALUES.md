@@ -30,15 +30,11 @@ Kubernetes: `>=1.24.0-0`
 | amqp.port | int | `5672` | Port for the AMQP server |
 | amqp.tls | bool | `false` | Enable AMQP over TLS (aka AMPQS) |
 | amqp.username | string | `""` | Username to be used to authenticate with the AMQP server |
-| auth.authorization.roles.admin | string | `"pki-admin"` | Role association to be used to authorize the user as LAMASSU's admin |
-| auth.authorization.rolesClaim | string | `"realm_access.roles"` | Claim to use to find and filter the user's roles |
 | auth.externalAuthorization.enabled | bool | `true` | Protect routes labeled auth=external with Envoy Gateway external authorization. |
 | auth.externalAuthorization.failOpen | bool | `false` | Allow traffic when the external authorization service cannot be reached. |
 | auth.externalAuthorization.path | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+. |
 | auth.externalAuthorization.serviceName | string | `""` | Kubernetes Service name for the external authorization endpoint. Empty uses the release-scoped authz Service. |
 | auth.externalAuthorization.servicePort | string | `nil` | Kubernetes Service port for the external authorization endpoint. Defaults to the effective services.authz.port. |
-| auth.oidc.apiGateway.jwks | list | `[{"name":"oidc-authn","uri":"http://keycloak/auth/realms/lamassu/protocol/openid-connect/certs"}]` | URL pointing to the issuer's public key set to validate the JWT tokens. |
-| auth.oidc.apiGateway.jwks[0].uri | string | `"http://keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | URI to use to fetch the public key set |
 | auth.oidc.frontend.authority | string | `"https://${window.location.host}/auth/realms/lamassu"` | URL pointing to the OIDC provider's base path to build the OIDC well-known URL (This is the complete URL preceding the "/.well-known/openid-configuration" URL). Can be a JS expression |
 | auth.oidc.frontend.clientId | string | `"frontend"` | Client ID to be used as the OIDC client for the frontend |
 | commonAnnotations | object | `{}` | Annotations added to every chart-managed object. |
