@@ -39,6 +39,7 @@ This table shows the relationship between Helm chart versions, application versi
 ### Migration Guides
 
 For detailed migration instructions between versions, see the CHANGELOG directory:
+- [3.8.0 → 4.0.0](charts/lamassu/CHANGELOG/3.8.0->4.0.0.md) - Security hardening: non-root workloads and release-scoped resource names
 - [3.3.2 → 3.7.0](charts/lamassu/CHANGELOG/3.3.2->3.7.0.md) - KMS service introduction
 - [3.3.0 → 3.3.1](charts/lamassu/CHANGELOG/3.3.0->3.3.1.md) - Multiple OIDC providers
 - [3.2.X → 3.3.0](charts/lamassu/CHANGELOG/3.2.X->3.3.0.md) - Ingress to Envoy Gateway migration
@@ -57,7 +58,7 @@ For detailed migration instructions between versions, see the CHANGELOG director
 
 ## Prerequisites
 
-- Kubernetes 1.19+
+- Kubernetes 1.24+ (1.29+ if `services.kms.pkcs11Sidecar.enabled=true`)
 - Helm 3.2.0+
 - cert-manager v1.14.0+ (for TLS certificate management)
 - Envoy Gateway v1.8.0+ (for API Gateway functionality)

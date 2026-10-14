@@ -86,7 +86,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | auth.externalAuthorization.path | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+ |
 | auth.externalAuthorization.failOpen | bool | `false` | Allow traffic when the external authorization service cannot be reached |
 | **Service Images** | | | |
-| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:dev-v4"` | Docker image for UI component |
+| services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:dev"` | Docker image for UI component |
 | services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:dev-v4"` | Docker image for CA component |
 | services.va.image | string | `"ghcr.io/lamassuiot/lamassu-va:dev-v4"` | Docker image for VA component |
 | services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:dev-v4"` | Docker image for KMS component |
@@ -94,7 +94,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4"` | Docker image for DMS Manager component |
 | services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
 | services.wfx.enabled | bool | `true` | Enable the Siemens WFX workflow service |
-| services.wfx.image | string | `"ghcr.io/siemens/wfx:latest"` | Docker image for WFX component |
+| services.wfx.image | string | `"ghcr.io/siemens/wfx@sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678"` | Docker image for WFX component, pinned by digest |
 | services.wfx.clientPort | int | `9080` | WFX southbound/client API port |
 | services.wfx.managementPort | int | `9081` | WFX northbound/management API port |
 | services.wfx.logs.format | string | `"json"` | WFX log format |
@@ -158,7 +158,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | services.kms.pkcs11Sidecar.enabled | bool | `false` | Deploy a sidecar that creates a PKCS#11 socket on a shared volume for KMS. Requires Kubernetes 1.29+ |
 | services.kms.pkcs11Sidecar.image | string | `""` | Sidecar image used to create the forwarded PKCS#11 socket |
 | services.kms.pkcs11Sidecar.imagePullPolicy | string | `"IfNotPresent"` | Image pull policy for the PKCS#11 sidecar |
-| services.kms.pkcs11Sidecar.securityContext | object | `{runAsNonRoot: true, runAsUser: 65532, runAsGroup: 0}` | Security context for the PKCS#11 sidecar; its forwarded socket is mode-0660 and accessible to KMS through the pod's fsGroup |
+| services.kms.pkcs11Sidecar.securityContext | object | `{}` (merged from KMS's 65532:65532 security context) | Security context for the PKCS#11 sidecar. Defaults to KMS's own; its forwarded socket is mode-0660 and accessible to KMS through the pod's fsGroup |
 | services.kms.pkcs11Sidecar.socketDir | string | `"/run/p11-kit"` | Shared directory where the sidecar should create the PKCS#11 socket |
 | services.kms.pkcs11Sidecar.command | list | `[]` | Command for the PKCS#11 sidecar |
 | services.kms.pkcs11Sidecar.args | list | `[]` | Arguments for the PKCS#11 sidecar |
@@ -192,8 +192,9 @@ This keeps token state, socket ownership, and failure domains isolated.
 | services.alerts.smtp_server.password | string | `""` | SMTP password |
 | services.alerts.smtp_server.enable_ssl | bool | `true` | Enable TLS for SMTP connection |
 | services.alerts.smtp_server.insecure | bool | `false` | Skip TLS certificate verification |
-| **Toolbox & Migrations** | | | |
-| toolbox.image | string | `"ghcr.io/lamassuiot/toolbox:2.2.0"` | Docker image for toolbox utility |
+| **Connectivity Test & Migrations** | | | |
+| connectivityTest.image | string | `"curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"` | Image for the `helm test` connectivity-check hook |
+| connectivityTest.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the connectivity-check hook container |
 | migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4"` | Docker image for database migrations |
 | migrations.db.databases | list | `["alerts", "ca", "va", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
 | migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4"` | Docker image for the CA-to-KMS migration tool |
@@ -218,9 +219,9 @@ from starting until that probe passes — no extra wait-loop or command
 override is needed on the KMS container itself for the tunnel to be ready in
 time.
 
-Example values: [charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml](/home/ubuntu/dev/lamassu/lamassu-helm/charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml)
+Example values: [ci/pkcs11-incluster-hsm-values.yaml](ci/pkcs11-incluster-hsm-values.yaml)
 
-Build the proxy image from [ci/softhsm/proxy.dockerfile](/home/ubuntu/dev/lamassu/lamassu-helm/ci/softhsm/proxy.dockerfile:1), then configure:
+Build the proxy image from [ci/softhsm/proxy.dockerfile](../../ci/softhsm/proxy.dockerfile), then configure:
 
 ```yaml
 services:
