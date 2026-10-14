@@ -14,7 +14,7 @@ spec:
       {{- include "lamassu.selectorLabels" (dict "root" $ "component" "ca") | nindent 6 }}
   template:
     metadata:
-      {{- include "lamassu.podMetadata" (dict "root" $ "name" "ca" "svc" $svc) | nindent 6 }}
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" "ca" "svc" $svc "configmap" "ca-configmap.yml") | nindent 6 }}
     spec:
       serviceAccountName: {{ include "lamassu.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}

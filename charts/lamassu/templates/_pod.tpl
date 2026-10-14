@@ -9,13 +9,23 @@ annotations:
 {{- end }}
 {{- end -}}
 
-{{/* Labels and annotations shared by all Lamassu pod templates. */}}
+{{/*
+Labels and annotations shared by all Lamassu pod templates.
+Optional "configmap": file name (under templates/) of the ConfigMap mounted by the pod.
+Its rendered data is hashed so changes coming from other services' values (e.g. a
+dependency's port) also roll the pod; the ConfigMap is mounted via subPath, which
+Kubernetes never refreshes in running pods.
+*/}}
 {{- define "lamassu.podMetadata" -}}
 labels:
   {{- $podLabels := mustMergeOverwrite (deepCopy (.svc.labels | default dict)) (deepCopy (.svc.podLabels | default dict)) -}}
   {{- include "lamassu.labels" (dict "root" .root "component" .name "extra" $podLabels) | nindent 2 }}
 annotations:
-  checksum/config: {{ toJson (dict "postgres" .root.Values.postgres "amqp" .root.Values.amqp "auth" .root.Values.auth "observability" .root.Values.observability "service" .svc) | sha256sum }}
+  {{- $rendered := "" }}
+  {{- if .configmap }}
+  {{- $rendered = include (print .root.Template.BasePath "/" .configmap) .root | splitList "\ndata:\n" | rest | join "" }}
+  {{- end }}
+  checksum/config: {{ toJson (dict "postgres" .root.Values.postgres "amqp" .root.Values.amqp "auth" .root.Values.auth "observability" .root.Values.observability "service" .svc "configmap" $rendered) | sha256sum }}
   {{- include "lamassu.annotations" (dict "root" .root "extra" .svc.podAnnotations) | nindent 2 }}
 {{- end -}}
 

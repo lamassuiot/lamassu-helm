@@ -14,7 +14,7 @@ spec:
       {{- include "lamassu.selectorLabels" (dict "root" $ "component" "alerts") | nindent 6 }}
   template:
     metadata:
-      {{- include "lamassu.podMetadata" (dict "root" $ "name" "alerts" "svc" $svc) | nindent 6 }}
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" "alerts" "svc" $svc "configmap" "alert-configmap.yml") | nindent 6 }}
     spec:
       serviceAccountName: {{ include "lamassu.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
