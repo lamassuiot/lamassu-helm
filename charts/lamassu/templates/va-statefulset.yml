@@ -93,11 +93,13 @@ spec:
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "va-config") }}
   {{- if $isLocal }}
+  # volumeClaimTemplates is immutable, so it only carries the selector labels:
+  # a chart version bump or a commonLabels change must not alter it.
   volumeClaimTemplates:
     - metadata:
         name: local-crl-file-storage
         labels:
-          {{- include "lamassu.labels" (dict "root" $ "component" "va") | nindent 10 }}
+          {{- include "lamassu.selectorLabels" (dict "root" $ "component" "va") | nindent 10 }}
       spec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: null
