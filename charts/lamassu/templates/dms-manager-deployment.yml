@@ -38,13 +38,18 @@ spec:
             - sh
             - -c
             - |
+              set -eu
+
+              [ -f /certs/downstream.crt ] || { echo "downstream.crt not found in the downstream TLS Secret"; exit 1; }
+
               cat /certs/downstream.crt > /shared/bundle.crt
 
               if [ -f /certs/downstream-ca.crt ]; then
                 cat /certs/downstream-ca.crt >> /shared/bundle.crt
               fi
 
-              CERT_COUNT=$(grep -c 'END CERTIFICATE' /shared/bundle.crt)
+              CERT_COUNT=$(grep -c 'END CERTIFICATE' /shared/bundle.crt || true)
+              [ "$CERT_COUNT" -gt 0 ] || { echo "no certificates found in /certs/downstream.crt"; exit 1; }
 
               awk "BEGIN {p=0;} /BEGIN CERTIFICATE/ {p++;} p==$CERT_COUNT" \
                 /shared/bundle.crt > /shared/root.crt
