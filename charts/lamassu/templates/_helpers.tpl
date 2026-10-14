@@ -21,7 +21,9 @@
 {{- define "lamassu.componentName" -}}
 {{- $base := include "lamassu.fullname" .root -}}
 {{- if .component -}}
-{{- printf "%s-%s" $base .component | trunc 63 | trimSuffix "-" -}}
+{{- $suffix := printf "-%s" .component -}}
+{{- $maxBase := sub 63 (len $suffix) | int -}}
+{{- printf "%s%s" ($base | trunc $maxBase | trimSuffix "-") $suffix -}}
 {{- else -}}
 {{- $base -}}
 {{- end -}}
