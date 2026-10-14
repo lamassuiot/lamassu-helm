@@ -98,6 +98,25 @@ annotations:
 {{- end -}}
 
 {{/*
+Pod-level imagePullSecrets built from global.imagePullSecrets. Used by hooks and
+test pods, which cannot rely on the chart-managed ServiceAccount.
+*/}}
+{{- define "lamassu.globalImagePullSecrets" -}}
+{{- $pullSecrets := list -}}
+{{- range $secret := (.Values.global.imagePullSecrets | default list) -}}
+{{- if kindIs "string" $secret -}}
+{{- $pullSecrets = append $pullSecrets (dict "name" $secret) -}}
+{{- else -}}
+{{- $pullSecrets = append $pullSecrets $secret -}}
+{{- end -}}
+{{- end -}}
+{{- with $pullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Issuer for the downstream certificate. The unscoped name was emitted by older
 fast-lane values and referred to the chart-managed Issuer.
 */}}

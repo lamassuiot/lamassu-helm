@@ -19,6 +19,7 @@ spec:
     spec:
       # Hook resources execute before regular chart resources are reconciled.
       automountServiceAccountToken: false
+      {{- include "lamassu.globalImagePullSecrets" $ | nindent 6 }}
       securityContext:
         {{- toYaml .Values.serviceDefaults.podSecurityContext | nindent 8 }}
       restartPolicy: OnFailure
