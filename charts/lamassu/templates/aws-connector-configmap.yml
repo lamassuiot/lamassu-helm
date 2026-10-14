@@ -10,40 +10,7 @@ metadata:
     {{- include "lamassu.labels" (dict "root" $ "component" $component) | nindent 4 }}
 data:
   config: |
-    logs:
-      level: "info"
-
-    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_event_bus") | nindent 4 }}
-
-    {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_dlq_event_bus" "dlq" true) | nindent 4 }}
-
-    dms_manager_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager") }}
-      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "dmsManager") }}
-
-    device_manager_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
-      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "deviceManager") }}
-
-    ca_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "ca") }}
-      port: {{ include "lamassu.config.servicePort" (dict "root" $ "svcKey" "ca") }}
-
-    {{- include "lamassu.config.authzClient" $ | nindent 4 }}
-
-    connector_id: {{ $connectorID }}
-    aws_config:
-      {{ $instance.credentials | toYaml | indent 6 | trim  }}
-    {{- include "lamassu.config.otel" $ | nindent 4 }}
+    {{- include "lamassu.awsConnector.config" (dict "root" $ "connectorID" $connectorID "instance" $instance) | nindent 4 }}
 ---
 {{- end -}}
 {{- end -}}

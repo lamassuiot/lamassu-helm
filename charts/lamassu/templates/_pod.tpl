@@ -11,6 +11,8 @@ annotations:
 
 {{/*
 Labels and annotations shared by all Lamassu pod templates.
+Optional "configData": already rendered config of the pod's own ConfigMap, for
+templates that render several ConfigMaps from one file (takes precedence over "configmap").
 Optional "configmap": file name (under templates/) of the ConfigMap mounted by the pod.
 Its rendered data is hashed so changes coming from other services' values (e.g. a
 dependency's port) also roll the pod; the ConfigMap is mounted via subPath, which
@@ -22,7 +24,9 @@ labels:
   {{- include "lamassu.labels" (dict "root" .root "component" .name "extra" $podLabels) | nindent 2 }}
 annotations:
   {{- $rendered := "" }}
-  {{- if .configmap }}
+  {{- if .configData }}
+  {{- $rendered = .configData }}
+  {{- else if .configmap }}
   {{- $rendered = include (print .root.Template.BasePath "/" .configmap) .root | splitList "\ndata:\n" | rest | join "" }}
   {{- end }}
   checksum/config: {{ toJson (dict "postgres" .root.Values.postgres "amqp" .root.Values.amqp "auth" .root.Values.auth "observability" .root.Values.observability "service" .svc "configmap" $rendered) | sha256sum }}

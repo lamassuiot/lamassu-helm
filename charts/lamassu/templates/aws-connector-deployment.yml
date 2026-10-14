@@ -3,6 +3,7 @@
 {{- $instanceID := $connectorID | replace "aws." "" }}
 {{- $component := printf "aws-connector-%s" $instanceID }}
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svc" $instance) | fromYaml }}
+{{- $config := include "lamassu.awsConnector.config" (dict "root" $ "connectorID" $connectorID "instance" $instance) }}
 {{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" $component) }}
 apiVersion: apps/v1
 kind: Deployment
@@ -18,7 +19,7 @@ spec:
       {{- include "lamassu.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}
   template:
     metadata:
-      {{- include "lamassu.podMetadata" (dict "root" $ "name" $component "svc" $svc "configmap" "aws-connector-configmap.yml") | nindent 6 }}
+      {{- include "lamassu.podMetadata" (dict "root" $ "name" $component "svc" $svc "configData" $config) | nindent 6 }}
     spec:
       serviceAccountName: {{ include "lamassu.serviceAccountName" $ }}
       automountServiceAccountToken: {{ $.Values.serviceAccount.automountServiceAccountToken }}
