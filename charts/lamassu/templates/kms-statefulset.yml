@@ -111,10 +111,17 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          # For a native sidecar only the startupProbe holds back the kms
+          # container, so it starts once the socket exists. A sidecar that
+          # cannot create it within 2 minutes is restarted.
+          startupProbe:
+            exec:
+              command: ["test", "-S", {{ printf "%s/pkcs11" $svc.pkcs11Sidecar.socketDir | quote }}]
+            periodSeconds: 2
+            failureThreshold: 60
           readinessProbe:
             exec:
               command: ["test", "-S", {{ printf "%s/pkcs11" $svc.pkcs11Sidecar.socketDir | quote }}]
-            initialDelaySeconds: 2
             periodSeconds: 2
           volumeMounts:
             - name: pkcs11-socket
