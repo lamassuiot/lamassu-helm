@@ -223,7 +223,7 @@ time.
 
 Example values: [ci/pkcs11-incluster-hsm-values.yaml](ci/pkcs11-incluster-hsm-values.yaml)
 
-Build the proxy image from [ci/softhsm/proxy.dockerfile](../../ci/softhsm/proxy.dockerfile), then configure:
+Build the proxy image from [ci/softhsm/proxy.dockerfile](../../../ci/softhsm/proxy.dockerfile), then configure:
 
 ```yaml
 services:
