@@ -22,7 +22,7 @@ LAMASSU_USE_LOCAL_PATH=false
 SAMPLE_DATA=false
 HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
-SOFTHSM_CHART_PATH="./charts/softhsm"
+SOFTHSM_CHART_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)/charts/softhsm"
 WITH_HSM=false
 # NetHSM (nitrokey/nethsm:testing) ships amd64-only images, so it is skipped
 # on ARM clusters even when --with-hsm is set. SoftHSM/PKCS#11 still deploy.
@@ -153,7 +153,7 @@ function usage() {
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
-    echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: ./charts/softhsm"
+    echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: charts/softhsm in this repository"
     echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
 }
 
