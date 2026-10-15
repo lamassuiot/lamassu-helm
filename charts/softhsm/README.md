@@ -1,6 +1,6 @@
 # softhsm
 
-![Version: 1.3.0](https://img.shields.io/badge/Version-1.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.0.0](https://img.shields.io/badge/AppVersion-1.0.0-informational?style=flat-square)
+![Version: 1.4.0](https://img.shields.io/badge/Version-1.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.0.0](https://img.shields.io/badge/AppVersion-1.0.0-informational?style=flat-square)
 
 SoftHSM exposed over a p11-kit Unix socket forwarded via SSH, and optional Nitrokey NetHSM
 
@@ -9,8 +9,14 @@ SoftHSM exposed over a p11-kit Unix socket forwarded via SSH, and optional Nitro
 Install or upgrade:
 
 ```bash
-helm upgrade --install hsm ./charts/softhsm -n lamassu --create-namespace --wait
+helm upgrade --install hsm ./charts/softhsm -n lamassu --create-namespace --wait \
+  --set-string softhsm.pin="<user-pin>" \
+  --set-string softhsm.so_pin="<so-pin>" \
+  --set-string ssh.authorizedKeys="$(cat ~/.ssh/id_ed25519.pub)"
 ```
+
+The chart ships no default PINs: `softhsm.pin` and `softhsm.so_pin` are
+required and rendering fails if either is empty.
 
 Uninstall:
 
@@ -34,16 +40,22 @@ alongside SoftHSM. Enable it with `nethsm.enabled=true`:
 
 ```bash
 helm upgrade --install hsm ./charts/softhsm -n lamassu --create-namespace --wait \
-  --set nethsm.enabled=true
+  --set-string softhsm.pin="<user-pin>" \
+  --set-string softhsm.so_pin="<so-pin>" \
+  --set nethsm.enabled=true \
+  --set-string nethsm.provision.unlockPassphrase="<unlock-passphrase>" \
+  --set-string nethsm.provision.adminPassphrase="<admin-passphrase>" \
+  --set-string nethsm.provision.operator.passphrase="<operator-passphrase>"
 ```
 
 When enabled, the chart deploys a NetHSM `StatefulSet`, an HTTPS `Service`, and
 a post-install/upgrade provisioning `Job` that adds an `Operator` user. With
 release name `hsm`, its in-cluster endpoint is `hsm-nethsm:8443`.
 
-Passphrases are stored in a `Secret`. The defaults are for local testing only;
-override `nethsm.provision.*` for any real deployment. NetHSM requires
-passphrases of 10-200 characters.
+Passphrases are stored in a `Secret`. The chart ships no default passphrases:
+`nethsm.provision.unlockPassphrase`, `nethsm.provision.adminPassphrase` and
+`nethsm.provision.operator.passphrase` must each be set to 10-200 characters
+when `nethsm.enabled=true`, otherwise rendering fails.
 
 The `nitrokey/nethsm:testing` image is ephemeral. To retain NetHSM data across
 restarts, enable `nethsm.persistence.enabled` and use a persistent image.
@@ -53,9 +65,9 @@ restarts, enable `nethsm.persistence.enabled` and use a persistent image.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | softhsm.label | string | `"lamassuHSM"` |  |
-| softhsm.pin | string | `"1234"` |  |
+| softhsm.pin | string | `""` | User PIN for the SoftHSM token. Required |
 | softhsm.slot | string | `"0"` |  |
-| softhsm.so_pin | string | `"5432"` |  |
+| softhsm.so_pin | string | `""` | Security Officer PIN for the SoftHSM token. Required |
 | image | string | `"ghcr.io/lamassuiot/softhsm:dev"` |  |
 | ssh.port | int | `22` | Service port for the internal SSH endpoint |
 | ssh.authorizedKeys | string | `""` | Authorized public keys for the in-cluster SSH endpoint |
@@ -67,9 +79,9 @@ restarts, enable `nethsm.persistence.enabled` and use a persistent image.
 | nethsm.persistence.size | string | `"2Gi"` | Size of the NetHSM data volume |
 | nethsm.persistence.storageClassName | string | `""` | Storage class for the NetHSM data volume. Empty uses the cluster's default StorageClass |
 | nethsm.provision.image | string | `"curlimages/curl:8.11.0"` | Image used by the provisioning Job |
-| nethsm.provision.unlockPassphrase | string | `"a0b1c2d3e4f5"` | Unlock passphrase set during provisioning |
-| nethsm.provision.adminPassphrase | string | `"abcdefghijklm"` | Administrator passphrase set during provisioning |
+| nethsm.provision.unlockPassphrase | string | `""` | Unlock passphrase set during provisioning (10-200 characters). Required when `nethsm.enabled=true` |
+| nethsm.provision.adminPassphrase | string | `""` | Administrator passphrase set during provisioning (10-200 characters). Required when `nethsm.enabled=true` |
 | nethsm.provision.systemTime | string | `"2026-01-01T00:00:00Z"` | System time set during provisioning (UTC) |
 | nethsm.provision.operator.userId | string | `"operator"` | Operator user ID |
 | nethsm.provision.operator.realName | string | `"Lamassu Operator"` | Operator user real name |
-| nethsm.provision.operator.passphrase | string | `"0123456789"` | Operator user passphrase |
+| nethsm.provision.operator.passphrase | string | `""` | Operator user passphrase (10-200 characters). Required when `nethsm.enabled=true` |

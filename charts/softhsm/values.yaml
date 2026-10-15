@@ -3,6 +3,7 @@
 # Declare variables to be passed into your templates.
 image: "ghcr.io/lamassuiot/softhsm:dev"
 softhsm:
+  # Required. No default PINs are shipped; set both at install time.
   pin: ""
   so_pin: ""
   slot: "0"
@@ -33,7 +34,8 @@ nethsm:
   provision:
     # Container image used by the provisioning Job; it must provide curl.
     image: "curlimages/curl:8.11.0"
-    # NetHSM passphrases must contain 10-200 characters. Defaults are for testing only.
+    # Required when nethsm.enabled=true. NetHSM passphrases must contain
+    # 10-200 characters; no defaults are shipped.
     unlockPassphrase: ""
     adminPassphrase: ""
     systemTime: "2026-01-01T00:00:00Z"

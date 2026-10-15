@@ -21,7 +21,10 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.12.1
+          # Offline renders report the Kubernetes version Helm was compiled
+          # against (v1.34.0 for v3.19.0); keep it >= 1.29 for the KMS
+          # pkcs11Sidecar guard.
+          version: v3.19.0
       - name: Create kind cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
