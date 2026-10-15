@@ -13,6 +13,7 @@ spec:
       kind: HTTPRoute
       matchLabels:
         auth: "external"
+        app.kubernetes.io/instance: {{ .Release.Name }}
   responseOverride:
 {{- if .Values.gateway.responseOverride.unauthorized.enabled }}
     - match:
