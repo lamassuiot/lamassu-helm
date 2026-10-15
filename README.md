@@ -294,6 +294,11 @@ This repository uses GitHub Actions for CI/CD:
 - `test-fast-lane.yaml`: Tests the fast lane deployment script
 
 
+## Security
+
+To report a security vulnerability, do **not** open a public issue — follow
+[SECURITY.md](./SECURITY.md) instead.
+
 ## License
 
 This project is licensed under the Mozilla Public License 2.0 - see the `LICENSE` file for details.
