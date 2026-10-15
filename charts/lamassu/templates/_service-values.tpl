@@ -17,14 +17,7 @@ connector and WFX compatibility.
 {{- $_ := set $overrides "replicaCount" $overrides.replicas -}}
 {{- end -}}
 {{- $merged := mustMergeOverwrite (deepCopy .root.Values.serviceDefaults) (deepCopy $overrides) -}}
-{{- $pullSecrets := list -}}
-{{- range $secret := concat (.root.Values.global.imagePullSecrets | default list) ($merged.imagePullSecrets | default list) -}}
-{{- if kindIs "string" $secret -}}
-{{- $pullSecrets = append $pullSecrets (dict "name" $secret) -}}
-{{- else -}}
-{{- $pullSecrets = append $pullSecrets $secret -}}
-{{- end -}}
-{{- end -}}
-{{- $_ := set $merged "imagePullSecrets" $pullSecrets -}}
+{{- $pullSecrets := concat (.root.Values.global.imagePullSecrets | default list) ($merged.imagePullSecrets | default list) -}}
+{{- $_ := set $merged "imagePullSecrets" (include "lamassu.normalizePullSecrets" $pullSecrets | fromYaml).items -}}
 {{- $merged | toYaml -}}
 {{- end -}}

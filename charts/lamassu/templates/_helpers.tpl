@@ -98,18 +98,29 @@ annotations:
 {{- end -}}
 
 {{/*
-Pod-level imagePullSecrets built from global.imagePullSecrets. Used by hooks and
-test pods, which cannot rely on the chart-managed ServiceAccount.
+Normalize a list of imagePullSecrets entries, given either as a secret name or
+as {name: ...}, into Kubernetes LocalObjectReferences. Returns YAML with the
+list under "items" because include can only return a string; read it with
+(include "lamassu.normalizePullSecrets" $list | fromYaml).items.
 */}}
-{{- define "lamassu.globalImagePullSecrets" -}}
+{{- define "lamassu.normalizePullSecrets" -}}
 {{- $pullSecrets := list -}}
-{{- range $secret := (.Values.global.imagePullSecrets | default list) -}}
+{{- range $secret := . -}}
 {{- if kindIs "string" $secret -}}
 {{- $pullSecrets = append $pullSecrets (dict "name" $secret) -}}
 {{- else -}}
 {{- $pullSecrets = append $pullSecrets $secret -}}
 {{- end -}}
 {{- end -}}
+{{- toYaml (dict "items" $pullSecrets) -}}
+{{- end -}}
+
+{{/*
+Pod-level imagePullSecrets built from global.imagePullSecrets. Used by hooks and
+test pods, which cannot rely on the chart-managed ServiceAccount.
+*/}}
+{{- define "lamassu.globalImagePullSecrets" -}}
+{{- $pullSecrets := (include "lamassu.normalizePullSecrets" (.Values.global.imagePullSecrets | default list) | fromYaml).items -}}
 {{- with $pullSecrets }}
 imagePullSecrets:
   {{- toYaml . | nindent 2 }}
