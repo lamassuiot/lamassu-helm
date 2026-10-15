@@ -1,9 +1,12 @@
+{{- if and (eq .Values.tls.type "external") (empty .Values.tls.externalOptions.secretName) }}
+  {{ fail "tls.type is set to external but tls.externalOptions.secretName is empty. Provide the name of a Secret (containing tls.crt and tls.key) for the downstream API Gateway/DMS Manager certificate." }}
+{{- end }}
 {{- if eq .Values.tls.type "certManager" }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: downstream-tls-certificate
-  namespace: {{.Release.Namespace}}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "downstream-tls-certificate") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "tls") | nindent 2 }}
 spec:
   isCA: false
   commonName: {{.Values.tls.certManagerOptions.certSpec.commonName}}
@@ -16,7 +19,7 @@ spec:
     {{- range .Values.tls.certManagerOptions.certSpec.addresses }}
     - {{ . }}
     {{- end }}
-  secretName: downstream-cert
+  secretName: {{ include "downstream.certSecret" . }}
   privateKey:
     algorithm: ECDSA
     size: 256
@@ -27,7 +30,7 @@ spec:
     name: {{ .Values.tls.certManagerOptions.clusterIssuer }}
     {{ else }}
     kind: Issuer
-    name:  {{ ternary .Values.tls.certManagerOptions.issuer "downstream-ca-selfsigned-issuer" (ne .Values.tls.certManagerOptions.issuer "") }}
+    name: {{ include "downstream.issuerName" . }}
     {{ end }}
     group: cert-manager.io
 {{- end }}

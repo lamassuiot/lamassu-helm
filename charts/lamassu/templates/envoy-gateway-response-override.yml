@@ -1,0 +1,40 @@
+{{- if and .Values.auth.externalAuthorization.enabled (or .Values.gateway.responseOverride.unauthorized.enabled .Values.gateway.responseOverride.forbidden.enabled) }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "response-override") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "gateway") | nindent 2 }}
+spec:
+  # Only the routes behind external authorization, where the denials come from
+  # the gateway. Targeting the whole Gateway would also replace the error
+  # bodies of the backends and of extraRouting targets such as Keycloak.
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      matchLabels:
+        auth: "external"
+        app.kubernetes.io/instance: {{ .Release.Name }}
+  responseOverride:
+{{- if .Values.gateway.responseOverride.unauthorized.enabled }}
+    - match:
+        statusCodes:
+          - type: Value
+            value: 401
+      response:
+        contentType: {{ .Values.gateway.responseOverride.unauthorized.contentType | quote }}
+        body:
+          type: Inline
+          inline: {{ .Values.gateway.responseOverride.unauthorized.body | quote }}
+{{- end }}
+{{- if .Values.gateway.responseOverride.forbidden.enabled }}
+    - match:
+        statusCodes:
+          - type: Value
+            value: 403
+      response:
+        contentType: {{ .Values.gateway.responseOverride.forbidden.contentType | quote }}
+        body:
+          type: Inline
+          inline: {{ .Values.gateway.responseOverride.forbidden.body | quote }}
+{{- end }}
+{{- end }}

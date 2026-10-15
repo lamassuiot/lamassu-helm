@@ -39,6 +39,7 @@ This table shows the relationship between Helm chart versions, application versi
 ### Migration Guides
 
 For detailed migration instructions between versions, see the CHANGELOG directory:
+- [3.8.0 → 4.0.0](charts/lamassu/CHANGELOG/3.8.0->4.0.0.md) - Security hardening: non-root workloads and release-scoped resource names
 - [3.3.2 → 3.7.0](charts/lamassu/CHANGELOG/3.3.2->3.7.0.md) - KMS service introduction
 - [3.3.0 → 3.3.1](charts/lamassu/CHANGELOG/3.3.0->3.3.1.md) - Multiple OIDC providers
 - [3.2.X → 3.3.0](charts/lamassu/CHANGELOG/3.2.X->3.3.0.md) - Ingress to Envoy Gateway migration
@@ -57,7 +58,7 @@ For detailed migration instructions between versions, see the CHANGELOG director
 
 ## Prerequisites
 
-- Kubernetes 1.19+
+- Kubernetes 1.24+ (1.29+ if `services.kms.pkcs11Sidecar.enabled=true`)
 - Helm 3.2.0+
 - cert-manager v1.14.0+ (for TLS certificate management)
 - Envoy Gateway v1.8.0+ (for API Gateway functionality)
@@ -139,8 +140,9 @@ The same `autoscaling` block is supported per AWS connector instance:
 ```yaml
 services:
   connectors:
-    - id: aws.myconnector
+    aws.myconnector:
       type: awsiot
+      image: ghcr.io/lamassuiot/lamassu-aws-connector:dev-v4
       autoscaling:
         enabled: true
         minReplicas: 2
@@ -162,7 +164,7 @@ services:
 
 **Resource requests and limits:**
 
-Each service has default resource requests (`100m` CPU / `256Mi` memory) and limits (`500m` CPU / `1Gi` memory). These are required for HPA CPU/memory-based scaling and can be overridden per service:
+Each service has default resource requests (`100m` CPU / `128Mi` memory) and limits (`500m` CPU / `512Mi` memory). These are required for HPA CPU/memory-based scaling and can be overridden per service:
 
 ```yaml
 services:
@@ -176,16 +178,16 @@ services:
         memory: 2Gi
 ```
 
-**Pod anti-affinity and topology spread:**
+**Pod affinity and topology spread:**
 
-By default the chart applies soft pod anti-affinity (spread across nodes) and two `ScheduleAnyway` topology spread constraints (zone and hostname). These can be overridden per service:
+The chart does not assume a cluster topology. Configure affinity or topology spread per service when the cluster has the corresponding labels and capacity:
 
 ```yaml
 services:
   ca:
-    # Override affinity (empty map = use chart default)
+    # Kubernetes affinity spec
     affinity: {}
-    # Override topology spread (empty list = use chart defaults)
+    # Kubernetes TopologySpreadConstraint list
     topologySpreadConstraints: []
 ```
 

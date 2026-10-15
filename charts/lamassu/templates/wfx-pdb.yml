@@ -1,0 +1,15 @@
+{{- if .Values.services.wfx.enabled }}
+{{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "wfx") | fromYaml -}}
+{{- if eq (include "lamassu.pdb.enabled" $svc) "true" }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "wfx") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "wfx") | nindent 2 }}
+spec:
+  minAvailable: {{ $svc.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "lamassu.selectorLabels" (dict "root" $ "component" "wfx") | nindent 6 }}
+{{- end }}
+{{- end }}

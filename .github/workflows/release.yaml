@@ -157,6 +157,20 @@ jobs:
         env:
           GITHUB_REPO: ${{ github.repository }}
 
+      - name: Update generated values documentation
+        env:
+          HELM_DOCS_VERSION: 1.14.2
+          HELM_DOCS_SHA256: a8cf72ada34fad93285ba2a452b38bdc5bd52cc9a571236244ec31022928d6cc
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
+            --output /tmp/helm-docs.tar.gz
+          echo "${HELM_DOCS_SHA256}  /tmp/helm-docs.tar.gz" | sha256sum --check
+          tar --extract --gzip --directory /tmp --file /tmp/helm-docs.tar.gz helm-docs
+          /tmp/helm-docs \
+            --chart-search-root charts/${{ github.event.inputs.chart_to_release }} \
+            --output-file VALUES.md
+
       - name: Commit generated changelog and release notes
         id: commit-chart-changes
         run: |
@@ -164,6 +178,7 @@ jobs:
           chart_version=${{ github.event.inputs.release_version }}
           chart_path="charts/${chart_name}"
 
+          git add ${chart_path}/VALUES.md
           git add ${chart_path}/CHANGELOG.md
           git add ${chart_path}/RELEASE-NOTES.md
 

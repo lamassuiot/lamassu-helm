@@ -1,26 +1,31 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
-  name: proxy
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "proxy") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "proxy") | nindent 2 }}
 spec:
   provider:
     type: Kubernetes
     kubernetes:
       envoyService:
         allocateLoadBalancerNodePorts: false
+        # Envoy Gateway defaults to Local, which drops traffic entering nodes
+        # without a local proxy pod. Pin Cluster so the gateway IP is reachable
+        # through any node.
+        externalTrafficPolicy: Cluster
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: eg
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "gateway") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "gateway") | nindent 2 }}
 spec:
-  gatewayClassName: eg
+  gatewayClassName: {{ .Values.gateway.className }}
   infrastructure:
     parametersRef:
       group: gateway.envoyproxy.io
       kind: EnvoyProxy
-      name: proxy
+      name: {{ include "lamassu.componentName" (dict "root" $ "component" "proxy") }}
   addresses:
   {{ range $ip := $.Values.gateway.addresses }}
   - type: IPAddress
@@ -38,18 +43,18 @@ spec:
         certificateRefs:
         - kind: Secret
           group: ""
-          name:  {{ ternary .Values.tls.externalOptions.secretName  "downstream-cert" (eq .Values.tls.type "external") }}
+          name: {{ include "downstream.certSecret" . }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: ClientTrafficPolicy
 metadata:
-  name: enable-mtls
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "lamassu.componentName" (dict "root" $ "component" "enable-mtls") }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "gateway") | nindent 2 }}
 spec:
   targetRefs:
   - group: gateway.networking.k8s.io
     kind: Gateway
-    name: eg
+    name: {{ include "lamassu.componentName" (dict "root" $ "component" "gateway") }}
   tls:
     maxVersion: "1.3"
     clientValidation: 
