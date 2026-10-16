@@ -1,3 +1,8 @@
+# The p11-kit server version comes from this base image and must be
+# RPC-compatible with the KMS p11-kit-client.so (mixed minor versions fail with
+# CKR_DEVICE_MEMORY). Bump it together with the pkcs11-client-proxy stage of
+# lamassuiot ci/kms.dockerfile and the p11-kit-client staging image in
+# charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml and the fast-lane script.
 FROM ubuntu:26.04
 
 RUN apt-get update && apt-get install -y \

@@ -61,10 +61,12 @@ services:
           secret:
             secretName: kms-pkcs11-sidecar-ssh-key
     pkcs11Modules:
-      # p11-kit-client.so is not bundled in the KMS image, so it is staged into a
-      # shared, read-only volume by a short-lived init container instead.
+      # Stage p11-kit-client.so into a shared, read-only volume. KMS images up to
+      # now bundle a 0.24 client, which is not RPC-compatible with the p11-kit
+      # 0.26 server in the SoftHSM image. The staging image must use the same
+      # base as ci/softhsm/dockerfile.
       - name: p11-kit-client
-        image: debian:12-slim
+        image: ubuntu:26.04
         imagePullPolicy: IfNotPresent
         mountPath: /run/p11-kit-modules
         securityContext:

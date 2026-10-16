@@ -342,7 +342,9 @@ sidecar_image="ghcr.io/lamassuiot/p11-kit-ssh-sidecar:ci-test"
 sidecar_pull_policy="Always"
 nethsm_module_image="curlimages/curl:8.11.0"
 nethsm_module_pull_policy="IfNotPresent"
-p11kit_module_image="debian:12-slim"
+# Must match the SoftHSM base image: p11-kit client and server versions must
+# be RPC-compatible (see ci/softhsm/dockerfile).
+p11kit_module_image="ubuntu:26.04"
 p11kit_module_pull_policy="IfNotPresent"
 
 cat >"$target_file" <<EOF

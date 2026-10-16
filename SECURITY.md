@@ -181,7 +181,7 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 
 | Exception | Current justification | Allowed scope | Exit condition |
 |---|---|---|---|
-| p11-kit staging runs as root and adds five capabilities | Online fast-lane installs `p11-kit-modules` into a transient Debian container. | `kms-pkcs11-module-p11-kit-client` init container only. | Prebuilt module image contains the library and dependencies and can copy them as non-root. |
+| p11-kit staging runs as root and adds five capabilities | Online fast-lane installs `p11-kit-modules` into a transient Ubuntu container. | `kms-pkcs11-module-p11-kit-client` init container only. | Prebuilt module image contains the library and dependencies and can copy them as non-root. |
 
 ## Target Runtime Contracts
 

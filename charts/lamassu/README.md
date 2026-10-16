@@ -250,12 +250,12 @@ services:
         - name: kms-pkcs11-ssh-key
           secret:
             secretName: kms-pkcs11-sidecar-ssh-key
-    # p11-kit-client.so is not bundled in the KMS image, so it must be staged into a
-    # shared, read-only volume by a pkcs11Modules init container (see
+    # Stage a p11-kit-client.so that matches the HSM's p11-kit server version
+    # into a shared, read-only volume with a pkcs11Modules init container (see
     # charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml for the full staging script).
     pkcs11Modules:
       - name: p11-kit-client
-        image: debian:12-slim
+        image: ubuntu:26.04
         mountPath: /run/p11-kit-modules
         # ... stages p11-kit-client.so and its non-core dependencies, see the example values file
     cryptoEngines:
@@ -290,6 +290,10 @@ Notes:
 - The HSM Service can stay `ClusterIP`; no KMS-side SSH Service is required.
 - The HSM pod must accept the sidecar's SSH public key and expose port `22`
   internally.
-- The Lamassu KMS image must already contain `p11-kit-client.so`.
+- `p11-kit-client.so` must be RPC-compatible with the HSM's `p11-kit server`;
+  mixing minor versions fails (for example, a 0.24 client against a 0.26
+  server returns `CKR_DEVICE_MEMORY` on key generation). The bundled SoftHSM
+  image ships p11-kit 0.26 (`ubuntu:26.04`); KMS images built before the
+  matching client update bundle 0.24, so stage the client as shown above.
 - If KMS starts before the tunnel is ready, use `services.kms.command/args`
   to wait until `/run/p11-kit/pkcs11` exists before launching the real binary.
