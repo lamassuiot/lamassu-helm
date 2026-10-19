@@ -55,10 +55,27 @@ spec:
     port: {{ .Values.traefikFrontProxy.webSecurePort }}
     tls:
       mode: Terminate
+      # Use the cluster-wide default TLSOption (key exchange groups, client
+      # certificates) instead of Traefik's isolated per-listener defaults.
+      # Honored by ghcr.io/lamassuiot/traefik:pqc-3.7.15, ignored elsewhere.
+      options:
+        traefik.io/tls-options: default
       certificateRefs:
+      {{- with .Values.traefikFrontProxy.tls }}
+      {{- if and (eq .type "none") (empty .additionalSecretNames) }}
+      {{- fail "traefikFrontProxy.tls.type=none requires at least one traefikFrontProxy.tls.additionalSecretNames entry" }}
+      {{- end }}
+      {{- if ne .type "none" }}
       - kind: Secret
         group: ""
-        name: {{ ternary .Values.traefikFrontProxy.tls.externalOptions.secretName "edge-cert" (eq .Values.traefikFrontProxy.tls.type "external") }}
+        name: {{ ternary .externalOptions.secretName "edge-cert" (eq .type "external") }}
+      {{- end }}
+      {{- range .additionalSecretNames }}
+      - kind: Secret
+        group: ""
+        name: {{ . }}
+      {{- end }}
+      {{- end }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

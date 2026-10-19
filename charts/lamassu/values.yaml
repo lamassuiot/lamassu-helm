@@ -68,7 +68,7 @@ traefikFrontProxy:
   # -- Port the Traefik Gateway's HTTPS listener binds to
   webSecurePort: 8443
   tls:
-    # -- TLS certificate provider to use for the edge certificate. Allowed values are: `certManager`, `external`
+    # -- TLS certificate provider to use for the classic (ECDSA/RSA) edge certificate. Allowed values are: `certManager`, `external`, `none` (no classic certificate: only `additionalSecretNames` are served)
     type: certManager
     certManagerOptions:
       # -- IP addresses to include as SANs on the self signed edge certificate (e.g. the node/gateway IP)
@@ -76,6 +76,8 @@ traefikFrontProxy:
     externalOptions:
       # -- Secret name for the TLS certificate to be used as the edge certificate (the secret at least must have `tls.crt` and `tls.key` keys)
       secretName: ""
+    # -- Extra `kubernetes.io/tls` Secrets served on the same listener, e.g. ML-DSA or composite ML-DSA edge certificates. On every handshake Traefik serves the certificate that best matches the client's `signature_algorithms`, in the client's preference order (requires the multi-certificate support of `ghcr.io/lamassuiot/traefik:pqc-3.7.15`)
+    additionalSecretNames: []
 postgres:
   # -- Hostname for the PostgreSQL server
   hostname: ""

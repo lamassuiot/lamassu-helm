@@ -55,6 +55,23 @@ TRAEFIK_WEBSECURE_PORT=8443
 TLS_CRT=
 TLS_KEY=
 
+# PQC matrix of the Traefik edge (pqc-matrix/MATRIX.md). Every class is
+# enabled by default; --tls-kex / --tls-auth narrow it down.
+#   KEX  -> TLSOption traefik-system/default .spec.curvePreferences
+#   Auth -> certificates attached to the traefik-gw listener. Traefik
+#           (ghcr.io/lamassuiot/traefik:pqc-3.7.15) serves, per handshake, the
+#           one matching the client's signature_algorithms.
+TLS_KEX="T,PQ,PQT"
+TLS_AUTH="T,PQ,PQT"
+# PQ (ML-DSA-65) certs are issued with OpenSSL >= 3.5; PQ/T (composite
+# MLDSA65-RSA3072-PSS-SHA512) also needs hybrid-provider. It is built on demand
+# (pinned to the commit validated in pqc-matrix) unless HYBRID_PROVIDER_MODULE
+# points to a prebuilt hybrid.so.
+HYBRID_PROVIDER_REPO="https://github.com/baentsch/hybrid-provider"
+HYBRID_PROVIDER_COMMIT="${HYBRID_PROVIDER_COMMIT:-94499b4}"
+HYBRID_PROVIDER_MODULE="${HYBRID_PROVIDER_MODULE:-}"
+HYBRID_OPENSSL_CONF=""
+
 POSTGRES_USER=admin
 POSTGRES_PWD=$(
     shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
@@ -154,6 +171,8 @@ function usage() {
     echo " --http-port                  HTTP port to be used for Lamassu IoT. Default is 80"
     echo " --tls-crt                    Path to the PEM encoded certificate used for downstream communications"
     echo " --tls-key                    Path to the PEM encoded key used for downstream communications"
+    echo " --tls-kex                    Key exchange classes the edge accepts, comma separated: T, PQ, PQ/T (also PQT). Default: T,PQ,PQ/T"
+    echo " --tls-auth                   Certificate classes the edge serves, comma separated: T (ECDSA P-256), PQ (ML-DSA-65), PQ/T (also PQT; MLDSA65-RSA3072-PSS). Default: T,PQ,PQ/T"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
@@ -219,6 +238,36 @@ function process_flags() {
             TLS_KEY=$(extract_argument $@)
 
             shift
+            ;;
+        --tls-kex*)
+            if ! has_argument $@; then
+                echo -e "\n${RED}TLS KEX classes not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            # Supports both "--tls-kex X" and "--tls-kex=X" (extract_argument +
+            # the unconditional shift would swallow the next flag in the = form).
+            if [[ "$1" == *=* ]]; then
+                TLS_KEX=$(normalize_tls_classes "${1#*=}" --tls-kex) || exit 1
+            else
+                TLS_KEX=$(normalize_tls_classes "$2" --tls-kex) || exit 1
+                shift
+            fi
+            ;;
+        --tls-auth*)
+            if ! has_argument $@; then
+                echo -e "\n${RED}TLS Auth classes not specified.${NOCOLOR}" >&2
+                usage
+                exit 1
+            fi
+            # Supports both "--tls-auth X" and "--tls-auth=X" (extract_argument +
+            # the unconditional shift would swallow the next flag in the = form).
+            if [[ "$1" == *=* ]]; then
+                TLS_AUTH=$(normalize_tls_classes "${1#*=}" --tls-auth) || exit 1
+            else
+                TLS_AUTH=$(normalize_tls_classes "$2" --tls-auth) || exit 1
+                shift
+            fi
             ;;
         -n | --non-interactive)
             NON_INTERACTIVE=true
@@ -314,6 +363,69 @@ function process_flags() {
         esac
         shift
     done
+
+    if [[ -n "$TLS_CRT" ]] && ! tls_has "$TLS_AUTH" T; then
+        echo -e "\n${RED}--tls-crt/--tls-key provide the classic (T) edge certificate, but --tls-auth ${TLS_AUTH} excludes T.${NOCOLOR}" >&2
+        exit 1
+    fi
+}
+
+# normalize_tls_classes <value> <flag>: "pq/t, T,pq" -> "T,PQ,PQT" (canonical
+# order, no duplicates). Accepts PQ/T, PQ\T and PQT for the hybrid class.
+function normalize_tls_classes() {
+    local value=$1 flag=$2 out=() item
+    IFS=',' read -ra items <<<"$value"
+    for item in "${items[@]}"; do
+        item=$(echo "$item" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+        case "$item" in
+        T) out+=(T) ;;
+        PQ) out+=(PQ) ;;
+        PQ/T | 'PQ\T' | PQT) out+=(PQT) ;;
+        "") ;;
+        *)
+            echo -e "\n${RED}${flag}: unknown class '${item}' (allowed: T, PQ, PQ/T)${NOCOLOR}" >&2
+            return 1
+            ;;
+        esac
+    done
+    local canonical=() c
+    for c in T PQ PQT; do
+        [[ " ${out[*]} " == *" $c "* ]] && canonical+=("$c")
+    done
+    if [ ${#canonical[@]} -eq 0 ]; then
+        echo -e "\n${RED}${flag}: select at least one class (T, PQ, PQ/T)${NOCOLOR}" >&2
+        return 1
+    fi
+    (IFS=','; echo "${canonical[*]}")
+}
+
+# tls_has <list> <class>
+function tls_has() {
+    [[ ",$1," == *",$2,"* ]]
+}
+
+# tls_label <list>: "T,PQ,PQT" -> "T, PQ, PQ/T"
+function tls_label() {
+    echo "$1" | sed 's/PQT/PQ\/T/; s/,/, /g'
+}
+
+# Traefik curvePreferences for the selected KEX classes. Order is cosmetic:
+# Go negotiates hybrid > MLKEM1024 > classic regardless.
+function tls_curve_preferences() {
+    local groups=()
+    tls_has "$TLS_KEX" PQT && groups+=(X25519MLKEM768 SecP256r1MLKEM768 SecP384r1MLKEM1024)
+    tls_has "$TLS_KEX" PQ && groups+=(MLKEM1024)
+    tls_has "$TLS_KEX" T && groups+=(X25519 CurveP256 CurveP384)
+    (IFS=','; echo "[${groups[*]}]" | sed 's/,/, /g')
+}
+
+# ML-KEM and ML-DSA only exist in TLS 1.3; a purely classic edge keeps TLS 1.2.
+function tls_min_version() {
+    if [ "$TLS_KEX" = T ] && [ "$TLS_AUTH" = T ]; then
+        echo VersionTLS12
+    else
+        echo VersionTLS13
+    fi
 }
 
 function final_instructions() {
@@ -326,6 +438,14 @@ function final_instructions() {
     if [ "$WITH_HSM" = true ]; then
                 echo -e "${BLUE}SoftHSM endpoint configured for PKCS#11 via p11-kit socket forwarding${NOCOLOR}"
     fi
+    echo -e "${BLUE}Edge TLS (Traefik): KEX $(tls_label "$TLS_KEX") · Auth $(tls_label "$TLS_AUTH")${NOCOLOR}"
+    local a
+    for a in PQ PQT; do
+        if tls_has "$TLS_AUTH" "$a"; then
+            local secret="edge-cert-$(echo "$a" | tr '[:upper:]' '[:lower:]')"
+            echo -e "${BLUE}  $(tls_label "$a") trust anchor: kubectl -n ${NAMESPACE} get secret ${secret} -o jsonpath='{.data.ca\\.crt}' | base64 -d${NOCOLOR}"
+        fi
+    done
 }
 
 function prepare_softhsm_ssh_keypair() {
@@ -706,6 +826,8 @@ function configure_traefik_front_proxy() {
     local domain_host="${DOMAIN%%:*}"
 
     echo -e "${ORANGE}Configuring Traefik front proxy values for ${domain_host}${NOCOLOR}"
+    echo -e "${ORANGE}  KEX : $(tls_label "$TLS_KEX") -> curvePreferences $(tls_curve_preferences)${NOCOLOR}"
+    echo -e "${ORANGE}  Auth: $(tls_label "$TLS_AUTH")${NOCOLOR}"
 
     export DOMAIN_HOST="$domain_host"
     export TRAEFIK_WEBSECURE_PORT=$TRAEFIK_WEBSECURE_PORT
@@ -715,9 +837,15 @@ function configure_traefik_front_proxy() {
       .traefikFrontProxy.webSecurePort = env(TRAEFIK_WEBSECURE_PORT)
     ' lamassu.yaml
 
-    # Check if TLS_CRT and TLS_KEY are not empty
+    if [ -n "$GATEWAY_IP" ]; then
+        local ip_list="$GATEWAY_IP"
+    else
+        local ip_list="$(hostname -I)"
+    fi
+
+    # Auth T: the classic certificate, user provided or cert-manager (renewed automatically).
     if [[ -n "$TLS_CRT" && -n "$TLS_KEY" ]]; then
-        echo -e "${ORANGE}Terminating edge TLS with the provided certificate${NOCOLOR}"
+        echo -e "${ORANGE}Terminating edge TLS (T) with the provided certificate${NOCOLOR}"
         run_kubectl create secret tls edge-cert --cert="$TLS_CRT" --key="$TLS_KEY" -n "$NAMESPACE" \
             --dry-run=client -o yaml | run_kubectl apply -f -
 
@@ -725,21 +853,187 @@ function configure_traefik_front_proxy() {
           .traefikFrontProxy.tls.type = "external" |
           .traefikFrontProxy.tls.externalOptions.secretName = "edge-cert"
         ' lamassu.yaml
-    else
-        echo -e "${ORANGE}Terminating edge TLS with a SelfSigned certificate${NOCOLOR}"
-
-        if [ -n "$GATEWAY_IP" ]; then
-            local ip_list="$GATEWAY_IP"
-        else
-            local ip_list="$(hostname -I)"
-        fi
+    elif tls_has "$TLS_AUTH" T; then
+        echo -e "${ORANGE}Terminating edge TLS (T) with a SelfSigned ECDSA P-256 certificate (cert-manager)${NOCOLOR}"
 
         export IP_LIST="$ip_list"
         yq -i '
           .traefikFrontProxy.tls.type = "certManager" |
           .traefikFrontProxy.tls.certManagerOptions.addresses = (env(IP_LIST) | split(" "))
         ' lamassu.yaml
+    else
+        yq -i '.traefikFrontProxy.tls.type = "none"' lamassu.yaml
     fi
+
+    # Auth PQ and PQ/T: ML-DSA / composite certificates, served on the same listener.
+    local pqc_auths=() a
+    tls_has "$TLS_AUTH" PQ && pqc_auths+=(PQ)
+    tls_has "$TLS_AUTH" PQT && pqc_auths+=(PQT)
+    local secret_names=()
+    for a in "${pqc_auths[@]}"; do
+        secret_names+=("edge-cert-$(echo "$a" | tr '[:upper:]' '[:lower:]')")
+    done
+    if [ ${#pqc_auths[@]} -gt 0 ]; then
+        create_pqc_edge_secrets "$domain_host" "$ip_list" "${pqc_auths[@]}"
+    fi
+    export PQC_SECRET_NAMES="${secret_names[*]}"
+    yq -i '.traefikFrontProxy.tls.additionalSecretNames = (env(PQC_SECRET_NAMES) | split(" ") | map(select(. != "")))' lamassu.yaml
+}
+
+# check_pqc_openssl: OpenSSL with ML-DSA (>= 3.5) for --tls-auth PQ, plus
+# hybrid-provider for --tls-auth PQ/T.
+function check_pqc_openssl() {
+    exit_if_command_not_installed openssl
+    if ! openssl list -signature-algorithms 2>/dev/null | grep -q 'ML-DSA-65'; then
+        echo "❌ $(openssl version) has no ML-DSA: OpenSSL >= 3.5 is required for --tls-auth PQ and PQ/T"
+        exit 1
+    fi
+    echo "✅ $(openssl version) (ML-DSA)"
+    if tls_has "$TLS_AUTH" PQT; then
+        ensure_hybrid_provider
+    fi
+}
+
+# ensure_hybrid_provider: builds hybrid-provider against the OpenSSL in PATH
+# (once, cached) and writes an OpenSSL config that loads it next to the
+# default provider into HYBRID_OPENSSL_CONF.
+function ensure_hybrid_provider() {
+    if [ -z "$HYBRID_PROVIDER_MODULE" ]; then
+        local dir="${XDG_CACHE_HOME:-$HOME/.cache}/lamassu/hybrid-provider-${HYBRID_PROVIDER_COMMIT}"
+        HYBRID_PROVIDER_MODULE="$dir/build/hybrid.so"
+        if [ ! -f "$HYBRID_PROVIDER_MODULE" ]; then
+            exit_if_command_not_installed git
+            exit_if_command_not_installed cmake
+            exit_if_command_not_installed cc
+            # Build against the headers/libs of the openssl binary we will run.
+            local openssl_root
+            openssl_root=$(dirname "$(dirname "$(readlink -f "$(command -v openssl)")")")
+            echo "Building hybrid-provider ${HYBRID_PROVIDER_COMMIT} against $(openssl version) (${openssl_root}), log: $dir.log"
+            rm -rf "$dir"
+            mkdir -p "$(dirname "$dir")"
+            if ! { git clone --quiet "$HYBRID_PROVIDER_REPO" "$dir" &&
+                git -C "$dir" checkout --quiet "$HYBRID_PROVIDER_COMMIT" &&
+                cmake -S "$dir" -B "$dir/build" -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="$openssl_root" &&
+                cmake --build "$dir/build" --target hybrid-provider -j; } >"$dir.log" 2>&1; then
+                echo "❌ Failed to build hybrid-provider (see $dir.log)"
+                exit 1
+            fi
+        fi
+    fi
+    HYBRID_OPENSSL_CONF=$(mktemp)
+    cat >"$HYBRID_OPENSSL_CONF" <<EOF
+openssl_conf = openssl_init
+[openssl_init]
+providers = provider_sect
+[provider_sect]
+default = default_sect
+hybrid = hybrid_sect
+[default_sect]
+activate = 1
+[hybrid_sect]
+module = $HYBRID_PROVIDER_MODULE
+activate = 1
+EOF
+    if ! OPENSSL_CONF="$HYBRID_OPENSSL_CONF" openssl list -key-managers 2>/dev/null | grep -q 'mldsa65_rsa3072_pss'; then
+        echo "❌ hybrid-provider ($HYBRID_PROVIDER_MODULE) does not load in $(openssl version)"
+        exit 1
+    fi
+    echo "✅ hybrid-provider ${HYBRID_PROVIDER_COMMIT} (composite ML-DSA)"
+}
+
+# issue_edge_cert <auth> <dir> <domain> <ip list>: self-signed CA + serverAuth
+# leaf, both with the auth's algorithm (a classic root over a PQ leaf would
+# void PQ authentication), as <dir>/{ca.crt,tls.crt,tls.key}.
+#   PQ : ML-DSA-65. Keys are written seed-only: Go (Traefik) rejects the
+#        seed+expanded PKCS#8 that OpenSSL produces by default.
+#   PQT: MLDSA65-RSA3072-PSS-SHA512 via hybrid-provider. Its PKCS#8 already
+#        matches the lamassuiot/go fork (only the ECDSA composites differ).
+function issue_edge_cert() {
+    local auth=$1 dir=$2 domain=$3 ips=$4 name
+    local genpkey=()
+    case "$auth" in
+    PQ)
+        name="ML-DSA-65"
+        genpkey=(genpkey -algorithm ML-DSA-65 -provparam ml-dsa.output_formats=seed-only)
+        ;;
+    PQT)
+        name="MLDSA65-RSA3072-PSS-SHA512"
+        genpkey=(genpkey -algorithm mldsa65_rsa3072_pss)
+        ;;
+    esac
+    local ossl=(env)
+    [ "$auth" = PQT ] && ossl=(env OPENSSL_CONF="$HYBRID_OPENSSL_CONF")
+
+    local san="DNS:${domain}" ip
+    for ip in $ips; do
+        san="${san},IP:${ip}"
+    done
+    cat >"$dir/leaf.ext" <<EOF
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature
+extendedKeyUsage=serverAuth
+subjectAltName=${san}
+EOF
+    "${ossl[@]}" openssl "${genpkey[@]}" -out "$dir/ca.key" &&
+        "${ossl[@]}" openssl req -x509 -new -key "$dir/ca.key" -days 3650 \
+            -subj "/O=Lamassu IoT/CN=Lamassu Edge CA (${name})" \
+            -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign,digitalSignature" \
+            -out "$dir/ca.crt" &&
+        "${ossl[@]}" openssl "${genpkey[@]}" -out "$dir/tls.key" &&
+        "${ossl[@]}" openssl req -new -key "$dir/tls.key" -subj "/O=Lamassu IoT/CN=${domain}" -out "$dir/tls.csr" &&
+        "${ossl[@]}" openssl x509 -req -in "$dir/tls.csr" -CA "$dir/ca.crt" -CAkey "$dir/ca.key" -CAcreateserial \
+            -days 365 -extfile "$dir/leaf.ext" -out "$dir/tls.crt"
+}
+
+# create_pqc_edge_secrets <domain> <ip list> <auth...>: issues the PQ / PQ/T
+# edge certificates (cert-manager cannot) into the edge-cert-<auth> Secrets.
+# Existing Secrets are kept (delete them to re-issue); leaves are valid for
+# 365 days and are not renewed automatically.
+function create_pqc_edge_secrets() {
+    local domain=$1 ips=$2
+    shift 2
+    local a
+    for a in "$@"; do
+        local secret="edge-cert-$(echo "$a" | tr '[:upper:]' '[:lower:]')"
+        if run_kubectl get secret "$secret" -n "$NAMESPACE" >/dev/null 2>&1; then
+            echo "✅ Secret '$secret' already exists, keeping it"
+            continue
+        fi
+        echo -e "${ORANGE}Issuing $(tls_label "$a") edge certificate with $(openssl version | cut -d' ' -f1-2)${NOCOLOR}"
+        local workdir
+        workdir=$(mktemp -d)
+        chmod 700 "$workdir"
+        if ! issue_edge_cert "$a" "$workdir" "$domain" "$ips" >"$workdir/openssl.log" 2>&1; then
+            cat "$workdir/openssl.log"
+            rm -rf "$workdir"
+            echo -e "${RED}Failed to issue the $(tls_label "$a") edge certificate${NOCOLOR}"
+            exit 1
+        fi
+        # Built by hand: `kubectl create secret tls` validates the pair with
+        # kubectl's upstream Go crypto and rejects ML-DSA/composite keys.
+        cat <<EOF | run_kubectl apply -f -
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: $secret
+  namespace: $NAMESPACE
+  labels:
+    app.kubernetes.io/part-of: lamassu
+    pqc.lamassu.io/auth: "$a"
+data:
+  tls.crt: $(base64 -w0 <"$workdir/tls.crt")
+  tls.key: $(base64 -w0 <"$workdir/tls.key")
+  ca.crt: $(base64 -w0 <"$workdir/ca.crt")
+EOF
+        local rc=$?
+        rm -rf "$workdir"
+        if [ $rc -ne 0 ]; then
+            echo -e "${RED}Failed to create Secret '$secret'${NOCOLOR}"
+            exit 1
+        fi
+    done
 }
 
 function populate_sample_data() {
@@ -1158,6 +1452,9 @@ function detect_distribution() {
 
 function check_dependencies() {
     exit_if_command_not_installed yq
+    if tls_has "$TLS_AUTH" PQ || tls_has "$TLS_AUTH" PQT; then
+        check_pqc_openssl
+    fi
     if [ "$SAMPLE_DATA" = true ]; then
         exit_if_command_not_installed jq
     fi
@@ -1186,6 +1483,7 @@ function check_dependencies() {
         exit_if_kube_command_not_installed helm
         check_microk8s_minimum_requirements
     else
+        install_gateway_api_crds
         check_envoy_gateway_helm
         check_traefik_gateway_helm
     fi
@@ -1237,6 +1535,7 @@ function check_microk8s_minimum_requirements() {
     is_microk8s_addon_enabled hostpath-storage
     is_microk8s_addon_enabled dns
     is_microk8s_addon_enabled cert-manager
+    install_gateway_api_crds
     check_envoy_gateway_helm
     check_traefik_gateway_helm
 }
@@ -1328,15 +1627,42 @@ function is_microk8s_addon_enabled() {
     fi
 }
 
+function install_gateway_api_crds() {
+    # Gateway API CRDs are shared by every Gateway controller we may install
+    # (Envoy Gateway, Traefik, or both), so they are installed once, here,
+    # independently of any controller chart (which must use --skip-crds).
+    # Experimental channel on purpose: Traefik's Gateway provider watches
+    # TCPRoute (absent from the standard channel) and never programs its
+    # Gateways while that list fails.
+    # Must serve the API versions of the gateway-api module Traefik
+    # (ghcr.io/lamassuiot/traefik:pqc-3.7.15, gateway-api v1.6.3) is built
+    # with: v1.5.x only serves TCPRoute as v1alpha2, Traefik watches v1 and
+    # never programs its Gateways.
+    local gateway_api_version="${GATEWAY_API_VERSION:-v1.6.3}"
+    local url="https://github.com/kubernetes-sigs/gateway-api/releases/download/${gateway_api_version}/experimental-install.yaml"
+    echo "Applying Gateway API CRDs ${gateway_api_version} (experimental channel)..."
+    if run_kubectl apply --server-side --force-conflicts -f "$url"; then
+        echo "✅ Gateway API CRDs applied successfully"
+        # A Traefik started before these CRDs existed (e.g. without TCPRoute)
+        # can stay stuck on "Waiting for controller"; restart it to resync.
+        if run_kubectl get deploy traefik -n "${TRAEFIK_NAMESPACE:-traefik-system}" &>/dev/null; then
+            run_kubectl rollout restart deploy/traefik -n "${TRAEFIK_NAMESPACE:-traefik-system}"
+        fi
+    else
+        echo "❌ Failed to apply Gateway API CRDs from ${url}"
+        exit 1
+    fi
+}
+
 function check_envoy_gateway_helm() {
     envoy_gateway_version="v1.8.0"
 
-    # 1. Apply/upgrade Envoy Gateway and Gateway API CRDs before starting the controller.
+    # 1. Apply/upgrade the Envoy Gateway CRDs (gateway.envoyproxy.io) only; the
+    # Gateway API CRDs are controller-agnostic and handled by install_gateway_api_crds.
     echo "Applying Envoy Gateway CRDs ${envoy_gateway_version}..."
     if run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
         --version "${envoy_gateway_version}" \
-        --set crds.gatewayAPI.enabled=true \
-        --set crds.gatewayAPI.channel=experimental \
+        --set crds.gatewayAPI.enabled=false \
         --set crds.envoyGateway.enabled=true \
         | run_kubectl apply --server-side --force-conflicts -f -; then
         echo "✅ Envoy Gateway CRDs applied successfully"
@@ -1349,7 +1675,7 @@ function check_envoy_gateway_helm() {
     if run_helm list -n envoy-gateway-system | grep -q "^eg\s"; then
         echo "✅ Envoy Gateway (eg) Helm release found"
         echo "Upgrading Envoy Gateway to ${envoy_gateway_version}..."
-        if run_helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system; then
+        if run_helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --skip-crds; then
             echo "✅ Envoy Gateway Helm chart 'eg' upgraded successfully"
         else
             echo "❌ Failed to upgrade Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
@@ -1358,7 +1684,7 @@ function check_envoy_gateway_helm() {
     else
         echo "❌ Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
         echo "Installing Envoy Gateway ${envoy_gateway_version}..."
-        if run_helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace; then
+        if run_helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace --skip-crds; then
             echo "✅ Envoy Gateway Helm chart 'eg' installed successfully"
         else
             echo "❌ Failed to install Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
@@ -1400,11 +1726,14 @@ function check_traefik_gateway_helm() {
 image:
   registry: ghcr.io
   repository: lamassuiot/traefik
-  tag: "pqc-3.7.7"
+  tag: "pqc-3.7.15"
+  # pqc-* tags have been rebuilt in place before (pqc-3.7.7); never run a
+  # stale copy cached on the node.
+  pullPolicy: Always
 # The chart's templates gate RBAC/feature rendering on parsing image.tag as
 # semver; our custom PQC tag isn't parseable as-is, so tell the chart which
 # upstream Traefik version to assume instead.
-versionOverride: "3.7.7"
+versionOverride: "3.7.15"
 gateway:
   enabled: false
 providers:
@@ -1444,7 +1773,7 @@ EOF
 
     # The chart's crds/ directory bundles both the traefik.io CRDs we need
     # (Middleware, TLSOption, ...) and its own copy of the Gateway API CRDs,
-    # which collide with the (newer) ones check_envoy_gateway_helm already
+    # which collide with the (newer) ones install_gateway_api_crds already
     # installed, so apply only the traefik.io ones ourselves and let the
     # `helm install`/`upgrade` below skip the rest via --skip-crds.
     run_helm show crds $helm_path "${helm_version_arg[@]}" 2>/dev/null \
@@ -1465,7 +1794,7 @@ EOF
         echo "❌ Traefik: Helm release 'traefik' not found in namespace '$TRAEFIK_NAMESPACE'"
         echo "Installing Traefik ${TRAEFIK_CHART_VERSION}..."
         # --skip-crds: the cluster's Gateway API CRDs are already managed by
-        # check_envoy_gateway_helm (gateway-crds-helm). Traefik's chart bundles
+        # install_gateway_api_crds. Traefik's chart bundles
         # its own (older) copies in crds/, which a newer cluster's
         # ValidatingAdmissionPolicy (safe-upgrades.gateway.networking.k8s.io)
         # rejects as a downgrade.
@@ -1478,6 +1807,36 @@ EOF
     fi
 
     rm -f traefik.yaml
+
+    # The PQC image tracks Traefik master, whose Gateway provider also watches
+    # ListenerSet; the chart's ClusterRole (<= 42.0.0) does not grant it, and a
+    # failing watch keeps every Gateway "Waiting for controller".
+    cat <<EOF | run_kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-listenersets
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["listenersets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["listenersets/status"]
+    verbs: ["update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik-listenersets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-listenersets
+subjects:
+  - kind: ServiceAccount
+    name: traefik
+    namespace: $TRAEFIK_NAMESPACE
+EOF
 
     # 2. Check/Create GatewayClass
     if run_kubectl get gatewayclass traefik >/dev/null 2>&1; then
@@ -1501,29 +1860,28 @@ EOF
         fi
     fi
 
-    # 3. Check/Create the cluster-wide default TLSOption (requests, but does not require, client certs)
-    if run_kubectl get tlsoption default -n "$TRAEFIK_NAMESPACE" >/dev/null 2>&1; then
-        echo "✅ TLSOption 'default' already exists"
-    else
-        echo "Missing TLSOption 'default'. Applying now..."
-        cat <<EOF | run_kubectl apply -f -
+    # 3. Apply the cluster-wide default TLSOption: requests (does not require)
+    # client certs, and accepts the key exchange classes of --tls-kex. Applied
+    # on every run so the flags always win over a previous install.
+    echo "Applying TLSOption 'default' (KEX: $(tls_label "$TLS_KEX"))..."
+    cat <<EOF | run_kubectl apply -f -
 apiVersion: traefik.io/v1alpha1
 kind: TLSOption
 metadata:
   name: default
   namespace: $TRAEFIK_NAMESPACE
 spec:
-  minVersion: VersionTLS12
+  minVersion: $(tls_min_version)
+  curvePreferences: $(tls_curve_preferences)
   clientAuth:
     clientAuthType: RequestClientCert
 EOF
 
-        if [ $? -eq 0 ]; then
-            echo "✅ TLSOption 'default' created successfully"
-        else
-            echo "❌ Failed to create TLSOption 'default'."
-            exit 1
-        fi
+    if [ $? -eq 0 ]; then
+        echo "✅ TLSOption 'default' applied successfully"
+    else
+        echo "❌ Failed to apply TLSOption 'default'."
+        exit 1
     fi
 }
 

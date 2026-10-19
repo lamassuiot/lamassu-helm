@@ -15,10 +15,12 @@ spec:
     {{- range .Values.tls.certManagerOptions.certSpec.hostnames }}
     - {{ . }}
     {{- end }}
+  {{- if .Values.tls.certManagerOptions.certSpec.addresses }}
   ipAddresses:
     {{- range .Values.tls.certManagerOptions.certSpec.addresses }}
     - {{ . }}
     {{- end }}
+  {{- end }}
   secretName: {{ include "downstream.certSecret" . }}
   privateKey:
     algorithm: ECDSA

@@ -64,7 +64,7 @@
         "tls": {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["certManager", "external"] },
+            "type": { "type": "string", "enum": ["certManager", "external", "none"] },
             "certManagerOptions": {
               "type": "object",
               "properties": {
@@ -78,6 +78,11 @@
                 "secretName": { "type": "string" }
               },
               "additionalProperties": false
+            },
+            "additionalSecretNames": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "maxItems": 63
             }
           },
           "additionalProperties": false
