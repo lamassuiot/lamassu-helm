@@ -154,7 +154,38 @@
           ]
         },
         "alerts": { "$ref": "#/definitions/service" },
-        "authz": { "$ref": "#/definitions/service" },
+        "authz": {
+          "allOf": [
+            { "$ref": "#/definitions/service" },
+            {
+              "type": "object",
+              "properties": {
+                "jwkUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "JWKS endpoint used by authz to validate JWTs"
+                },
+                "insecureSkipJwtVerify": {
+                  "type": "boolean",
+                  "description": "Skip OIDC JWT signature verification in authz. Unset/false keeps verification ON against services.authz.jwkUrl. true is for development/testing only."
+                },
+                "database": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "PostgreSQL database name for authz principals, grants, and policies"
+                },
+                "credentials": {
+                  "type": "object",
+                  "description": "Map of schema name to database name for per-schema Postgres credentials"
+                },
+                "bootstrap": {
+                  "type": "array",
+                  "description": "Principal and policy-grant entries seeded on first startup"
+                }
+              }
+            }
+          ]
+        },
         "wfx": {
           "allOf": [
             { "$ref": "#/definitions/service" },

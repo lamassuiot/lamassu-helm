@@ -413,6 +413,10 @@ services:
     image: ghcr.io/lamassuiot/lamassu-authz:dev-v4
     # -- JWKS endpoint used by authz to validate JWTs
     jwkUrl: http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs
+    # -- Skip OIDC JWT signature verification in authz. Unset/false keeps
+    # verification ON against services.authz.jwkUrl (production). true is for
+    # development/testing only: tokens are parsed without checking signatures.
+    insecureSkipJwtVerify: false
     # -- PostgreSQL database name for authz principals, grants, and policies
     database: authz
     # -- Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials.

@@ -42,8 +42,13 @@ data:
 
     preload_dir: /etc/lamassuiot/authz/preload
 
+    {{- if .Values.services.authz.insecureSkipJwtVerify }}
+    # insecure_skip_jwt_verify is development/testing only: JWTs are parsed
+    # without signature verification, so no JWKS endpoint is needed.
+    insecure_skip_jwt_verify: true
+    {{- else }}
     jwks_url: {{ .Values.services.authz.jwkUrl }}
-    enable_jwt_validation: true
+    {{- end }}
 
     schemas:
       pki: /etc/lamassuiot/authz/schemas/pki.json
