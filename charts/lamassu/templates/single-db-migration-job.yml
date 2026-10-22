@@ -30,7 +30,7 @@ data:
       password: "{{ .Values.postgres.password }}"
       database: {{ $authzDB }}
     jwks_url: {{ $authz.jwkUrl }}
-    enable_jwt_validation: true
+    insecure_skip_jwt_verify: false
     preload_dir: /etc/lamassuiot/authz/preload
     {{- if $authz.bootstrap }}
     bootstrap:
