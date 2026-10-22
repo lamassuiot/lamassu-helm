@@ -11,9 +11,6 @@
 {{- $_ := set $podSecurityContext "fsGroupChangePolicy" "OnRootMismatch" -}}
 {{- end -}}
 {{- end -}}
-{{- if and $.Values.amqp.client.secretName (not (hasKey $podSecurityContext "fsGroup")) -}}
-{{- $_ := set $podSecurityContext "fsGroup" (dig "runAsGroup" 65532 ($svc.securityContext | default dict)) -}}
-{{- end -}}
 {{- if and (gt (int $svc.replicaCount) 1) $isLocal }}
   {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
 {{- end }}
@@ -46,10 +43,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc "podSecurityContext" $podSecurityContext) | nindent 6 }}
       containers:
         - name: va
           image: {{ $svc.image }}

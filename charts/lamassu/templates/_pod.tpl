@@ -33,9 +33,12 @@ annotations:
   {{- include "lamassu.annotations" (dict "root" .root "extra" .svc.podAnnotations) | nindent 2 }}
 {{- end -}}
 
-{{/* Security context that makes an AMQP client TLS Secret readable by the non-root app. */}}
+{{/* Shared pod security context with an optional override for workload-specific settings. */}}
 {{- define "lamassu.podSecurityContext" -}}
 {{- $securityContext := deepCopy (.svc.podSecurityContext | default dict) -}}
+{{- if hasKey . "podSecurityContext" -}}
+{{- $securityContext = deepCopy .podSecurityContext -}}
+{{- end -}}
 {{- if and .root.Values.amqp.client.secretName (not (hasKey $securityContext "fsGroup")) -}}
 {{- $_ := set $securityContext "fsGroup" (dig "runAsGroup" 65532 (.svc.securityContext | default dict)) -}}
 {{- end -}}
