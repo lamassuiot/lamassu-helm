@@ -11,6 +11,9 @@
 {{- $_ := set $podSecurityContext "fsGroupChangePolicy" "OnRootMismatch" -}}
 {{- end -}}
 {{- end -}}
+{{- if and $.Values.amqp.client.secretName (not (hasKey $podSecurityContext "fsGroup")) -}}
+{{- $_ := set $podSecurityContext "fsGroup" (dig "runAsGroup" 65532 ($svc.securityContext | default dict)) -}}
+{{- end -}}
 {{- if and (gt (int $svc.replicaCount) 1) $isLocal }}
   {{ fail "VA replicaCount > 1 is not supported with fileStore.type=local (ReadWriteOnce PVC). Use s3 or a ReadWriteMany volume." }}
 {{- end }}
@@ -84,6 +87,7 @@ spec:
             - name: local-crl-file-storage
               mountPath: {{ $storageDir }}
             {{- end }}
+            {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
           ports:
             - containerPort: {{ $svc.port }}
       restartPolicy: Always
@@ -92,6 +96,7 @@ spec:
         - name: api-config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "va-config") }}
+        {{- include "lamassu.amqpVolumes" $ | nindent 8 }}
   {{- if $isLocal }}
   # volumeClaimTemplates is immutable, so it only carries the selector labels:
   # a chart version bump or a commonLabels change must not alter it.

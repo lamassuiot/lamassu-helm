@@ -4,6 +4,8 @@
 {{- $resourceName := include "lamassu.componentName" (dict "root" $ "component" "kms") -}}
 {{- if and (or $hasFilesystemEngine $svc.pkcs11Sidecar.enabled) (not (hasKey $podSecurityContext "fsGroup")) -}}
 {{- $_ := set $podSecurityContext "fsGroup" 65532 -}}
+{{- else if and $.Values.amqp.client.secretName (not (hasKey $podSecurityContext "fsGroup")) -}}
+{{- $_ := set $podSecurityContext "fsGroup" (dig "runAsGroup" 65532 ($svc.securityContext | default dict)) -}}
 {{- end -}}
 
 {{- if and $hasFilesystemEngine (gt (int $svc.replicaCount) 1) -}}
@@ -193,6 +195,7 @@ spec:
             {{- end }}
             - name: golang-engine-storage
               mountPath: /crypto/fs
+            {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
           ports:
             - containerPort: {{ $svc.port }}
       restartPolicy: Always
@@ -216,6 +219,7 @@ spec:
         - name: golang-engine-storage
           emptyDir: {}
         {{- end }}
+        {{- include "lamassu.amqpVolumes" $ | nindent 8 }}
   {{- if $hasFilesystemEngine }}
   # volumeClaimTemplates is immutable, so it only carries the selector labels:
   # a chart version bump or a commonLabels change must not alter it.

@@ -73,8 +73,56 @@
         "port": { "$ref": "#/definitions/port" },
         "username": { "type": "string" },
         "password": { "type": "string" },
-        "tls": { "type": "boolean" }
+        "tls": { "type": "boolean" },
+        "ca": {
+          "type": "object",
+          "properties": {
+            "secretName": { "type": "string" },
+            "certificateKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
+          },
+          "required": ["secretName", "certificateKey"],
+          "additionalProperties": false
+        },
+        "client": {
+          "type": "object",
+          "properties": {
+            "secretName": { "type": "string" },
+            "certificateKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+            "privateKeyKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
+          },
+          "required": ["secretName", "certificateKey", "privateKeyKey"],
+          "additionalProperties": false
+        }
       },
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "required": ["ca"],
+                "properties": {
+                  "ca": {
+                    "required": ["secretName"],
+                    "properties": { "secretName": { "type": "string", "minLength": 1 } }
+                  }
+                }
+              },
+              {
+                "required": ["client"],
+                "properties": {
+                  "client": {
+                    "required": ["secretName"],
+                    "properties": { "secretName": { "type": "string", "minLength": 1 } }
+                  }
+                }
+              }
+            ]
+          },
+          "then": {
+            "properties": { "tls": { "const": true } }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "observability": {

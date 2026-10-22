@@ -33,6 +33,56 @@ annotations:
   {{- include "lamassu.annotations" (dict "root" .root "extra" .svc.podAnnotations) | nindent 2 }}
 {{- end -}}
 
+{{/* Security context that makes an AMQP client TLS Secret readable by the non-root app. */}}
+{{- define "lamassu.podSecurityContext" -}}
+{{- $securityContext := deepCopy (.svc.podSecurityContext | default dict) -}}
+{{- if and .root.Values.amqp.client.secretName (not (hasKey $securityContext "fsGroup")) -}}
+{{- $_ := set $securityContext "fsGroup" (dig "runAsGroup" 65532 (.svc.securityContext | default dict)) -}}
+{{- end -}}
+{{- with $securityContext }}
+securityContext:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/* Mount configured AMQP CA and optional client certificate Secrets into the app container. */}}
+{{- define "lamassu.amqpVolumeMounts" -}}
+{{- if .Values.amqp.ca.secretName }}
+- name: amqp-ca-certificate
+  mountPath: /etc/lamassu/amqp/ca
+  readOnly: true
+{{- end }}
+{{- if .Values.amqp.client.secretName }}
+- name: amqp-client-tls
+  mountPath: /etc/lamassu/amqp/client
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/* Define Secret volumes shared by all AMQP-consuming workloads. */}}
+{{- define "lamassu.amqpVolumes" -}}
+{{- with .Values.amqp.ca.secretName }}
+- name: amqp-ca-certificate
+  secret:
+    secretName: {{ . | quote }}
+    defaultMode: 0444
+    items:
+      - key: {{ $.Values.amqp.ca.certificateKey | quote }}
+        path: ca.crt
+{{- end }}
+{{- with .Values.amqp.client.secretName }}
+- name: amqp-client-tls
+  secret:
+    secretName: {{ . | quote }}
+    defaultMode: 0440
+    items:
+      - key: {{ $.Values.amqp.client.certificateKey | quote }}
+        path: tls.crt
+      - key: {{ $.Values.amqp.client.privateKeyKey | quote }}
+        path: tls.key
+{{- end }}
+{{- end -}}
+
 {{/* User-supplied pod placement policy. */}}
 {{- define "lamassu.podPlacement" -}}
 {{- with .svc.nodeSelector }}
