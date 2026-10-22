@@ -193,3 +193,4 @@ Kubernetes: `>=1.24.0-0`
 | tls.certManagerOptions.issuer | string | `""` | CertManager Issuer to use to sign the certificate for the API Gateway. Ignored if `clusterIssuer` is set. If left empty, a self signed certificate will be used. |
 | tls.externalOptions.secretName | string | `""` | Secret name for the TLS certificate to be used for the API Gateway (the secret at least must have `tls.crt` and `tls.key` keys) |
 | tls.type | string | `"certManager"` | TLS certificate provider to use for the API Gateway. Allowed values are: `certManager`, `external` |
+
