@@ -27,10 +27,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $svc.podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc) | nindent 6 }}
       containers:
         - name: {{ $component }}
           image: {{ $svc.image }}
@@ -62,12 +59,14 @@ spec:
             - name: api-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+            {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
         - name: api-config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" (printf "%s-config" $component)) }}
+        {{- include "lamassu.amqpVolumes" $ | nindent 8 }}
 ---
 {{- end -}}
 {{- end -}}

@@ -50,9 +50,18 @@ AMQP event bus block. Context dict:
   log_level: "debug"
   enabled: true
   provider: amqp
-  protocol: amqp #amqp | amqps
+  protocol: {{ ternary "amqps" "amqp" .root.Values.amqp.tls }}
   hostname: {{ .root.Values.amqp.hostname }}
   port: {{ .root.Values.amqp.port }}
+  {{- with .root.Values.amqp.ca.secretName }}
+  ca_cert_file: /etc/lamassu/amqp/ca/ca.crt
+  {{- end }}
+  {{- with .root.Values.amqp.client.secretName }}
+  client_tls_auth:
+    enabled: true
+    cert_file: /etc/lamassu/amqp/client/tls.crt
+    key_file: /etc/lamassu/amqp/client/tls.key
+  {{- end }}
   {{- if .dlq }}
   exchange: lamassu-dlq
   {{- end }}

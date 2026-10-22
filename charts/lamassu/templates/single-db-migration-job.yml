@@ -12,8 +12,9 @@ metadata:
     {{- include "lamassu.labels" (dict "root" $ "component" "migration") | nindent 4 }}
   annotations:
     # Must exist before the upgrade Job runs, so it is a hook with a lower weight
-    # than the Job. Carries only what `authz init` reads — connection, preload
-    # directory and bootstrap entries — not the full service configuration.
+    # than the Job. Carries only what `authz init` reads — connection, JWT
+    # validation, preload directory and bootstrap entries — not the full
+    # service configuration.
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-4"
     "helm.sh/hook-delete-policy": before-hook-creation
@@ -28,6 +29,8 @@ data:
       username: "{{ .Values.postgres.username }}"
       password: "{{ .Values.postgres.password }}"
       database: {{ $authzDB }}
+    jwks_url: {{ $authz.jwkUrl }}
+    insecure_skip_jwt_verify: false
     preload_dir: /etc/lamassuiot/authz/preload
     {{- if $authz.bootstrap }}
     bootstrap:

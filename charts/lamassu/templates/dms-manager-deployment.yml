@@ -22,10 +22,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $svc.podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc) | nindent 6 }}
       initContainers:
         - name: build-cert-bundle
           image: {{ $svc.tlsInitContainer.image | quote }}
@@ -98,6 +95,7 @@ spec:
               subPath: config
             - name: cert-output
               mountPath: /shared
+            {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
           ports:
             - containerPort: {{ $svc.port }}
       restartPolicy: Always
@@ -122,3 +120,4 @@ spec:
                   optional: true
         - name: cert-output
           emptyDir: {}
+        {{- include "lamassu.amqpVolumes" $ | nindent 8 }}
