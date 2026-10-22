@@ -62,7 +62,6 @@ spec:
               readOnly: true
             - name: cert-output
               mountPath: /shared
-            {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
       containers:
         - name: dms-manager
           image: {{ $svc.image }}
