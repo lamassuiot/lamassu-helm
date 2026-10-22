@@ -1294,25 +1294,78 @@ function is_microk8s_addon_enabled() {
 function check_envoy_gateway_helm() {
     envoy_gateway_version="v1.8.0"
 
-    # 1. Apply/upgrade Envoy Gateway and Gateway API CRDs before starting the controller.
-    echo "Applying Envoy Gateway CRDs ${envoy_gateway_version}..."
-    if run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
-        --version "${envoy_gateway_version}" \
-        --set crds.gatewayAPI.enabled=true \
-        --set crds.gatewayAPI.channel=experimental \
-        --set crds.envoyGateway.enabled=true \
-        | run_kubectl apply --server-side --force-conflicts -f -; then
-        echo "✅ Envoy Gateway CRDs applied successfully"
+    # 1. CRDs first, controller second. CRDs are applied with kubectl (field
+    # manager "kubectl"), so the eg Helm install below must skip its bundled
+    # CRDs; otherwise its server-side apply conflicts with kubectl ownership
+    # on the safe-upgrades ValidatingAdmissionPolicy objects.
+    local gateway_api_crd=gateways.gateway.networking.k8s.io
+    local gateway_api_version=""
+    local gateway_api_channel=""
+    local eg_kubebuilder=""
+    local eg_crd_name="envoyproxies.gateway.envoyproxy.io"
+    local needs_crd_install=true
+    local crd_compatibility=unknown
+
+    echo "Checking Gateway API and Envoy Gateway CRDs..."
+    if gateway_api_version=$(run_kubectl get crd "$gateway_api_crd" -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}' 2>/dev/null) && [ -n "$gateway_api_version" ]; then
+        gateway_api_channel=$(run_kubectl get crd "$gateway_api_crd" -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/channel}' 2>/dev/null)
+        if [ "$gateway_api_channel" != "experimental" ]; then
+            echo "⚠️ Gateway API CRDs are on the '${gateway_api_channel:-standard}' channel; the fast lane requires experimental (TCPRoute)."
+            echo "   The safe-upgrades policy blocks installing experimental over standard: uninstall the VAP and CRDs first, then rerun."
+            echo "   kubectl delete validatingadmissionpolicy safe-upgrades.gateway.networking.k8s.io validatingadmissionpolicybinding safe-upgrades.gateway.networking.k8s.io"
+            echo "   kubectl delete crd -l gateway.networking.k8s.io/policy=Direct 2>/dev/null || true"
+            exit 1
+        fi
+        needs_crd_install=false
+        echo "✅ Gateway API CRDs already installed (bundle ${gateway_api_version}, channel ${gateway_api_channel}); no CRD apply needed."
     else
-        echo "❌ Failed to apply Envoy Gateway CRDs. Please check Helm/Kubernetes output and try again."
-        exit 1
+        echo "Gateway API CRDs not found; installing them now (before Envoy Gateway)."
+    fi
+
+    # Envoy Gateway CRDs: presence + a coarse compatibility probe. The v1.8.0
+    # release requires the v1alpha1 envoyproxies schema; older installs
+    # (pre-v1.5) served only v1alpha2/v1alpha3 names that no longer match.
+    if [ "$needs_crd_install" = false ]; then
+        if eg_kubebuilder=$(run_kubectl get crd "$eg_crd_name" -o jsonpath='{.metadata.annotations.controller-gen\.kubebuilder\.io/version}' 2>/dev/null) && [ -n "$eg_kubebuilder" ]; then
+            case "$eg_kubebuilder" in
+            v0.20.*)
+                crd_compatibility=compatible
+                echo "✅ Envoy Gateway CRDs are up to date (kubebuilder ${eg_kubebuilder})"
+                ;;
+            v0.1[6-9].* | v0.2[0-9].*)
+                crd_compatibility=upgradeable
+                echo "⚠️ Envoy Gateway CRDs are older (kubebuilder ${eg_kubebuilder}); they will be upgraded server-side"
+                ;;
+            *)
+                crd_compatibility=incompatible
+                echo "⚠️ Envoy Gateway CRDs are too old (kubebuilder ${eg_kubebuilder}); forcing CRD upgrade to ${envoy_gateway_version}"
+                ;;
+            esac
+        else
+            echo "Envoy Gateway CRDs not found; they will be installed with the Gateway API bundle."
+        fi
+    fi
+
+    if [ "$needs_crd_install" = true ] || [ "$crd_compatibility" != "compatible" ]; then
+        echo "Installing Gateway API and Envoy Gateway CRDs via kubectl (Envoy Gateway itself comes later, without CRDs)..."
+        if run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+            --version "${envoy_gateway_version}" \
+            --set crds.gatewayAPI.enabled=true \
+            --set crds.gatewayAPI.channel=experimental \
+            --set crds.envoyGateway.enabled=true \
+            | run_kubectl apply --server-side --force-conflicts -f -; then
+            echo "✅ Envoy Gateway CRDs applied successfully"
+        else
+            echo "❌ Failed to apply Envoy Gateway CRDs. Please check Helm/Kubernetes output and try again."
+            exit 1
+        fi
     fi
 
     # 2. Check Helm Release
     if run_helm list -n envoy-gateway-system | grep -q "^eg\s"; then
         echo "✅ Envoy Gateway (eg) Helm release found"
         echo "Upgrading Envoy Gateway to ${envoy_gateway_version}..."
-        if run_helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system; then
+        if run_helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --skip-crds; then
             echo "✅ Envoy Gateway Helm chart 'eg' upgraded successfully"
         else
             echo "❌ Failed to upgrade Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
@@ -1320,8 +1373,8 @@ function check_envoy_gateway_helm() {
         fi
     else
         echo "❌ Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
-        echo "Installing Envoy Gateway ${envoy_gateway_version}..."
-        if run_helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace; then
+        echo "Installing Envoy Gateway ${envoy_gateway_version} (CRDs are already installed, skipping Helm CRDs)..."
+        if run_helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace --skip-crds; then
             echo "✅ Envoy Gateway Helm chart 'eg' installed successfully"
         else
             echo "❌ Failed to install Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
@@ -1350,6 +1403,22 @@ EOF
             exit 1
         fi
     fi
+
+    # report_missing_eg_crds <expected_names>: for each CRD the target Envoy Gateway
+    # release ships, print the ones missing on the cluster. Presence alone is not
+    # enough: a release also needs its CRDs compatible (kubebuilder annotation >=
+    # the oldest version serving the API versions the controller requires).
+    function report_missing_eg_crds() {
+        local required_crds="backends.backendtrafficpolicies.clienttrafficpolicies.envoyextensionpolicies.envoypatchpolicies.envoyproxies.httproutefilters.securitypolicies"
+        local missing=""
+        for crd in $(echo "$required_crds" | tr '.' ' '); do
+            if ! run_kubectl get crd "${crd}.gateway.envoyproxy.io" >/dev/null 2>&1; then
+                missing+="${crd}.gateway.envoyproxy.io "
+            fi
+        done
+        echo "${missing% }"
+    }
+
 }
 
 function install_observability() {

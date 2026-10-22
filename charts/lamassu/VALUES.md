@@ -123,6 +123,7 @@ Kubernetes: `>=1.24.0-0`
 | services.authz.credentials | object | `{}` | Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials. e.g. credentials: { pki: { database: pki_db } } |
 | services.authz.database | string | `"authz"` | PostgreSQL database name for authz principals, grants, and policies |
 | services.authz.image | string | `"ghcr.io/lamassuiot/lamassu-authz:dev-v4"` | Docker image for the Authz connector component |
+| services.authz.insecureSkipJwtVerify | bool | `false` | Skip OIDC JWT signature verification in authz. Unset/false keeps verification ON against services.authz.jwkUrl (production). true is for development/testing only: tokens are parsed without checking signatures. |
 | services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domain to be used while signing/generating new CAs and certificates |
 | services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:dev-v4"` | Docker image for the CA component |
