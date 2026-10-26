@@ -37,6 +37,34 @@ operator.
 > in-place upgrade. AWS connectors are now configured as a map keyed by their
 > stable connector ID instead of a list containing `id` fields.
 
+## AMQP TLS
+
+Set `amqp.tls: true` to use AMQPS and configure `amqp.port` to the broker's TLS
+listener. System-trusted CA certificates are used by default. To trust a private
+CA, create a Secret in the release namespace containing its PEM certificate and
+set `amqp.ca.secretName` (and `certificateKey` if the Secret data key is not
+`ca.crt`).
+
+For brokers that require mutual TLS, also create a Secret containing the client
+certificate and private key, then set `amqp.client.secretName`. The default
+Secret data keys are `tls.crt` and `tls.key`; override them with
+`certificateKey` and `privateKeyKey` if needed. The chart mounts configured
+Secrets read-only into all AMQP-consuming Lamassu pods. These certificate
+options require `amqp.tls: true`; the client private key is mounted with
+restrictive permissions.
+The AMQP client loads TLS certificates at startup, so restart the consuming
+pods after updating either Secret.
+
+```yaml
+amqp:
+  tls: true
+  port: 5671
+  ca:
+    secretName: rabbitmq-ca
+  client:
+    secretName: lamassu-amqp-client
+```
+
 ## Values
 
 The complete generated values reference is maintained in [VALUES.md](VALUES.md).
@@ -78,7 +106,12 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | amqp.port | int | `5672` | AMQP server port |
 | amqp.username | string | `""` | AMQP username |
 | amqp.password | string | `""` | AMQP password |
-| amqp.tls | bool | `false` | Enable AMQP over TLS (AMQPS) |
+| amqp.tls | bool | `false` | Enable AMQP over TLS (AMQPS). Set `port` to the broker's TLS listener port if it differs from `5672`. |
+| amqp.ca.secretName | string | `""` | Existing Secret in the release namespace containing the private CA certificate trusted for the AMQP broker. Leave empty to use system-trusted CAs. |
+| amqp.ca.certificateKey | string | `"ca.crt"` | Secret data key containing the CA certificate in PEM format. |
+| amqp.client.secretName | string | `""` | Existing Secret in the release namespace containing the client certificate and private key for AMQP mutual TLS. Leave empty when the broker does not require a client certificate. |
+| amqp.client.certificateKey | string | `"tls.crt"` | Secret data key containing the client certificate in PEM format. |
+| amqp.client.privateKeyKey | string | `"tls.key"` | Secret data key containing the client private key in PEM format. |
 | **Authentication & Authorization** | | | |
 | auth.oidc.frontend.clientId | string | `"frontend"` | OIDC client ID for the frontend |
 | auth.oidc.frontend.authority | string | `"https://${window.location.host}/auth/realms/lamassu"` | OIDC provider base URL (can be a JS expression) |
