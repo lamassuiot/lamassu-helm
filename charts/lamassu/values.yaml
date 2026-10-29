@@ -95,7 +95,7 @@ amqp:
     # -- Secret data key containing the client private key in PEM format.
     privateKeyKey: tls.key
 observability:
-  # -- Enable OpenTelemetry instrumentation for all Lamassu services
+  # -- Enable OpenTelemetry instrumentation for Lamassu services that support it. AWS Connector is not instrumented.
   enabled: false
   # -- HTTP routes for the observability UIs exposed through the API Gateway
   routes:

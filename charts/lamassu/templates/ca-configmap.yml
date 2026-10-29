@@ -23,9 +23,6 @@ data:
     certificate_monitoring_job:
       enabled: true
       frequency: "{{ .Values.services.ca.monitoring.frequency }}"
-      automatic_ca_rotation:
-        enabled: false
-        renewal_delta: "1d"
 
     va_server_domains:
     {{ range $.Values.services.ca.domains }}
