@@ -89,9 +89,37 @@ jobs:
             found && /^---$/ { exit }
           ' /tmp/lamassu-ca-to-kms.yaml)
 
-          grep -q 'name: lamassu-kms-config' <<<"$job"
-          grep -q 'name: kms-config' <<<"$job"
-          grep -q 'projected:' <<<"$job"
+          config_map_sources=$(awk '
+            /^            sources:$/ { in_sources=1; next }
+            in_sources && /^              - configMap:$/ {
+              if (in_config_map) {
+                print config_map_name "|" config_map_optional
+              }
+              in_config_map=1
+              config_map_name=""
+              config_map_optional=""
+              next
+            }
+            in_sources && in_config_map && /^                  name: / {
+              config_map_name=$0
+              sub(/^                  name: /, "", config_map_name)
+              next
+            }
+            in_sources && in_config_map && /^                  optional: / {
+              config_map_optional=$0
+              sub(/^                  optional: /, "", config_map_optional)
+              next
+            }
+            in_sources && /^---$/ { exit }
+            END {
+              if (in_config_map) {
+                print config_map_name "|" config_map_optional
+              }
+            }
+          ' <<<"$job")
+
+          expected_config_map_sources=$'lamassu-kms-config|true\nkms-config|true'
+          test "$config_map_sources" = "$expected_config_map_sources"
           grep -q '"helm.sh/hook-weight": "-10"' <<<"$job"
 
       - name: Verify deprecated CA crypto engines are rejected
