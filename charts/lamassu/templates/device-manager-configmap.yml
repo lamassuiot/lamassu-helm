@@ -16,13 +16,6 @@ data:
 
     {{- include "lamassu.config.storage" $ | nindent 4 }}
 
-    device_manager_client:
-      log_level: debug
-      auth_mode: noauth
-      protocol: http
-      hostname: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
-      port: {{ $svc.port }}
-
     ca_client:
       log_level: debug
       auth_mode: noauth

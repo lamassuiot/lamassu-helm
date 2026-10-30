@@ -151,7 +151,7 @@ function usage() {
     echo " --tls-key                    Path to the PEM encoded key used for downstream communications"
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
-    echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in all Lamassu services"
+    echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in supported Lamassu services (AWS Connector, authz, wfx and the UI are not instrumented)"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: charts/softhsm in this repository"
     echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
@@ -555,6 +555,7 @@ amqp:
 
 services:
   ca:
+  kms:
     cryptoEngines:
       defaultEngineID: fs-1
       engines:

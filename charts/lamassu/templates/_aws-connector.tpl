@@ -32,10 +32,7 @@ ca_client:
   hostname: {{ include "lamassu.componentName" (dict "root" .root "component" "ca") }}
   port: {{ include "lamassu.config.servicePort" (dict "root" .root "svcKey" "ca") }}
 
-{{- include "lamassu.config.authzClient" .root | nindent 0 }}
-
 connector_id: {{ .connectorID }}
 aws_config:
   {{ .instance.credentials | toYaml | indent 2 | trim }}
-{{- include "lamassu.config.otel" .root | nindent 0 }}
 {{- end -}}

@@ -170,7 +170,16 @@
       "properties": {
         "ui": { "$ref": "#/definitions/service" },
         "va": { "$ref": "#/definitions/service" },
-        "ca": { "$ref": "#/definitions/service" },
+        "ca": {
+          "allOf": [
+            { "$ref": "#/definitions/service" },
+            {
+              "not": {
+                "required": ["cryptoEngines"]
+              }
+            }
+          ]
+        },
         "kms": {
           "allOf": [
             { "$ref": "#/definitions/service" },

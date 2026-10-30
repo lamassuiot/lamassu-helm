@@ -184,6 +184,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | services.va.fileStore.s3 | object | `{}` | Free-form map of S3 config keys injected directly into the `filesystem_storage` config block. Only used when `fileStore.type: s3`. Keys map to `s3.AWSS3FilesystemConfig` + `sharedAWS.AWSSDKConfig` mapstructure field names (e.g. `bucket_name`, `auth_method`, `region`, `access_key_id`, `role_arn`). |
 | services.va.job.crl.frequency | string | `"* * * * *"` | CRL computation job frequency (CRON syntax) |
 | **KMS Service Configuration** | | | |
+| — | — | — | `cryptoEngines` must live under `services.kms`; `services.ca.cryptoEngines` is rejected by the schema |
 | services.kms.cryptoEngines.defaultEngineID | string | `"filesystem-1"` | Default crypto engine ID to use |
 | services.kms.cryptoEngines.engines[0].id | string | `"filesystem-1"` | Crypto engine ID |
 | services.kms.cryptoEngines.engines[0].type | string | `"filesystem"` | Engine type: `filesystem`, `pkcs11`, `hashicorp_vault`, `aws_kms`, `aws_secrets_manager` |
