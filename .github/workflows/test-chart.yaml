@@ -72,6 +72,59 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify CA-to-KMS migration ConfigMap sources
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set migrations.caToKms.enabled=true \
+            >/tmp/lamassu-ca-to-kms.yaml
+
+          job=$(awk '
+            /^kind: Job$/ { in_job=1 }
+            in_job && /^  name: lamassu-ca-to-kms-migration$/ { found=1 }
+            found { print }
+            found && /^---$/ { exit }
+          ' /tmp/lamassu-ca-to-kms.yaml)
+
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -kubernetes-version 1.29.0 /tmp/lamassu-ca-to-kms.yaml
+
+          config_map_sources=$(awk '
+            /^            sources:$/ { in_sources=1; next }
+            in_sources && /^              - configMap:$/ {
+              if (in_config_map) {
+                print config_map_name "|" config_map_optional
+              }
+              in_config_map=1
+              config_map_name=""
+              config_map_optional=""
+              next
+            }
+            in_sources && in_config_map && /^                  name: / {
+              config_map_name=$0
+              sub(/^                  name: /, "", config_map_name)
+              next
+            }
+            in_sources && in_config_map && /^                  optional: / {
+              config_map_optional=$0
+              sub(/^                  optional: /, "", config_map_optional)
+              next
+            }
+            in_sources && /^---$/ { exit }
+            END {
+              if (in_config_map) {
+                print config_map_name "|" config_map_optional
+              }
+            }
+          ' <<<"$job")
+
+          expected_config_map_sources=$'lamassu-kms-config|true\nkms-config|true'
+          test "$config_map_sources" = "$expected_config_map_sources"
+          grep -q '"helm.sh/hook-weight": "-10"' <<<"$job"
+
       - name: Verify deprecated CA crypto engines are rejected
         if: steps.list-changed.outputs.changed == 'true'
         run: |
