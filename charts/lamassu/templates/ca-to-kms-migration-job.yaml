@@ -38,8 +38,9 @@ spec:
         - name: kms-config
           projected:
             sources:
-              # Keep the release-scoped ConfigMap optional so upgrades from 3.8.0
-              # can fall back to it after the legacy ConfigMap has been removed.
+              # Optional because this hook runs before the release-scoped ConfigMap
+              # exists during the first 3.8.0 to 4.0.0 upgrade; without this, the
+              # pod hangs in ContainerCreating.
               - configMap:
                   name: {{ include "lamassu.componentName" (dict "root" $ "component" "kms-config") }}
                   optional: true

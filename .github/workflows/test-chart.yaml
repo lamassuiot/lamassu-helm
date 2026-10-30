@@ -89,6 +89,9 @@ jobs:
             found && /^---$/ { exit }
           ' /tmp/lamassu-ca-to-kms.yaml)
 
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -kubernetes-version 1.29.0 /tmp/lamassu-ca-to-kms.yaml
+
           config_map_sources=$(awk '
             /^            sources:$/ { in_sources=1; next }
             in_sources && /^              - configMap:$/ {

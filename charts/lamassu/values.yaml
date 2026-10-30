@@ -484,7 +484,7 @@ migrations:
       - dmsmanager
       - kms
   caToKms:
-    # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It uses the legacy unscoped `kms-config` ConfigMap while it still exists and falls back to the release-scoped `<release>-lamassu-kms-config` once the legacy ConfigMap is gone.
+    # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It uses the legacy unscoped `kms-config` ConfigMap while it still exists and falls back to the release-scoped `<chart fullname>-kms-config` (`lamassu-kms-config` when the release is named `lamassu`) once the legacy ConfigMap is gone.
     enabled: false
     # -- Docker image for the CA-to-KMS migration tool
     image: ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4
