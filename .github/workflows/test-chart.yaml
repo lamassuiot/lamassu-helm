@@ -72,6 +72,29 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify deprecated CA crypto engines are rejected
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set +e
+
+          helm lint charts/lamassu \
+            -f charts/lamassu/ci/reject-ca-crypto-engines-values.yaml \
+            >/tmp/helm-lint-rejection.log 2>&1
+          lint_status=$?
+
+          helm template lamassu charts/lamassu \
+            -f charts/lamassu/ci/reject-ca-crypto-engines-values.yaml \
+            >/tmp/helm-template-rejection.log 2>&1
+          template_status=$?
+
+          cat /tmp/helm-lint-rejection.log
+          cat /tmp/helm-template-rejection.log
+
+          if [[ "$lint_status" -eq 0 || "$template_status" -eq 0 ]]; then
+            echo "services.ca.cryptoEngines was unexpectedly accepted"
+            exit 1
+          fi
+
       - name: Check generated values documentation
         if: steps.list-changed.outputs.changed == 'true'
         run: |
