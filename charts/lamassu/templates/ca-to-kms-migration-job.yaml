@@ -36,11 +36,19 @@ spec:
               readOnly: true
       volumes:
         - name: kms-config
-          configMap:
-            # Optional so the migration tool fails fast with a clear error, instead
-            # of the pod hanging in ContainerCreating, once the legacy ConfigMap is gone.
-            optional: true
-            # This one-time pre-upgrade migration consumes the ConfigMap created
-            # by chart versions prior to release-scoped resource naming.
-            name: kms-config
+          projected:
+            sources:
+              # Prefer the release-scoped ConfigMap created by the current chart.
+              # It is optional so upgrades from 3.8.0 can use the legacy ConfigMap
+              # below when the scoped resource does not exist yet.
+              - configMap:
+                  name: {{ include "lamassu.componentName" (dict "root" $ "component" "kms-config") }}
+                  optional: true
+              # This one-time pre-upgrade migration also supports the ConfigMap
+              # created by chart versions prior to release-scoped resource naming.
+              # It is listed last so the legacy configuration remains authoritative
+              # when both resources exist during the migration.
+              - configMap:
+                  name: kms-config
+                  optional: true
 {{- end }}

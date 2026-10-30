@@ -72,6 +72,28 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify CA-to-KMS migration ConfigMap sources
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set migrations.caToKms.enabled=true \
+            >/tmp/lamassu-ca-to-kms.yaml
+
+          job=$(awk '
+            /^kind: Job$/ { in_job=1 }
+            in_job && /^  name: lamassu-ca-to-kms-migration$/ { found=1 }
+            found { print }
+            found && /^---$/ { exit }
+          ' /tmp/lamassu-ca-to-kms.yaml)
+
+          grep -q 'name: lamassu-kms-config' <<<"$job"
+          grep -q 'name: kms-config' <<<"$job"
+          grep -q 'projected:' <<<"$job"
+          grep -q '"helm.sh/hook-weight": "-10"' <<<"$job"
+
       - name: Verify deprecated CA crypto engines are rejected
         if: steps.list-changed.outputs.changed == 'true'
         run: |
