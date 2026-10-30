@@ -77,14 +77,10 @@ jobs:
         run: |
           set +e
 
-          helm lint charts/lamassu \
-            -f charts/lamassu/ci/reject-ca-crypto-engines-values.yaml \
-            >/tmp/helm-lint-rejection.log 2>&1
+          helm lint charts/lamassu -f .github/ci/reject-ca-crypto-engines-values.yaml >/tmp/helm-lint-rejection.log 2>&1
           lint_status=$?
 
-          helm template lamassu charts/lamassu \
-            -f charts/lamassu/ci/reject-ca-crypto-engines-values.yaml \
-            >/tmp/helm-template-rejection.log 2>&1
+          helm template lamassu charts/lamassu -f .github/ci/reject-ca-crypto-engines-values.yaml >/tmp/helm-template-rejection.log 2>&1
           template_status=$?
 
           cat /tmp/helm-lint-rejection.log
@@ -92,6 +88,12 @@ jobs:
 
           if [[ "$lint_status" -eq 0 || "$template_status" -eq 0 ]]; then
             echo "services.ca.cryptoEngines was unexpectedly accepted"
+            exit 1
+          fi
+
+          if ! grep -q "specifications of the schema" /tmp/helm-lint-rejection.log ||
+            ! grep -q "specifications of the schema" /tmp/helm-template-rejection.log; then
+            echo "Helm did not reject services.ca.cryptoEngines for schema validation"
             exit 1
           fi
 

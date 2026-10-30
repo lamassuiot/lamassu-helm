@@ -66,7 +66,7 @@ Kubernetes: `>=1.24.0-0`
 | migrations.db.databases[5] | string | `"kms"` |  |
 | migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4"` |  |
 | nameOverride | string | `""` | Partially override the name used for release-scoped resources. |
-| observability.enabled | bool | `false` | Enable OpenTelemetry instrumentation for Lamassu services that support it. AWS Connector and authz are not instrumented. |
+| observability.enabled | bool | `false` | Enable OpenTelemetry instrumentation for Lamassu services that support it. AWS Connector, authz, wfx and the UI are not instrumented. |
 | observability.logs.basePath | string | `"/insert/opentelemetry/v1/logs"` | Base path for the Victoria Logs OTLP log ingestion endpoint |
 | observability.logs.hostname | string | `"victoria-logs"` |  |
 | observability.logs.port | int | `9428` | OTLP HTTP port exposed by Victoria Logs |
