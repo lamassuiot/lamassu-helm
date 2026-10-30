@@ -141,11 +141,8 @@ Kubernetes: `>=1.24.0-0`
 | services.kms.args | list | `[]` | Optional arguments override for the KMS container |
 | services.kms.autoscaling.maxReplicas | int | `3` |  |
 | services.kms.command | list | `[]` | Optional command override for the KMS container |
+| services.kms.cryptoEngines | object | `{"defaultEngineID":"filesystem-1","engines":[{"id":"filesystem-1","metadata":{"prod-ready":"false"},"storage_directory":"/crypto/fs","type":"filesystem"}]}` | `cryptoEngines` must live under `services.kms`; `services.ca.cryptoEngines` is rejected by the schema |
 | services.kms.cryptoEngines.defaultEngineID | string | `"filesystem-1"` | Default engine ID to be used for the KMS component |
-| services.kms.cryptoEngines.engines[0].id | string | `"filesystem-1"` |  |
-| services.kms.cryptoEngines.engines[0].metadata.prod-ready | string | `"false"` |  |
-| services.kms.cryptoEngines.engines[0].storage_directory | string | `"/crypto/fs"` |  |
-| services.kms.cryptoEngines.engines[0].type | string | `"filesystem"` |  |
 | services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:dev-v4"` | Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC). |
 | services.kms.pkcs11Modules | list | `[]` | Optional PKCS#11 modules to inject into KMS at runtime. Each entry runs a    short-lived init container that stages a module and optional config in a    shared volume mounted read-only into KMS. Fields: name (unique), image,    imagePullPolicy, securityContext, command, args, env, and mountPath. |
 | services.kms.pkcs11Sidecar.args | list | `[]` | Arguments for the PKCS#11 sidecar |

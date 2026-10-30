@@ -92,7 +92,9 @@ jobs:
           fi
 
           if ! grep -q "specifications of the schema" /tmp/helm-lint-rejection.log ||
-            ! grep -q "specifications of the schema" /tmp/helm-template-rejection.log; then
+            ! grep -q "specifications of the schema" /tmp/helm-template-rejection.log ||
+            ! grep -q "services.ca" /tmp/helm-lint-rejection.log ||
+            ! grep -q "services.ca" /tmp/helm-template-rejection.log; then
             echo "Helm did not reject services.ca.cryptoEngines for schema validation"
             exit 1
           fi

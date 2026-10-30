@@ -323,6 +323,7 @@ services:
     #    shared volume mounted read-only into KMS. Fields: name (unique), image,
     #    imagePullPolicy, securityContext, command, args, env, and mountPath.
     pkcs11Modules: []
+    # -- `cryptoEngines` must live under `services.kms`; `services.ca.cryptoEngines` is rejected by the schema
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
