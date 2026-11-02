@@ -72,6 +72,33 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify TLS provider-specific resources
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set tls.type=external \
+            --set tls.externalOptions.secretName=provided-tls \
+            >/tmp/lamassu-external-tls.yaml
+
+          grep -q '^kind: Gateway$' /tmp/lamassu-external-tls.yaml
+          grep -q 'name: provided-tls' /tmp/lamassu-external-tls.yaml
+          if grep -q 'apiVersion: cert-manager.io/v1' /tmp/lamassu-external-tls.yaml; then
+            echo "External TLS unexpectedly rendered cert-manager resources"
+            exit 1
+          fi
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set tls.type=certManager \
+            >/tmp/lamassu-certmanager-tls.yaml
+
+          test "$(grep -c 'apiVersion: cert-manager.io/v1' /tmp/lamassu-certmanager-tls.yaml)" -eq 4
+          grep -q '^kind: Gateway$' /tmp/lamassu-certmanager-tls.yaml
+          grep -q 'name: lamassu-downstream-tls' /tmp/lamassu-certmanager-tls.yaml
+
       - name: Verify deprecated CA crypto engines are rejected
         if: steps.list-changed.outputs.changed == 'true'
         run: |
