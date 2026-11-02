@@ -161,7 +161,6 @@ jobs:
             --set tls.type=certManager \
             >/tmp/lamassu-certmanager-tls.yaml
           test "$(grep -c 'apiVersion: cert-manager.io/v1' /tmp/lamassu-certmanager-tls.yaml)" -eq 4
-          test "$(grep -c 'apiVersion: cert-manager.io/v1' /tmp/lamassu-certmanager-tls.yaml)" -eq 4
           test "$(gateway_tls_secret /tmp/lamassu-certmanager-tls.yaml)" = "lamassu-downstream-tls"
 
       - name: Verify deprecated CA crypto engines are rejected
