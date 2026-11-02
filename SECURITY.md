@@ -78,7 +78,7 @@ change. The PostgreSQL entry is an AMD64 platform digest; its root default and
 | `lamassu-authz:dev-v4` (previous build) | `lamassu` (`999:999`) | `sha256:88959564b49bbeda622bbfb6142b98f5cce910072c98ff1e4bac8a2584f58f69` |
 | `lamassu-ui:dev-v4` | `65532:65532` | Old rootless rebuild superseded by the `:dev` arm64 entry below; digest recorded when `dev-v4` is rebuilt. |
 | `lamassu-ui:dev` (arm64) | `65532:65532` | Manifest digest `sha256:b183bcf52331d2190bdc074e0741cc885c0833d3535581f58cff82340b12277b`; pushed 2026-09-21; runtime-verified with `--cap-drop=ALL`, `no-new-privileges`. |
-| `lamassu-lamassu-db-migration:dev-v4` | `65532` | `sha256:feb9c41131b3f19a7ddee12cc4bc248e74b41038e611ebd4327f1ea53b8b0f91` |
+| `lamassu-db-migration:dev-v4` | `65532` | `sha256:feb9c41131b3f19a7ddee12cc4bc248e74b41038e611ebd4327f1ea53b8b0f91` |
 | `lamassu-aws-connector:dev-v4` | `65532` | `sha256:ad585a5120c8634eb18b72ee71dce6f8e45c70ddd54502f9b832b5bf5786ba01` |
 | `lamassu-ca-to-kms-migration:dev-v4` | `65532` | `sha256:2c1262a7bc9504257d0d6e65be10b32ed07067b6c29202929806411446ad8b9f` |
 | `curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777` (chart-pinned, `8.22.0`; replaces the retired `ghcr.io/lamassuiot/toolbox:2.2.0`, previously `root/empty`, `sha256:464d86d83ec52abab587d1367de2603e51c46dc989641ecae460a2d68299b355`) | `curl_user` (`100:101`); chart pins `65532:65532` via `securityContext` | `sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777` |
