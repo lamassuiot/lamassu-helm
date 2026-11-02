@@ -79,6 +79,10 @@ jobs:
 
           rendered=$(helm template lamassu charts/lamassu --namespace lamassu-test)
           grep -Eq '^[[:space:]]*image: ghcr\.io/lamassuiot/lamassu-db-migration:[^[:space:]]+[[:space:]]*$' <<<"$rendered"
+          if grep -q 'lamassu-lamassu-db-migration' <<<"$rendered"; then
+            echo "The database migration image contains a duplicated lamassu- prefix"
+            exit 1
+          fi
 
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
