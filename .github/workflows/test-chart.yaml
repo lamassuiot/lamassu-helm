@@ -83,8 +83,21 @@ jobs:
             --set tls.externalOptions.secretName=provided-tls \
             >/tmp/lamassu-external-tls.yaml
 
-          grep -q '^kind: Gateway$' /tmp/lamassu-external-tls.yaml
-          grep -q 'name: provided-tls' /tmp/lamassu-external-tls.yaml
+          gateway_tls_secret() {
+            awk '
+              /^kind: Gateway$/ { in_gateway = 1 }
+              /^---$/ { in_gateway = 0; in_tls = 0 }
+              in_gateway && /^[[:space:]]+certificateRefs:$/ { in_tls = 1; next }
+              in_gateway && in_tls && /^[^[:space:]]/ { in_tls = 0 }
+              in_gateway && in_tls && /^[[:space:]]+name:/ {
+                sub(/^[[:space:]]+name:[[:space:]]*/, "")
+                print
+                exit
+              }
+            ' "$1"
+          }
+
+          test "$(gateway_tls_secret /tmp/lamassu-external-tls.yaml)" = "provided-tls"
           if grep -q 'apiVersion: cert-manager.io/v1' /tmp/lamassu-external-tls.yaml; then
             echo "External TLS unexpectedly rendered cert-manager resources"
             exit 1
@@ -94,10 +107,9 @@ jobs:
             --namespace lamassu-test \
             --set tls.type=certManager \
             >/tmp/lamassu-certmanager-tls.yaml
-
           test "$(grep -c 'apiVersion: cert-manager.io/v1' /tmp/lamassu-certmanager-tls.yaml)" -eq 4
-          grep -q '^kind: Gateway$' /tmp/lamassu-certmanager-tls.yaml
-          grep -q 'name: lamassu-downstream-tls' /tmp/lamassu-certmanager-tls.yaml
+          test "$(grep -c 'apiVersion: cert-manager.io/v1' /tmp/lamassu-certmanager-tls.yaml)" -eq 4
+          test "$(gateway_tls_secret /tmp/lamassu-certmanager-tls.yaml)" = "lamassu-downstream-tls"
 
       - name: Verify deprecated CA crypto engines are rejected
         if: steps.list-changed.outputs.changed == 'true'
