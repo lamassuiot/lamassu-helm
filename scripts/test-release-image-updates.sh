@@ -92,7 +92,53 @@ yq eval '.services.connectors."emqx.primary" = {
   "image": "ghcr.io/example/emqx-connector:custom"
 }' -i "$fixture"
 
+ui_image_before=$(yq eval -r '.services.ui.image' "$fixture")
+wfx_image_before=$(yq eval -r '.services.wfx.image' "$fixture")
+connectivity_image_before=$(yq eval -r '.connectivityTest.image' "$fixture")
+
 bash "$repo_root/scripts/update-release-images.sh" "$fixture" "$app_version"
+
+lamassu_images=$(
+  yq -o=json "$fixture" |
+    python3 -c '
+import json
+import sys
+
+document = json.load(sys.stdin)
+
+def walk(value, path):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield from walk(child, path + [key])
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from walk(child, path + [str(index)])
+    elif (
+        path[-1:] == ["image"]
+        and path[0] in {"services", "migrations"}
+        and path != ["services", "ui", "image"]
+        and isinstance(value, str)
+        and value.startswith("ghcr.io/lamassuiot/")
+    ):
+        print("{}\t{}".format(".".join(path), value))
+
+walk_results = walk(document, [])
+for result in walk_results:
+    pass
+'
+)
+
+if [[ -z "$lamassu_images" ]]; then
+  printf 'FAIL: no Lamassu-owned images found for release coverage\n' >&2
+  exit 1
+fi
+
+while IFS=$'\t' read -r path image; do
+  assert_equals \
+    "Lamassu image ${path} uses app version" \
+    "${image%:*}:${app_version}" \
+    "$image"
+done <<<"$lamassu_images"
 
 assert_image 'VA image uses app version' \
   '.services.va.image' 'ghcr.io/lamassuiot/lamassu-va'
@@ -118,6 +164,18 @@ assert_equals \
   'Non-AWS connector image is preserved' \
   'ghcr.io/example/emqx-connector:custom' \
   "$(yq eval -r '.services.connectors."emqx.primary".image' "$fixture")"
+assert_equals \
+  'UI image is not changed by backend updates' \
+  "$ui_image_before" \
+  "$(yq eval -r '.services.ui.image' "$fixture")"
+assert_equals \
+  'WFX image is not changed by backend updates' \
+  "$wfx_image_before" \
+  "$(yq eval -r '.services.wfx.image' "$fixture")"
+assert_equals \
+  'Connectivity test image is not changed by backend updates' \
+  "$connectivity_image_before" \
+  "$(yq eval -r '.connectivityTest.image' "$fixture")"
 
 ct_config=$(<"$repo_root/.github/ci/ct.yaml")
 assert_not_contains \
@@ -131,18 +189,24 @@ assert_contains \
   "github.base_ref || 'main'" \
   "$test_workflow"
 
-release_workflow=$(<"$repo_root/.github/workflows/release.yaml")
-backend_step=$(grep -A6 -F 'name: Update Backend docker image version' <<<"$release_workflow") || {
+backend_step=$(yq eval -o=json \
+  '.jobs."generate-charts-changelog-update-versions".steps[] |
+   select(.name == "Update Backend docker image version")' \
+  "$repo_root/.github/workflows/release.yaml") || {
   printf 'FAIL: backend image update step not found in release.yaml\n' >&2
   exit 1
 }
+if [[ -z "$backend_step" ]]; then
+  printf 'FAIL: backend image update step not found in release.yaml\n' >&2
+  exit 1
+fi
 assert_contains \
   'release uses the shared image update script' \
   'scripts/update-release-images.sh' \
   "$backend_step"
 assert_contains \
-  'release preserves multiline shell command' \
-  'run: |' \
+  'release has a backend shell command' \
+  '"run":' \
   "$backend_step"
 assert_contains \
   'release passes the selected chart values file' \
@@ -157,10 +221,17 @@ assert_contains \
   "github.event.inputs.chart_to_release == 'lamassu'" \
   "$backend_step"
 
-ui_step=$(grep -A4 -F 'name: Update UI docker image version' <<<"$release_workflow") || {
+ui_step=$(yq eval -o=json \
+  '.jobs."generate-charts-changelog-update-versions".steps[] |
+   select(.name == "Update UI docker image version")' \
+  "$repo_root/.github/workflows/release.yaml") || {
   printf 'FAIL: UI image update step not found in release.yaml\n' >&2
   exit 1
 }
+if [[ -z "$ui_step" ]]; then
+  printf 'FAIL: UI image update step not found in release.yaml\n' >&2
+  exit 1
+fi
 assert_contains \
   'UI image updates are limited to lamassu' \
   "github.event.inputs.chart_to_release == 'lamassu'" \
