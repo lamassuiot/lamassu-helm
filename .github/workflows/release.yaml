@@ -81,10 +81,12 @@ jobs:
           token: ${{ steps.release-bot-token.outputs.token }}
 
       - name: Update UI docker image version
+        if: ${{ github.event.inputs.chart_to_release == 'lamassu' }}
         run: |
           yq eval '.services.ui.image = "ghcr.io/lamassuiot/lamassu-ui:${{ github.event.inputs.ui_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
     
       - name: Update Backend docker image version
+        if: ${{ github.event.inputs.chart_to_release == 'lamassu' }}
         run: |
           bash scripts/update-release-images.sh \
             "charts/${{ github.event.inputs.chart_to_release }}/values.yaml" \
