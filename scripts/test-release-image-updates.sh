@@ -115,10 +115,9 @@ def walk(value, path):
             yield from walk(child, path + [str(index)])
     elif (
         path[-1:] == ["image"]
-        and path[0] in {"services", "migrations"}
         and path != ["services", "ui", "image"]
         and isinstance(value, str)
-        and value.startswith("ghcr.io/lamassuiot/")
+        and value.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0].startswith("lamassu-")
     ):
         print("{}\t{}".format(".".join(path), value))
 
