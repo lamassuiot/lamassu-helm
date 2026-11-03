@@ -47,7 +47,7 @@ jobs:
         id: release-test-inputs
         if: github.event_name == 'pull_request'
         run: |
-          if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+          if git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
             .github/workflows/release.yaml \
             .github/workflows/test-chart.yaml \
             .github/ci/ct.yaml \

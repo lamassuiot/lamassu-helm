@@ -119,11 +119,11 @@ def walk(value, path):
         and isinstance(value, str)
         and value.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0].startswith("lamassu-")
     ):
-        print("{}\t{}".format(".".join(path), value))
+        yield ".".join(path), value
 
 walk_results = walk(document, [])
-for result in walk_results:
-    pass
+for path, value in walk_results:
+    print("{}\t{}".format(path, value))
 '
 )
 
@@ -234,4 +234,12 @@ fi
 assert_contains \
   'UI image updates are limited to lamassu' \
   "github.event.inputs.chart_to_release == 'lamassu'" \
+  "$ui_step"
+assert_contains \
+  'UI release updates the UI image value' \
+  '.services.ui.image' \
+  "$ui_step"
+assert_contains \
+  'UI release passes the selected chart values file' \
+  'charts/${{ github.event.inputs.chart_to_release }}/values.yaml' \
   "$ui_step"
