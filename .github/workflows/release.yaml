@@ -85,9 +85,10 @@ jobs:
           yq eval '.services.ui.image = "ghcr.io/lamassuiot/lamassu-ui:${{ github.event.inputs.ui_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
     
       - name: Update Backend docker image version
-        run: bash scripts/update-release-images.sh \
-          "charts/${{ github.event.inputs.chart_to_release }}/values.yaml" \
-          "${{ github.event.inputs.app_version }}"
+        run: |
+          bash scripts/update-release-images.sh \
+            "charts/${{ github.event.inputs.chart_to_release }}/values.yaml" \
+            "${{ github.event.inputs.app_version }}"
       
       - name: Update Chart.yaml file with the new version
         run: |

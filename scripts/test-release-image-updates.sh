@@ -34,3 +34,5 @@ grep -Fq 'github.base_ref || '\''main'\''' \
   "$repo_root/.github/workflows/test-chart.yaml"
 grep -Fq 'scripts/update-release-images.sh' \
   "$repo_root/.github/workflows/release.yaml"
+grep -A4 -F 'name: Update Backend docker image version' \
+  "$repo_root/.github/workflows/release.yaml" | grep -Fq 'run: |'
