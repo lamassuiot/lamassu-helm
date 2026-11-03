@@ -77,20 +77,19 @@ for path in \
   '.services.alerts.image' \
   '.services.authz.image' \
   '.services.kms.image' \
+  '.services.connectors' \
   '.migrations.db.image' \
   '.migrations.caToKms.image'; do
   assert_path_exists "$path"
 done
 
-yq eval '.services.connectors = {
-  "aws.primary": {
-    "type": "awsiot",
-    "image": "ghcr.io/lamassuiot/lamassu-aws-connector:old"
-  },
-  "emqx.primary": {
-    "type": "emqx",
-    "image": "ghcr.io/example/emqx-connector:custom"
-  }
+yq eval '.services.connectors."aws.primary" = {
+  "type": "awsiot",
+  "image": "ghcr.io/lamassuiot/lamassu-aws-connector:old"
+}' -i "$fixture"
+yq eval '.services.connectors."emqx.primary" = {
+  "type": "emqx",
+  "image": "ghcr.io/example/emqx-connector:custom"
 }' -i "$fixture"
 
 bash "$repo_root/scripts/update-release-images.sh" "$fixture" "$app_version"

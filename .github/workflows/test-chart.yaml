@@ -44,7 +44,6 @@ jobs:
           fi
 
       - name: Test release image updates
-        if: steps.list-changed.outputs.changed == 'true'
         run: bash scripts/test-release-image-updates.sh
 
       - name: Run chart-testing (lint)
