@@ -20,10 +20,7 @@ services:
 YAML
 
 app_version="4.1.0"
-yq eval ".services.authz.image = \"ghcr.io/lamassuiot/lamassu-authz:${app_version}\"" \
-  -i "$fixture"
-yq eval "(.services.connectors[] | select(.type == \"awsiot\") | .image) = \"ghcr.io/lamassuiot/lamassu-aws-connector:${app_version}\"" \
-  -i "$fixture"
+bash "$repo_root/scripts/update-release-images.sh" "$fixture" "$app_version"
 
 test "$(yq eval -r '.services.authz.image' "$fixture")" = \
   "ghcr.io/lamassuiot/lamassu-authz:${app_version}"
@@ -35,3 +32,5 @@ test "$(yq eval -r '.services.connectors."emqx.primary".image' "$fixture")" = \
 ! grep -q '^target-branch:' "$repo_root/.github/ci/ct.yaml"
 grep -Fq 'github.base_ref || '\''main'\''' \
   "$repo_root/.github/workflows/test-chart.yaml"
+grep -Fq 'scripts/update-release-images.sh' \
+  "$repo_root/.github/workflows/release.yaml"
