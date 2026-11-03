@@ -136,6 +136,9 @@ jobs:
             --set tls.externalOptions.secretName=provided-tls \
             >/tmp/lamassu-external-tls.yaml
 
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -kubernetes-version 1.29.0 /tmp/lamassu-external-tls.yaml
+
           gateway_tls_secret() {
             awk '
               /^kind: Gateway$/ { in_gateway = 1 }
