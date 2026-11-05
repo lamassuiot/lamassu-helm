@@ -108,10 +108,16 @@ served by the experimental channel.
 |---------------|----------------------------------------|----------------------------|-------|
 | v1.8.0 | v1.8.0 (controller-gen v0.20.x) | v1.5.1 (experimental) | Tested combination. The version is hardcoded in the script |
 
-- Gateway API CRDs already present on the cluster must be on the `experimental`
-  channel; the script stops with instructions otherwise. Bundles older than
-  v1.5.1 and Envoy Gateway CRDs older than the pinned release are upgraded
-  server-side; newer ones are left untouched so shared CRDs are never downgraded
+- The CRDs are shared by the whole cluster, so the script is conservative and
+  handles Gateway API and Envoy Gateway CRDs separately. It installs a family
+  that is completely absent, upgrades one that is older than the pinned
+  versions, and leaves equal or newer ones untouched (they are never
+  downgraded). When CRDs at the pinned version are incomplete it creates only
+  the missing ones
+- In any state it cannot vouch for, the script stops and explains instead of
+  changing CRDs. That covers a non-`experimental` channel, an unknown version,
+  a partial installation, CRDs that are newer but incomplete, and errors
+  querying the cluster. It never deletes CRDs or admission policies
 - Older Envoy Gateway versions (≤ v1.3.x) installed via the manual route
   (pre-fast-lane) are not covered by this table
 
