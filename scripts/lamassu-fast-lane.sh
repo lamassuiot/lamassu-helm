@@ -22,7 +22,8 @@ LAMASSU_USE_LOCAL_PATH=false
 SAMPLE_DATA=false
 # Development mode: provisions Keycloak for frictionless local use (fully
 # provisioned lamassu user, permissive frontend redirect URIs). Never use it for
-# anything exposed beyond a development machine.
+# anything exposed beyond a development machine. The lamassu/lamassu admin
+# password stays fixed and permanently valid (it is never rotated).
 DEVELOPMENT=false
 HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
@@ -156,7 +157,7 @@ function usage() {
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in supported Lamassu services (AWS Connector, authz, wfx and the UI are not instrumented)"
-    echo " --development               Development mode: Keycloak lamassu user is fully provisioned (permanent password, no first-login profile/password steps) and the frontend client accepts any redirect URI/web origin. NOT for production"
+    echo " --development               Development mode: Keycloak lamassu user is fully provisioned (FIXED lamassu/lamassu password that is never rotated, no first-login profile/password steps) and the frontend client accepts any redirect URI/web origin. NOT for production"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: charts/softhsm in this repository"
     echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
@@ -325,6 +326,7 @@ function final_instructions() {
     echo -e "${BLUE}Please connect to https://${DOMAIN} using default user lamassu/lamassu ${NOCOLOR}"
     if [ "$DEVELOPMENT" = true ]; then
         echo -e "${ORANGE}Development mode: the lamassu user is fully provisioned (no profile setup or password reset on first login) and the Keycloak frontend client accepts any redirect URI. Do not expose this installation.${NOCOLOR}"
+        echo -e "${ORANGE}WARNING: the lamassu/lamassu password is FIXED and PERMANENT (it will never be forced to change) and grants pki-admin access, including non-interactive tokens through the frontend client. Anyone who can reach https://${DOMAIN} can use it.${NOCOLOR}"
     else
         echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
     fi
@@ -855,8 +857,15 @@ EOF
 
     if [ "$DEVELOPMENT" = true ]; then
         echo -e "${ORANGE}Development mode: provisioning the Keycloak lamassu user without first-login steps and relaxing frontend redirect URIs${NOCOLOR}"
-        local dev_realm_config
-        if ! dev_realm_config=$(yq -r '.realm.configFile' keycloak.yaml | jq '
+        echo -e "${ORANGE}WARNING: development mode keeps the well-known lamassu/lamassu admin password permanently valid. Do not run it on a network-reachable host.${NOCOLOR}"
+        local current_realm_config dev_realm_config
+        # Read with yq in its own step: in a pipeline only jq's exit status would be seen,
+        # and jq succeeds on empty input, masking a yq failure.
+        if ! current_realm_config=$(yq -r '.realm.configFile' keycloak.yaml) || [ -z "$current_realm_config" ] || [ "$current_realm_config" = "null" ]; then
+            echo -e "\n${RED}Error reading the Keycloak realm configuration from keycloak.yaml${NOCOLOR}"
+            exit 1
+        fi
+        if ! dev_realm_config=$(jq '
             .users |= map(
                 if .username == "lamassu" then
                     . + {
@@ -874,7 +883,7 @@ EOF
                     .redirectUris = ["*"] | .webOrigins = ["*"]
                 else . end
             )
-        '); then
+        ' <<< "$current_realm_config"); then
             echo -e "\n${RED}Error applying the Keycloak development configuration${NOCOLOR}"
             exit 1
         fi
@@ -1170,7 +1179,7 @@ function detect_distribution() {
 
 function check_dependencies() {
     exit_if_command_not_installed yq
-    if [ "$SAMPLE_DATA" = true ]; then
+    if [ "$SAMPLE_DATA" = true ] || [ "$DEVELOPMENT" = true ]; then
         exit_if_command_not_installed jq
     fi
     if [ $dist == "microk8s" ]; then
