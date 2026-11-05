@@ -97,9 +97,12 @@ every namespace the script deploys into (multiple installs are told apart by
 ### Gateway Component Compatibility
 
 The fast lane installer pins the versions below. The CRDs are applied from the
-`gateway-crds-helm` chart (Gateway API experimental channel, required for
-TCPRoute) and the Envoy Gateway controller chart is installed with
-`--skip-crds`, so the CRDs have a single owner.
+`gateway-crds-helm` chart and the Envoy Gateway controller chart is installed
+with `--skip-crds`, so the CRDs have a single owner. The Gateway API CRDs use
+the experimental channel: Lamassu itself only needs the standard `Gateway` and
+`HTTPRoute` resources, but the CRDs are shared cluster-wide and a Traefik
+Gateway provider running on the same cluster needs `TCPRoute`, which is only
+served by the experimental channel.
 
 | Envoy Gateway | Envoy Gateway CRDs (gateway-crds-helm) | Gateway API CRDs (bundled) | Notes |
 |---------------|----------------------------------------|----------------------------|-------|

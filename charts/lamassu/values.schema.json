@@ -187,6 +187,7 @@
                 "required": ["insecureSkipJwtVerify"]
               },
               "else": {
+                "required": ["jwkUrl"],
                 "properties": { "jwkUrl": { "minLength": 1 } }
               }
             }
