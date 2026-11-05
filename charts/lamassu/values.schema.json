@@ -162,8 +162,7 @@
               "properties": {
                 "jwkUrl": {
                   "type": "string",
-                  "minLength": 1,
-                  "description": "JWKS endpoint used by authz to validate JWTs"
+                  "description": "JWKS endpoint used by authz to validate JWTs. Required (non-empty) unless insecureSkipJwtVerify is true."
                 },
                 "insecureSkipJwtVerify": {
                   "type": "boolean",
@@ -182,6 +181,13 @@
                   "type": "array",
                   "description": "Principal and policy-grant entries seeded on first startup"
                 }
+              },
+              "if": {
+                "properties": { "insecureSkipJwtVerify": { "const": true } },
+                "required": ["insecureSkipJwtVerify"]
+              },
+              "else": {
+                "properties": { "jwkUrl": { "minLength": 1 } }
               }
             }
           ]

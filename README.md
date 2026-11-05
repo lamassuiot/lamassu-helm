@@ -88,32 +88,27 @@ For quick deployment, you can use the provided fast lane script:
 ./scripts/lamassu-fast-lane.sh
 ```
 
-The fast lane script fronts Envoy Gateway with a shared Traefik installation
-(`traefik-system` namespace), matching the `Traefik -> Envoy Gateway ->
-services` topology used in Lamassu's own lab clusters: Traefik terminates the
-public TLS/mTLS connection and optionally requests a client certificate,
-forwards it to Envoy Gateway over an internal, self-signed TLS hop, and Envoy
-Gateway's `ClientTrafficPolicy` picks up the forwarded certificate chain from
-there. Envoy Gateway itself is no longer exposed externally. Traefik and Envoy
-Gateway are both installed once per cluster and shared by every namespace the
-fast lane script deploys into (multiple installs are told apart by
-`--domain`); tear either of them down with `scripts/nuke-all.sh
---purge-gateway --purge-traefik`.
+The fast lane script installs Envoy Gateway (the `eg` GatewayClass) and exposes
+it through its own LoadBalancer service, terminating TLS at Envoy Gateway. The
+Gateway API and Envoy Gateway CRDs are installed once per cluster and shared by
+every namespace the script deploys into (multiple installs are told apart by
+`--domain`).
 
 ### Gateway Component Compatibility
 
-The fast lane installer pins the versions below. Gateway API CRDs are installed
-once per cluster (experimental channel: Traefik's Gateway provider needs
-TCPRoute) and both controller charts are installed with `--skip-crds` so the
-CRDs have a single owner.
+The fast lane installer pins the versions below. The CRDs are applied from the
+`gateway-crds-helm` chart (Gateway API experimental channel, required for
+TCPRoute) and the Envoy Gateway controller chart is installed with
+`--skip-crds`, so the CRDs have a single owner.
 
-| Gateway API CRDs | Envoy Gateway | Envoy Gateway CRDs (gateway-crds-helm) | Traefik | Notes |
-|------------------|---------------|----------------------------------------|---------|-------|
-| v1.6.3 (experimental) | v1.8.0 | v1.8.0 | 3.7.15 (`ghcr.io/lamassuiot/traefik:pqc-3.7.15`) | Tested combination. Overrides: `GATEWAY_API_VERSION` env var; Envoy Gateway version is hardcoded in the script |
-| v1.5.x (standard/experimental) | v1.8.0 | v1.8.0 | 3.7.15 | Not supported with Traefik: its Go `gateway-api` module (v1.6.3) only serves TCPRoute as `v1alpha2` on v1.5.x, so Traefik never programs its Gateways |
+| Envoy Gateway | Envoy Gateway CRDs (gateway-crds-helm) | Gateway API CRDs (bundled) | Notes |
+|---------------|----------------------------------------|----------------------------|-------|
+| v1.8.0 | v1.8.0 (controller-gen v0.20.x) | v1.5.1 (experimental) | Tested combination. The version is hardcoded in the script |
 
-- Traefik chart version: `41.0.2` (the chart's own semver parsing needs
-  `versionOverride: 3.7.15` for the PQC image tag)
+- Gateway API CRDs already present on the cluster must be on the `experimental`
+  channel; the script stops with instructions otherwise. Bundles older than
+  v1.5.1 and Envoy Gateway CRDs older than the pinned release are upgraded
+  server-side; newer ones are left untouched so shared CRDs are never downgraded
 - Older Envoy Gateway versions (≤ v1.3.x) installed via the manual route
   (pre-fast-lane) are not covered by this table
 

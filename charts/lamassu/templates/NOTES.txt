@@ -1,0 +1,8 @@
+{{- if .Values.services.authz.insecureSkipJwtVerify }}
+
+WARNING: services.authz.insecureSkipJwtVerify is true.
+The authz service accepts OIDC tokens WITHOUT verifying their signature, so any
+caller able to reach it can forge identity claims (for example a pki-admin role).
+Use this only for development/testing. For production, unset it so tokens are
+verified against services.authz.jwkUrl.
+{{- end }}

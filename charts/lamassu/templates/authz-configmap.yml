@@ -3,7 +3,11 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-config") }}
-  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "authz") | nindent 2 }}
+  {{- $extraAnnotations := dict }}
+  {{- if .Values.services.authz.insecureSkipJwtVerify }}
+  {{- $_ := set $extraAnnotations "lamassu.io/insecure-skip-jwt-verify" "true" }}
+  {{- end }}
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "authz" "extraAnnotations" $extraAnnotations) | nindent 2 }}
 data:
   config: |
     {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false "port" $svc.port) | nindent 4 }}
