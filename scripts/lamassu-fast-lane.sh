@@ -1300,17 +1300,23 @@ function check_envoy_gateway_helm() {
     local gateway_api_min_version="v1.5.1"
     local eg_kubebuilder_pinned_minor=20
 
-    # report_missing_eg_crds: prints the Envoy Gateway CRDs shipped by the target
-    # release that are absent from the cluster (empty output = all present). Both
-    # controller installs below use --skip-crds, so nothing else would repair them.
-    function report_missing_eg_crds() {
+    # render_gateway_crds <gateway_api:true|false> <envoy_gateway:true|false>: renders
+    # the CRD bundle of the pinned release. Each half can be toggled so one can be
+    # applied without touching (and possibly downgrading) the other.
+    function render_gateway_crds() {
+        run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+            --version "${envoy_gateway_version}" \
+            --set crds.gatewayAPI.enabled="$1" \
+            --set crds.gatewayAPI.channel=experimental \
+            --set crds.envoyGateway.enabled="$2"
+    }
+
+    # report_missing_crds <crd...>: prints the given CRDs that are absent from the
+    # cluster (empty output = all present).
+    function report_missing_crds() {
         local crd missing=""
-        for crd in backends backendtrafficpolicies clienttrafficpolicies \
-            envoyextensionpolicies envoypatchpolicies envoyproxies \
-            httproutefilters securitypolicies; do
-            if ! run_kubectl get crd "${crd}.gateway.envoyproxy.io" >/dev/null 2>&1; then
-                missing+="${crd}.gateway.envoyproxy.io "
-            fi
+        for crd in "$@"; do
+            run_kubectl get crd "$crd" >/dev/null 2>&1 || missing+="${crd} "
         done
         echo "${missing% }"
     }
@@ -1318,95 +1324,134 @@ function check_envoy_gateway_helm() {
     # 1. CRDs first, controller second. CRDs are applied with kubectl (field
     # manager "kubectl"), so the eg Helm install below must skip its bundled
     # CRDs; otherwise its server-side apply conflicts with kubectl ownership
-    # on the safe-upgrades ValidatingAdmissionPolicy objects.
+    # on the safe-upgrades ValidatingAdmissionPolicy objects. Gateway API and
+    # Envoy Gateway CRDs are shared by the whole cluster and handled separately:
+    # each is installed, upgraded or left alone on its own, never downgraded.
     local gateway_api_crd=gateways.gateway.networking.k8s.io
     local gateway_api_version=""
     local gateway_api_channel=""
+    local gateway_api_action=install # install | upgrade | keep
     local eg_kubebuilder=""
+    local eg_kb_minor=""
     local eg_crd_name="envoyproxies.gateway.envoyproxy.io"
+    local eg_crds_action=install # install | upgrade | repair | keep
+    local eg_crds_manifest=""
+    local eg_required_crds=""
     local eg_missing_crds=""
-    local needs_crd_install=true
-    local crd_compatibility=unknown
 
     echo "Checking Gateway API and Envoy Gateway CRDs..."
+
+    # The Envoy Gateway CRDs this release needs, taken from its own bundle so the
+    # list cannot drift from the pinned version.
+    if ! eg_crds_manifest=$(render_gateway_crds false true) || [ -z "$eg_crds_manifest" ]; then
+        echo "❌ Failed to render the Envoy Gateway ${envoy_gateway_version} CRD bundle (gateway-crds-helm). Check Helm/registry access and try again."
+        exit 1
+    fi
+    eg_required_crds=$(printf '%s\n' "$eg_crds_manifest" | yq -r 'select(.kind == "CustomResourceDefinition") | .metadata.name' | grep '\.gateway\.envoyproxy\.io$')
+    if [ -z "$eg_required_crds" ]; then
+        echo "❌ The Envoy Gateway ${envoy_gateway_version} CRD bundle contains no gateway.envoyproxy.io CRDs; refusing to continue."
+        exit 1
+    fi
+
+    # Gateway API CRDs
     if gateway_api_version=$(run_kubectl get crd "$gateway_api_crd" -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}' 2>/dev/null) && [ -n "$gateway_api_version" ]; then
         gateway_api_channel=$(run_kubectl get crd "$gateway_api_crd" -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/channel}' 2>/dev/null)
-        if [ "$gateway_api_channel" != "experimental" ]; then
-            echo "⚠️ Gateway API CRDs are on the '${gateway_api_channel:-standard}' channel; the fast lane requires experimental (TCPRoute)."
-            echo "   The safe-upgrades policy blocks installing experimental over standard: uninstall the VAP and CRDs first, then rerun."
+        case "$gateway_api_channel" in
+        experimental) ;;
+        "")
+            echo "⚠️ Gateway API CRDs (bundle ${gateway_api_version}) carry no channel annotation; assuming experimental."
+            ;;
+        *)
+            echo "⚠️ Gateway API CRDs are on the '${gateway_api_channel}' channel; the fast lane installs the experimental bundle and the safe-upgrades policy blocks applying it over '${gateway_api_channel}'."
+            echo "   Uninstall the VAP and CRDs first, then rerun:"
             echo "   kubectl delete validatingadmissionpolicy safe-upgrades.gateway.networking.k8s.io validatingadmissionpolicybinding safe-upgrades.gateway.networking.k8s.io"
             echo "   kubectl delete crd -l gateway.networking.k8s.io/policy=Direct 2>/dev/null || true"
             exit 1
-        fi
+            ;;
+        esac
         if [ "$(printf '%s\n%s\n' "$gateway_api_min_version" "$gateway_api_version" | sort -V | head -n1)" = "$gateway_api_min_version" ]; then
-            needs_crd_install=false
-            echo "✅ Gateway API CRDs already installed (bundle ${gateway_api_version}, channel ${gateway_api_channel}); no CRD apply needed."
+            gateway_api_action=keep
+            echo "✅ Gateway API CRDs already installed (bundle ${gateway_api_version}, channel ${gateway_api_channel:-unknown}); leaving them untouched."
         else
+            gateway_api_action=upgrade
             echo "⚠️ Gateway API CRDs are older (bundle ${gateway_api_version}) than the ${gateway_api_min_version} bundle shipped with Envoy Gateway ${envoy_gateway_version}; they will be upgraded server-side."
         fi
     else
-        echo "Gateway API CRDs not found; installing them now (before Envoy Gateway)."
+        echo "Gateway API CRDs not found; installing the ${gateway_api_min_version} experimental bundle."
     fi
 
-    # Envoy Gateway CRDs: presence + a coarse compatibility probe. The v1.8.0
-    # release requires the v1alpha1 envoyproxies schema; older installs
-    # (pre-v1.5) served only v1alpha2/v1alpha3 names that no longer match.
-    if [ "$needs_crd_install" = false ]; then
-        if eg_kubebuilder=$(run_kubectl get crd "$eg_crd_name" -o jsonpath='{.metadata.annotations.controller-gen\.kubebuilder\.io/version}' 2>/dev/null) && [ -n "$eg_kubebuilder" ]; then
-            local eg_kb_minor=""
-            case "$eg_kubebuilder" in
-            v0.[0-9]*.*)
-                eg_kb_minor=${eg_kubebuilder#v0.}
-                eg_kb_minor=${eg_kb_minor%%.*}
-                ;;
-            esac
-            if [[ ! "$eg_kb_minor" =~ ^[0-9]+$ ]]; then
-                crd_compatibility=incompatible
-                echo "⚠️ Envoy Gateway CRDs have an unrecognised kubebuilder version (${eg_kubebuilder}); forcing CRD upgrade to ${envoy_gateway_version}"
-            elif [ "$eg_kb_minor" -eq "$eg_kubebuilder_pinned_minor" ]; then
-                crd_compatibility=compatible
-                echo "✅ Envoy Gateway CRDs are up to date (kubebuilder ${eg_kubebuilder})"
-            elif [ "$eg_kb_minor" -gt "$eg_kubebuilder_pinned_minor" ]; then
-                crd_compatibility=compatible
-                echo "⚠️ Envoy Gateway CRDs are newer than the ones shipped with ${envoy_gateway_version} (kubebuilder ${eg_kubebuilder}); leaving them untouched to avoid a downgrade of the shared CRDs"
-            elif [ "$eg_kb_minor" -ge 16 ]; then
-                crd_compatibility=upgradeable
-                echo "⚠️ Envoy Gateway CRDs are older (kubebuilder ${eg_kubebuilder}); they will be upgraded server-side"
-            else
-                crd_compatibility=incompatible
-                echo "⚠️ Envoy Gateway CRDs are too old (kubebuilder ${eg_kubebuilder}); forcing CRD upgrade to ${envoy_gateway_version}"
-            fi
-
-            # The probe only looks at one CRD; make sure none of the others are missing
-            # (e.g. a partially restored cluster) before declaring them compatible.
-            if [ "$crd_compatibility" = "compatible" ]; then
-                eg_missing_crds=$(report_missing_eg_crds)
-                if [ -n "$eg_missing_crds" ]; then
-                    crd_compatibility=incomplete
-                    echo "⚠️ Envoy Gateway CRDs are incomplete (missing: ${eg_missing_crds}); reapplying them"
-                fi
-            fi
+    # Envoy Gateway CRDs: a coarse compatibility probe on one CRD (the
+    # controller-gen version that generated it), then a presence check of all of
+    # them. Older ones are upgraded; equal or newer ones are kept as they are.
+    if eg_kubebuilder=$(run_kubectl get crd "$eg_crd_name" -o jsonpath='{.metadata.annotations.controller-gen\.kubebuilder\.io/version}' 2>/dev/null) && [ -n "$eg_kubebuilder" ]; then
+        case "$eg_kubebuilder" in
+        v0.[0-9]*.*)
+            eg_kb_minor=${eg_kubebuilder#v0.}
+            eg_kb_minor=${eg_kb_minor%%.*}
+            ;;
+        esac
+        if [[ ! "$eg_kb_minor" =~ ^[0-9]+$ ]]; then
+            eg_crds_action=upgrade
+            echo "⚠️ Envoy Gateway CRDs have an unrecognised kubebuilder version (${eg_kubebuilder}); forcing CRD upgrade to ${envoy_gateway_version}"
+        elif [ "$eg_kb_minor" -eq "$eg_kubebuilder_pinned_minor" ]; then
+            eg_crds_action=keep
+            echo "✅ Envoy Gateway CRDs are up to date (kubebuilder ${eg_kubebuilder})"
+        elif [ "$eg_kb_minor" -gt "$eg_kubebuilder_pinned_minor" ]; then
+            eg_crds_action=keep
+            echo "⚠️ Envoy Gateway CRDs are newer than the ones shipped with ${envoy_gateway_version} (kubebuilder ${eg_kubebuilder}); leaving them untouched to avoid a downgrade of the shared CRDs"
         else
-            echo "Envoy Gateway CRDs not found; they will be installed with the Gateway API bundle."
+            eg_crds_action=upgrade
+            echo "⚠️ Envoy Gateway CRDs are older (kubebuilder ${eg_kubebuilder}); they will be upgraded server-side to ${envoy_gateway_version}"
         fi
+
+        # The probe only looks at one CRD. If others are missing (e.g. a partially
+        # restored cluster), create just those, leaving the existing ones alone.
+        if [ "$eg_crds_action" = keep ]; then
+            # shellcheck disable=SC2086 # word splitting is intended: one CRD per word
+            eg_missing_crds=$(report_missing_crds $eg_required_crds)
+            if [ -n "$eg_missing_crds" ]; then
+                eg_crds_action=repair
+                echo "⚠️ Envoy Gateway CRDs are incomplete (missing: ${eg_missing_crds}); creating only the missing ones"
+            fi
+        fi
+    else
+        echo "Envoy Gateway CRDs not found; installing the ${envoy_gateway_version} bundle."
     fi
 
-    if [ "$needs_crd_install" = true ] || [ "$crd_compatibility" != "compatible" ]; then
-        echo "Installing Gateway API and Envoy Gateway CRDs via kubectl (Envoy Gateway itself comes later, without CRDs)..."
-        if run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
-            --version "${envoy_gateway_version}" \
-            --set crds.gatewayAPI.enabled=true \
-            --set crds.gatewayAPI.channel=experimental \
-            --set crds.envoyGateway.enabled=true \
-            | run_kubectl apply --server-side --force-conflicts -f -; then
-            echo "✅ Envoy Gateway CRDs applied successfully"
+    local apply_gateway_api=false
+    local apply_eg_crds=false
+    [ "$gateway_api_action" != keep ] && apply_gateway_api=true
+    { [ "$eg_crds_action" = install ] || [ "$eg_crds_action" = upgrade ]; } && apply_eg_crds=true
+
+    if [ "$apply_gateway_api" = true ] || [ "$apply_eg_crds" = true ]; then
+        local crds_manifest=""
+        echo "Applying CRDs via kubectl (Gateway API: ${apply_gateway_api}, Envoy Gateway: ${apply_eg_crds}); Envoy Gateway itself comes later, without CRDs..."
+        if ! crds_manifest=$(render_gateway_crds "$apply_gateway_api" "$apply_eg_crds") || [ -z "$crds_manifest" ]; then
+            echo "❌ Failed to render the CRD bundle. Please check Helm output and try again."
+            exit 1
+        fi
+        if printf '%s\n' "$crds_manifest" | run_kubectl apply --server-side --force-conflicts -f -; then
+            echo "✅ CRDs applied successfully"
         else
-            echo "❌ Failed to apply Envoy Gateway CRDs. Please check Helm/Kubernetes output and try again."
+            echo "❌ Failed to apply CRDs. Please check Helm/Kubernetes output and try again."
             exit 1
         fi
     fi
 
-    eg_missing_crds=$(report_missing_eg_crds)
+    if [ "$eg_crds_action" = repair ]; then
+        local crd
+        for crd in $eg_missing_crds; do
+            if CRD_NAME="$crd" yq 'select(.metadata.name == env(CRD_NAME))' <<<"$eg_crds_manifest" | run_kubectl apply --server-side -f -; then
+                echo "✅ Created missing CRD ${crd}"
+            else
+                echo "❌ Failed to create missing CRD ${crd}. Please check Kubernetes output and try again."
+                exit 1
+            fi
+        done
+    fi
+
+    # shellcheck disable=SC2086 # word splitting is intended: one CRD per word
+    eg_missing_crds=$(report_missing_crds $eg_required_crds)
     if [ -n "$eg_missing_crds" ]; then
         echo "❌ Required Envoy Gateway CRDs are missing: ${eg_missing_crds}"
         echo "   Both Envoy Gateway charts are installed with --skip-crds, so nothing would create them. Check the CRD apply output above and rerun."
