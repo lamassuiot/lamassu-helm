@@ -125,6 +125,47 @@ jobs:
           test "$config_map_sources" = "$expected_config_map_sources"
           grep -q '"helm.sh/hook-weight": "-10"' <<<"$job"
 
+      - name: Verify TLS provider-specific resources
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set tls.type=external \
+            --set tls.externalOptions.secretName=provided-tls \
+            >/tmp/lamassu-external-tls.yaml
+
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -kubernetes-version 1.29.0 /tmp/lamassu-external-tls.yaml
+
+          gateway_tls_secret() {
+            awk '
+              /^kind: Gateway$/ { in_gateway = 1 }
+              /^---$/ { in_gateway = 0; in_tls = 0 }
+              in_gateway && /^[[:space:]]+certificateRefs:$/ { in_tls = 1; next }
+              in_gateway && in_tls && /^[^[:space:]]/ { in_tls = 0 }
+              in_gateway && in_tls && /^[[:space:]]+name:/ {
+                sub(/^[[:space:]]+name:[[:space:]]*/, "")
+                print
+                exit
+              }
+            ' "$1"
+          }
+
+          test "$(gateway_tls_secret /tmp/lamassu-external-tls.yaml)" = "provided-tls"
+          if grep -q 'apiVersion: cert-manager.io/v1' /tmp/lamassu-external-tls.yaml; then
+            echo "External TLS unexpectedly rendered cert-manager resources"
+            exit 1
+          fi
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set tls.type=certManager \
+            >/tmp/lamassu-certmanager-tls.yaml
+          test "$(grep -c 'apiVersion: cert-manager.io/v1' /tmp/lamassu-certmanager-tls.yaml)" -eq 4
+          test "$(gateway_tls_secret /tmp/lamassu-certmanager-tls.yaml)" = "lamassu-downstream-tls"
+
       - name: Verify deprecated CA crypto engines are rejected
         if: steps.list-changed.outputs.changed == 'true'
         run: |
