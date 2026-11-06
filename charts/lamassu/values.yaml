@@ -479,7 +479,7 @@ connectivityTest:
         - ALL
 migrations:
   db:
-    image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4
+    image: ghcr.io/lamassuiot/lamassu-db-migration:dev-v4
     databases:
       - alerts
       - ca
