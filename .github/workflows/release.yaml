@@ -81,19 +81,16 @@ jobs:
           token: ${{ steps.release-bot-token.outputs.token }}
 
       - name: Update UI docker image version
+        if: ${{ github.event.inputs.chart_to_release == 'lamassu' }}
         run: |
           yq eval '.services.ui.image = "ghcr.io/lamassuiot/lamassu-ui:${{ github.event.inputs.ui_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
     
       - name: Update Backend docker image version
+        if: ${{ github.event.inputs.chart_to_release == 'lamassu' }}
         run: |
-          yq eval '.services.va.image = "ghcr.io/lamassuiot/lamassu-va:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
-          yq eval '.services.ca.image = "ghcr.io/lamassuiot/lamassu-ca:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
-          yq eval '.services.deviceManager.image = "ghcr.io/lamassuiot/lamassu-devmanager:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
-          yq eval '.services.dmsManager.image = "ghcr.io/lamassuiot/lamassu-dmsmanager:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
-          yq eval '.services.alerts.image = "ghcr.io/lamassuiot/lamassu-alerts:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
-          yq eval '.services.kms.image = "ghcr.io/lamassuiot/lamassu-kms:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
-          yq eval '.migrations.db.image = "ghcr.io/lamassuiot/lamassu-lamassu-db-migration:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
-          yq eval '.migrations.caToKms.image = "ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:${{ github.event.inputs.app_version }}"' -i charts/${{ github.event.inputs.chart_to_release }}/values.yaml
+          bash scripts/update-release-images.sh \
+            "charts/${{ github.event.inputs.chart_to_release }}/values.yaml" \
+            "${{ github.event.inputs.app_version }}"
       
       - name: Update Chart.yaml file with the new version
         run: |
