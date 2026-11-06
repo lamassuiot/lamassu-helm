@@ -88,6 +88,39 @@ For quick deployment, you can use the provided fast lane script:
 ./scripts/lamassu-fast-lane.sh
 ```
 
+The fast lane script installs Envoy Gateway (the `eg` GatewayClass) and exposes
+it through its own LoadBalancer service, terminating TLS at Envoy Gateway. The
+Gateway API and Envoy Gateway CRDs are installed once per cluster and shared by
+every namespace the script deploys into (multiple installs are told apart by
+`--domain`).
+
+### Gateway Component Compatibility
+
+The fast lane installer pins the versions below. The CRDs are applied from the
+`gateway-crds-helm` chart and the Envoy Gateway controller chart is installed
+with `--skip-crds`, so the CRDs have a single owner. The Gateway API CRDs use
+the experimental channel: Lamassu itself only needs the standard `Gateway` and
+`HTTPRoute` resources, but the CRDs are shared cluster-wide and a Traefik
+Gateway provider running on the same cluster needs `TCPRoute`, which is only
+served by the experimental channel.
+
+| Envoy Gateway | Envoy Gateway CRDs (gateway-crds-helm) | Gateway API CRDs (bundled) | Notes |
+|---------------|----------------------------------------|----------------------------|-------|
+| v1.8.0 | v1.8.0 (controller-gen v0.20.x) | v1.5.1 (experimental) | Tested combination. The version is hardcoded in the script |
+
+- The CRDs are shared by the whole cluster, so the script is conservative and
+  handles Gateway API and Envoy Gateway CRDs separately. It installs a family
+  that is completely absent, upgrades one that is older than the pinned
+  versions, and leaves equal or newer ones untouched (they are never
+  downgraded). When CRDs at the pinned version are incomplete it creates only
+  the missing ones
+- In any state it cannot vouch for, the script stops and explains instead of
+  changing CRDs. That covers a non-`experimental` channel, an unknown version,
+  a partial installation, CRDs that are newer but incomplete, and errors
+  querying the cluster. It never deletes CRDs or admission policies
+- Older Envoy Gateway versions (≤ v1.3.x) installed via the manual route
+  (pre-fast-lane) are not covered by this table
+
 ## Configuration
 
 ### Basic Configuration
@@ -295,6 +328,11 @@ This repository uses GitHub Actions for CI/CD:
 - `.github/workflows/release.yaml`: Handles the release process
 - `test-fast-lane.yaml`: Tests the fast lane deployment script
 
+
+## Security
+
+To report a security vulnerability, do **not** open a public issue — follow
+[SECURITY.md](./SECURITY.md) instead.
 
 ## License
 

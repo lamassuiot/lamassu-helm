@@ -20,6 +20,11 @@ GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 SAMPLE_DATA=false
+# Development mode: provisions Keycloak for frictionless local use (fully
+# provisioned lamassu user, permissive frontend redirect URIs). Never use it for
+# anything exposed beyond a development machine. The lamassu/lamassu admin
+# password stays fixed and permanently valid (it is never rotated).
+DEVELOPMENT=false
 HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
 SOFTHSM_CHART_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)/charts/softhsm"
@@ -152,6 +157,7 @@ function usage() {
     echo " -l, --local-chart-path       Path to the local chart folder"
     echo " -ip, --gateway-ip            IP address to set as the Envoy Gateway address (overrides auto-detected host IPs)"
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in supported Lamassu services (AWS Connector, authz, wfx and the UI are not instrumented)"
+    echo " --development               Development mode: Keycloak lamassu user is fully provisioned (FIXED lamassu/lamassu password that is never rotated, no first-login profile/password steps) and the frontend client accepts any redirect URI/web origin. NOT for production"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: charts/softhsm in this repository"
     echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
@@ -184,6 +190,9 @@ function process_flags() {
             ;;
         --with-hsm)
             WITH_HSM=true
+            ;;
+        --development)
+            DEVELOPMENT=true
             ;;
         --softhsm-chart-path)
             if ! has_argument $@; then
@@ -315,7 +324,12 @@ function final_instructions() {
     echo -e "${GREEN}=== Lamassu IoT has been installed in your Kubernetes instance ===${NOCOLOR}"
     echo -e "${GREEN}Total installation time: $(format_duration $(($(date +%s) - SCRIPT_START_TIME)))${NOCOLOR}"
     echo -e "${BLUE}Please connect to https://${DOMAIN} using default user lamassu/lamassu ${NOCOLOR}"
-    echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
+    if [ "$DEVELOPMENT" = true ]; then
+        echo -e "${ORANGE}Development mode: the lamassu user is fully provisioned (no profile setup or password reset on first login) and the Keycloak frontend client accepts any redirect URI. Do not expose this installation.${NOCOLOR}"
+        echo -e "${ORANGE}WARNING: the lamassu/lamassu password is FIXED and PERMANENT (it will never be forced to change) and grants pki-admin access, including non-interactive tokens through the frontend client. Anyone who can reach https://${DOMAIN} can use it.${NOCOLOR}"
+    else
+        echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
+    fi
     echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
     echo -e "${BLUE}Use the provided Keycloak credentials ${KEYCLOAK_USER}/${KEYCLOAK_PWD}${NOCOLOR}"
     if [ "$WITH_HSM" = true ]; then
@@ -841,6 +855,47 @@ realm:
     }
 EOF
 
+    if [ "$DEVELOPMENT" = true ]; then
+        echo -e "${ORANGE}Development mode: provisioning the Keycloak lamassu user without first-login steps and relaxing frontend redirect URIs${NOCOLOR}"
+        echo -e "${ORANGE}WARNING: development mode keeps the well-known lamassu/lamassu admin password permanently valid. Do not run it on a network-reachable host.${NOCOLOR}"
+        local current_realm_config dev_realm_config
+        # Read with yq in its own step: in a pipeline only jq's exit status would be seen,
+        # and jq succeeds on empty input, masking a yq failure.
+        if ! current_realm_config=$(yq -r '.realm.configFile' keycloak.yaml) || [ -z "$current_realm_config" ] || [ "$current_realm_config" = "null" ]; then
+            echo -e "\n${RED}Error reading the Keycloak realm configuration from keycloak.yaml${NOCOLOR}"
+            exit 1
+        fi
+        if ! dev_realm_config=$(jq '
+            .users |= map(
+                if .username == "lamassu" then
+                    . + {
+                        firstName: "Lamassu",
+                        lastName: "Admin",
+                        email: "lamassu@lamassu.io",
+                        emailVerified: true
+                    }
+                    | .credentials |= map(.temporary = false)
+                    | del(.requiredActions)
+                else . end
+            ) |
+            .clients |= map(
+                if .clientId == "frontend" then
+                    .redirectUris = ["*"] | .webOrigins = ["*"]
+                else . end
+            )
+        ' <<< "$current_realm_config"); then
+            echo -e "\n${RED}Error applying the Keycloak development configuration${NOCOLOR}"
+            exit 1
+        fi
+
+        export DEV_REALM_CONFIG="$dev_realm_config"
+        if ! yq -i '.realm.configFile = strenv(DEV_REALM_CONFIG)' keycloak.yaml; then
+            echo -e "\n${RED}Error writing the Keycloak development configuration${NOCOLOR}"
+            exit 1
+        fi
+        unset DEV_REALM_CONFIG
+    fi
+
     if [ "$SAMPLE_DATA" = true ]; then
         local realm_config
         if ! realm_config=$(yq -r '.realm.configFile' keycloak.yaml | jq --arg secret "$SAMPLE_DATA_CLIENT_SECRET" '
@@ -1124,7 +1179,7 @@ function detect_distribution() {
 
 function check_dependencies() {
     exit_if_command_not_installed yq
-    if [ "$SAMPLE_DATA" = true ]; then
+    if [ "$SAMPLE_DATA" = true ] || [ "$DEVELOPMENT" = true ]; then
         exit_if_command_not_installed jq
     fi
     if [ $dist == "microk8s" ]; then
@@ -1294,26 +1349,261 @@ function is_microk8s_addon_enabled() {
 
 function check_envoy_gateway_helm() {
     envoy_gateway_version="v1.8.0"
+    # Versions shipped by gateway-crds-helm ${envoy_gateway_version}: Gateway API bundle
+    # v1.5.1 (experimental) and Envoy Gateway CRDs generated by controller-gen
+    # v0.20.x.
+    local gateway_api_bundle_version="v1.5.1"
+    local eg_kubebuilder_pinned_minor=20
+    # Gateway API CRDs Lamassu needs: the chart renders Gateway and HTTPRoute, and
+    # this script creates the eg GatewayClass.
+    local gateway_api_required_crds="gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io"
 
-    # 1. Apply/upgrade Envoy Gateway and Gateway API CRDs before starting the controller.
-    echo "Applying Envoy Gateway CRDs ${envoy_gateway_version}..."
-    if run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
-        --version "${envoy_gateway_version}" \
-        --set crds.gatewayAPI.enabled=true \
-        --set crds.gatewayAPI.channel=experimental \
-        --set crds.envoyGateway.enabled=true \
-        | run_kubectl apply --server-side --force-conflicts -f -; then
-        echo "✅ Envoy Gateway CRDs applied successfully"
-    else
-        echo "❌ Failed to apply Envoy Gateway CRDs. Please check Helm/Kubernetes output and try again."
+    # render_gateway_crds <gateway_api:true|false> <envoy_gateway:true|false>: renders
+    # the CRD bundle of the pinned release. Each half can be toggled so one can be
+    # applied without touching the other.
+    function render_gateway_crds() {
+        run_helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+            --version "${envoy_gateway_version}" \
+            --set crds.gatewayAPI.enabled="$1" \
+            --set crds.gatewayAPI.channel=experimental \
+            --set crds.envoyGateway.enabled="$2"
+    }
+
+    # crd_present <crd>: returns 0 if the CRD exists, 1 if it does not. Any other
+    # kubectl failure aborts: shared CRDs are never modified on a guess.
+    function crd_present() {
+        local out
+        if ! out=$(run_kubectl get crd "$1" --ignore-not-found -o name 2>&1); then
+            echo "❌ Could not query CRD $1: ${out}"
+            echo "   Refusing to modify cluster-wide CRDs without knowing their state. Fix cluster access and rerun."
+            exit 1
+        fi
+        [ -n "$out" ]
+    }
+
+    # crd_annotation <crd> <escaped jsonpath key>: prints the annotation value
+    # (empty if unset). Aborts on kubectl failures.
+    function crd_annotation() {
+        local out
+        if ! out=$(run_kubectl get crd "$1" -o jsonpath="{.metadata.annotations.$2}" 2>&1); then
+            echo "❌ Could not read annotations of CRD $1: ${out}" >&2
+            exit 1
+        fi
+        echo "$out"
+    }
+
+    # find_missing_crds <crd...>: sets missing_crds to the given CRDs absent from the
+    # cluster (empty = all present).
+    function find_missing_crds() {
+        local crd
+        missing_crds=""
+        for crd in "$@"; do
+            crd_present "$crd" || missing_crds+="${crd} "
+        done
+        missing_crds="${missing_crds% }"
+    }
+
+    # 1. CRDs first, controller second. CRDs are applied with kubectl (field
+    # manager "kubectl"), so the eg Helm install below must skip its bundled
+    # CRDs; otherwise its server-side apply conflicts with kubectl ownership
+    # on the safe-upgrades ValidatingAdmissionPolicy objects.
+    #
+    # Gateway API and Envoy Gateway CRDs are shared by the whole cluster, so the
+    # script is conservative and handles each family on its own:
+    #   - absent altogether          -> install the pinned bundle
+    #   - older than the pin         -> upgrade server-side to the pinned bundle
+    #   - same as the pin            -> keep; create only individual missing CRDs
+    #   - newer than the pin         -> keep untouched (never downgraded)
+    #   - anything it cannot vouch for (unknown version or channel, partially
+    #     installed, newer but incomplete, kubectl errors) -> stop and explain.
+    # It never deletes CRDs or admission policies.
+    local gateway_api_crd=gateways.gateway.networking.k8s.io
+    local gateway_api_version=""
+    local gateway_api_channel=""
+    local gateway_api_action=install # install | upgrade | repair | keep
+    local gateway_api_missing_crds=""
+    local gateway_api_bundle_crds=""
+    local eg_kubebuilder=""
+    local eg_kb_minor=""
+    local eg_crd_name="envoyproxies.gateway.envoyproxy.io"
+    local eg_crds_action=install # install | upgrade | repair | keep
+    local eg_missing_crds=""
+    local eg_required_crds=""
+    local all_crds_manifest=""
+    local all_crd_names=""
+    local missing_crds=""
+
+    echo "Checking Gateway API and Envoy Gateway CRDs..."
+
+    # The CRD lists come from the pinned bundle itself so they cannot drift.
+    if ! all_crds_manifest=$(render_gateway_crds true true) || [ -z "$all_crds_manifest" ]; then
+        echo "❌ Failed to render the Envoy Gateway ${envoy_gateway_version} CRD bundle (gateway-crds-helm). Check Helm/registry access and try again."
         exit 1
     fi
+    all_crd_names=$(printf '%s\n' "$all_crds_manifest" | yq -r 'select(.kind == "CustomResourceDefinition") | .metadata.name' | grep -v '^---$')
+    eg_required_crds=$(grep '\.gateway\.envoyproxy\.io$' <<<"$all_crd_names")
+    gateway_api_bundle_crds=$(grep -E '\.gateway\.networking\.(k8s|x-k8s)\.io$' <<<"$all_crd_names")
+    if [ -z "$eg_required_crds" ] || [ -z "$gateway_api_bundle_crds" ]; then
+        echo "❌ The Envoy Gateway ${envoy_gateway_version} CRD bundle is missing Gateway API or Envoy Gateway CRDs; refusing to continue."
+        exit 1
+    fi
+
+    # --- Gateway API CRDs ---
+    if crd_present "$gateway_api_crd"; then
+        gateway_api_version=$(crd_annotation "$gateway_api_crd" 'gateway\.networking\.k8s\.io/bundle-version') || exit 1
+        gateway_api_channel=$(crd_annotation "$gateway_api_crd" 'gateway\.networking\.k8s\.io/channel') || exit 1
+        if [ -z "$gateway_api_version" ]; then
+            echo "❌ Gateway API CRDs are installed but carry no bundle-version annotation, so their version cannot be determined."
+            echo "   The fast lane will not modify them. Make sure the cluster runs the experimental Gateway API bundle ${gateway_api_bundle_version} or newer, then rerun."
+            exit 1
+        fi
+        case "$gateway_api_channel" in
+        experimental) ;;
+        "")
+            echo "⚠️ Gateway API CRDs (bundle ${gateway_api_version}) carry no channel annotation; they will only be used as they are, never modified."
+            ;;
+        *)
+            echo "❌ Gateway API CRDs are on the '${gateway_api_channel}' channel (bundle ${gateway_api_version}); the fast lane needs the experimental channel (a Traefik Gateway provider on the cluster needs TCPRoute)."
+            echo "   The fast lane will not switch the channel of CRDs shared by the whole cluster. That is an operator decision:"
+            echo "   the safe-upgrades ValidatingAdmissionPolicy blocks it, and removing the CRDs would also delete every Gateway API"
+            echo "   resource (Gateways, HTTPRoutes, ...) in the cluster. Coordinate with the owners of those resources, move the"
+            echo "   cluster to the experimental bundle ${gateway_api_bundle_version} or newer, then rerun."
+            exit 1
+            ;;
+        esac
+
+        if [ "$(printf '%s\n%s\n' "$gateway_api_bundle_version" "$gateway_api_version" | sort -V | head -n1)" = "$gateway_api_bundle_version" ]; then
+            # Same as or newer than the pin: keep. The probe only looked at one CRD,
+            # so check the ones Lamassu needs.
+            # shellcheck disable=SC2086 # word splitting is intended: one CRD per word
+            find_missing_crds $gateway_api_required_crds
+            gateway_api_missing_crds="$missing_crds"
+            if [ -z "$gateway_api_missing_crds" ]; then
+                gateway_api_action=keep
+                echo "✅ Gateway API CRDs already installed (bundle ${gateway_api_version}, channel ${gateway_api_channel:-unknown}); leaving them untouched."
+            elif [ "$gateway_api_version" = "$gateway_api_bundle_version" ] && [ -n "$gateway_api_channel" ]; then
+                gateway_api_action=repair
+                echo "⚠️ Gateway API CRDs (bundle ${gateway_api_version}) are incomplete (missing: ${gateway_api_missing_crds}); creating only the missing ones."
+            else
+                echo "❌ Gateway API CRDs (bundle ${gateway_api_version}, channel ${gateway_api_channel:-unknown}) are incomplete (missing: ${gateway_api_missing_crds})."
+                echo "   The fast lane only ships bundle ${gateway_api_bundle_version} and will not mix it into a different one. Restore the missing CRDs from the bundle installed on the cluster, then rerun."
+                exit 1
+            fi
+        elif [ -z "$gateway_api_channel" ]; then
+            echo "❌ Gateway API CRDs (bundle ${gateway_api_version}) are older than ${gateway_api_bundle_version} and their channel is unknown."
+            echo "   The fast lane will not apply the experimental bundle over CRDs of an unknown channel. Upgrade them to the experimental bundle ${gateway_api_bundle_version} or newer, then rerun."
+            exit 1
+        else
+            gateway_api_action=upgrade
+            echo "⚠️ Gateway API CRDs are older (bundle ${gateway_api_version}) than the ${gateway_api_bundle_version} bundle shipped with Envoy Gateway ${envoy_gateway_version}; they will be upgraded server-side."
+        fi
+    else
+        # shellcheck disable=SC2086 # word splitting is intended: one CRD per word
+        find_missing_crds $gateway_api_bundle_crds
+        if [ "$missing_crds" != "$(echo $gateway_api_bundle_crds)" ]; then
+            echo "❌ ${gateway_api_crd} is missing but other Gateway API CRDs exist: the installation is partial and its version unknown."
+            echo "   The fast lane will not modify it. Restore the Gateway API CRDs (experimental bundle ${gateway_api_bundle_version} or newer), then rerun."
+            exit 1
+        fi
+        echo "Gateway API CRDs not found; installing the ${gateway_api_bundle_version} experimental bundle."
+    fi
+
+    # --- Envoy Gateway CRDs ---
+    # Version probe: the controller-gen version that generated one CRD.
+    if crd_present "$eg_crd_name"; then
+        eg_kubebuilder=$(crd_annotation "$eg_crd_name" 'controller-gen\.kubebuilder\.io/version') || exit 1
+        case "$eg_kubebuilder" in
+        v0.[0-9]*.*)
+            eg_kb_minor=${eg_kubebuilder#v0.}
+            eg_kb_minor=${eg_kb_minor%%.*}
+            ;;
+        esac
+        if [[ ! "$eg_kb_minor" =~ ^[0-9]+$ ]]; then
+            echo "❌ Envoy Gateway CRDs carry an unrecognised kubebuilder version ('${eg_kubebuilder:-none}'), so their version cannot be determined."
+            echo "   The fast lane will not modify them. Make sure the cluster runs the Envoy Gateway ${envoy_gateway_version} CRDs or newer, then rerun."
+            exit 1
+        fi
+
+        # shellcheck disable=SC2086 # word splitting is intended: one CRD per word
+        find_missing_crds $eg_required_crds
+        eg_missing_crds="$missing_crds"
+        if [ "$eg_kb_minor" -lt "$eg_kubebuilder_pinned_minor" ]; then
+            eg_crds_action=upgrade
+            echo "⚠️ Envoy Gateway CRDs are older (kubebuilder ${eg_kubebuilder}); they will be upgraded server-side to ${envoy_gateway_version}."
+        elif [ -z "$eg_missing_crds" ]; then
+            eg_crds_action=keep
+            if [ "$eg_kb_minor" -eq "$eg_kubebuilder_pinned_minor" ]; then
+                echo "✅ Envoy Gateway CRDs are up to date (kubebuilder ${eg_kubebuilder}); leaving them untouched."
+            else
+                echo "⚠️ Envoy Gateway CRDs are newer than the ones shipped with ${envoy_gateway_version} (kubebuilder ${eg_kubebuilder}); leaving them untouched."
+            fi
+        elif [ "$eg_kb_minor" -eq "$eg_kubebuilder_pinned_minor" ]; then
+            eg_crds_action=repair
+            echo "⚠️ Envoy Gateway CRDs (kubebuilder ${eg_kubebuilder}) are incomplete (missing: ${eg_missing_crds}); creating only the missing ones."
+        else
+            echo "❌ Envoy Gateway CRDs are newer than ${envoy_gateway_version} (kubebuilder ${eg_kubebuilder}) and incomplete (missing: ${eg_missing_crds})."
+            echo "   The fast lane only ships the ${envoy_gateway_version} CRDs and will not mix them into a newer set. Restore the missing CRDs from the Envoy Gateway release installed on the cluster, then rerun."
+            exit 1
+        fi
+    else
+        # shellcheck disable=SC2086 # word splitting is intended: one CRD per word
+        find_missing_crds $eg_required_crds
+        if [ "$missing_crds" != "$(echo $eg_required_crds)" ]; then
+            echo "❌ ${eg_crd_name} is missing but other Envoy Gateway CRDs exist: the installation is partial and its version unknown."
+            echo "   The fast lane will not modify it. Restore the Envoy Gateway CRDs (${envoy_gateway_version} or newer), then rerun."
+            exit 1
+        fi
+        echo "Envoy Gateway CRDs not found; installing the ${envoy_gateway_version} bundle."
+    fi
+
+    # --- Apply ---
+    local apply_gateway_api=false
+    local apply_eg_crds=false
+    { [ "$gateway_api_action" = install ] || [ "$gateway_api_action" = upgrade ]; } && apply_gateway_api=true
+    { [ "$eg_crds_action" = install ] || [ "$eg_crds_action" = upgrade ]; } && apply_eg_crds=true
+
+    if [ "$apply_gateway_api" = true ] || [ "$apply_eg_crds" = true ]; then
+        local crds_manifest=""
+        echo "Applying CRDs via kubectl (Gateway API: ${apply_gateway_api}, Envoy Gateway: ${apply_eg_crds}); Envoy Gateway itself comes later, without CRDs..."
+        if ! crds_manifest=$(render_gateway_crds "$apply_gateway_api" "$apply_eg_crds") || [ -z "$crds_manifest" ]; then
+            echo "❌ Failed to render the CRD bundle. Please check Helm output and try again."
+            exit 1
+        fi
+        if printf '%s\n' "$crds_manifest" | run_kubectl apply --server-side --force-conflicts -f -; then
+            echo "✅ CRDs applied successfully"
+        else
+            echo "❌ Failed to apply CRDs. Please check Helm/Kubernetes output and try again."
+            exit 1
+        fi
+    fi
+
+    # Repairs use "kubectl create": it only adds the missing CRD and fails rather
+    # than modify one that turned out to exist.
+    local crd
+    for crd in $([ "$gateway_api_action" = repair ] && echo "$gateway_api_missing_crds") \
+        $([ "$eg_crds_action" = repair ] && echo "$eg_missing_crds"); do
+        if CRD_NAME="$crd" yq 'select(.kind == "CustomResourceDefinition" and .metadata.name == env(CRD_NAME))' <<<"$all_crds_manifest" | run_kubectl create -f -; then
+            echo "✅ Created missing CRD ${crd}"
+        else
+            echo "❌ Failed to create missing CRD ${crd}. Please check Kubernetes output and try again."
+            exit 1
+        fi
+    done
+
+    # shellcheck disable=SC2086 # word splitting is intended: one CRD per word
+    find_missing_crds $gateway_api_required_crds $eg_required_crds
+    if [ -n "$missing_crds" ]; then
+        echo "❌ Required CRDs are missing: ${missing_crds}"
+        echo "   Both Envoy Gateway charts are installed with --skip-crds, so nothing would create them. Check the CRD output above and rerun."
+        exit 1
+    fi
+    echo "✅ All required Gateway API and Envoy Gateway CRDs are present"
 
     # 2. Check Helm Release
     if run_helm list -n envoy-gateway-system | grep -q "^eg\s"; then
         echo "✅ Envoy Gateway (eg) Helm release found"
         echo "Upgrading Envoy Gateway to ${envoy_gateway_version}..."
-        if run_helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system; then
+        if run_helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --skip-crds; then
             echo "✅ Envoy Gateway Helm chart 'eg' upgraded successfully"
         else
             echo "❌ Failed to upgrade Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."
@@ -1321,8 +1611,8 @@ function check_envoy_gateway_helm() {
         fi
     else
         echo "❌ Envoy Gateway: Helm release 'eg' not found in namespace 'envoy-gateway-system'"
-        echo "Installing Envoy Gateway ${envoy_gateway_version}..."
-        if run_helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace; then
+        echo "Installing Envoy Gateway ${envoy_gateway_version} (CRDs are already installed, skipping Helm CRDs)..."
+        if run_helm install eg oci://docker.io/envoyproxy/gateway-helm --version "${envoy_gateway_version}" -n envoy-gateway-system --create-namespace --skip-crds; then
             echo "✅ Envoy Gateway Helm chart 'eg' installed successfully"
         else
             echo "❌ Failed to install Envoy Gateway Helm chart 'eg'. Please check Helm output and try again."

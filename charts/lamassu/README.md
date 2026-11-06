@@ -128,6 +128,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:dev-v4"` | Docker image for Device Manager component |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4"` | Docker image for DMS Manager component |
 | services.authz.jwkUrl | string | `"http://auth-keycloak/auth/realms/lamassu/protocol/openid-connect/certs"` | JWKS endpoint used by authz to validate JWTs |
+| services.authz.insecureSkipJwtVerify | bool | `false` | Skip OIDC JWT signature verification in authz. Unset/false keeps verification ON against services.authz.jwkUrl (production). true is for development/testing only: tokens are parsed without checking signatures. |
 | services.wfx.enabled | bool | `true` | Enable the Siemens WFX workflow service |
 | services.wfx.image | string | `"ghcr.io/siemens/wfx@sha256:a4c369a086ee82828c3858f2c330b4cb1762d7ae2830a4cb5aba56830d86f678"` | Docker image for WFX component, pinned by digest |
 | services.wfx.clientPort | int | `9080` | WFX southbound/client API port |
