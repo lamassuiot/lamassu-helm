@@ -30,11 +30,10 @@ data:
       password: "{{ .Values.postgres.password }}"
       database: {{ $authzDB }}
     jwks_url: {{ $authz.jwkUrl }}
-    insecure_skip_jwt_verify: false
+    insecure_skip_jwt_verify: true
     preload_dir: /etc/lamassuiot/authz/preload
     # This Job is one-shot: it migrates the authz schema and seeds bootstrap
     # principals, but never serves requests, so there is nothing to authenticate
-    insecure_skip_jwt_verify: true
     {{- if $authz.bootstrap }}
     bootstrap:
       {{ $authz.bootstrap | toYaml | nindent 6 | trim }}
