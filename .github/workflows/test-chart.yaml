@@ -72,6 +72,18 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify database migration image
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          rendered=$(helm template lamassu charts/lamassu --namespace lamassu-test)
+          grep -Eq '^[[:space:]]*image: ghcr\.io/lamassuiot/lamassu-db-migration:[^[:space:]]+[[:space:]]*$' <<<"$rendered"
+          if grep -q 'lamassu-lamassu-db-migration' <<<"$rendered"; then
+            echo "The database migration image contains a duplicated lamassu- prefix"
+            exit 1
+          fi
+
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
         run: |
