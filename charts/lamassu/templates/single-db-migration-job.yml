@@ -26,8 +26,8 @@ data:
       provider: "postgres"
       hostname: {{ .Values.postgres.hostname }}
       port: {{ .Values.postgres.port }}
-      username: "{{ .Values.postgres.username }}"
-      password: "{{ .Values.postgres.password }}"
+      username: "__LAMASSU_POSTGRES_USERNAME__"
+      password: "__LAMASSU_POSTGRES_PASSWORD__"
       database: {{ $authzDB }}
     jwks_url: {{ $authz.jwkUrl }}
     insecure_skip_jwt_verify: true
@@ -81,9 +81,23 @@ spec:
               drop: ["ALL"]
           env:
             - name: POSTGRES_USER
+              {{- if .Values.postgres.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | quote }}
+                  key: {{ .Values.postgres.usernameKey | quote }}
+              {{- else }}
               value: "{{ .Values.postgres.username }}"
+              {{- end }}
             - name: POSTGRES_PASSWORD
+              {{- if .Values.postgres.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | quote }}
+                  key: {{ .Values.postgres.passwordKey | quote }}
+              {{- else }}
               value: "{{ .Values.postgres.password }}"
+              {{- end }}
             - name: POSTGRES_HOST
               value: "{{ .Values.postgres.hostname }}"
           command: ["bash", "-c"]
@@ -294,11 +308,28 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          env:
+            - name: PGUSER
+              {{- if $.Values.postgres.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.existingSecret | quote }}
+                  key: {{ $.Values.postgres.usernameKey | quote }}
+              {{- else }}
+              value: {{ $.Values.postgres.username | quote }}
+              {{- end }}
+            - name: PGPASSWORD
+              {{- if $.Values.postgres.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.existingSecret | quote }}
+                  key: {{ $.Values.postgres.passwordKey | quote }}
+              {{- else }}
+              value: {{ $.Values.postgres.password | quote }}
+              {{- end }}
           args:
             - >-
               host={{ $.Values.postgres.hostname }}
-              user={{ $.Values.postgres.username }}
-              password={{ $.Values.postgres.password }}
               dbname=pki
               search_path={{ $schema }}
               port={{ $.Values.postgres.port }}
@@ -307,6 +338,7 @@ spec:
         {{- end }}
 
         {{- if $authzImage }}
+        {{- include "lamassu.configSecretInitItem" $ | nindent 8 }}
         # Step 3 — authz migrations, policy preload and bootstrap principals.
         # Same image as the authz Deployment, so the embedded migrations can
         # never drift from the service that reads them.
@@ -320,7 +352,7 @@ spec:
           command: ["/authz"]
           args: ["init"]
           volumeMounts:
-            - name: authz-init-config
+            - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
         {{- end }}
@@ -335,7 +367,10 @@ spec:
           command: ["bash", "-c", "echo 'Database upgrade completed.'"]
       {{- if $authzImage }}
       volumes:
-        - name: authz-init-config
+        - name: config-template
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-init-config") }}
+        - name: rendered-config
+          emptyDir:
+            medium: Memory
       {{- end }}
