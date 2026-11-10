@@ -233,7 +233,7 @@ This keeps token state, socket ownership, and failure domains isolated.
 | connectivityTest.image | string | `"curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"` | Image for the `helm test` connectivity-check hook |
 | connectivityTest.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the connectivity-check hook container |
 | migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4"` | Docker image for database migrations |
-| migrations.db.databases | list | `["alerts", "ca", "va", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
+| migrations.db.databases | list | `["kms", "ca", "va", "devicemanager", "dmsmanager", "alerts"]` | Schemas to migrate, in order. `kms` must come before `ca`, and `ca` before `va` |
 | migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4"` | Docker image for the CA-to-KMS migration tool |
 
 ### In-Cluster HSM over `p11-kit`
