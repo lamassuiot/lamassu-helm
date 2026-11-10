@@ -130,7 +130,12 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- else }}
         {{- end }}
+        {{- include "lamassu.configSecretInitItem" $ | nindent 8 }}
+      {{- end }}
+      {{- if not (or $svc.pkcs11Modules $svc.pkcs11Sidecar.enabled) }}
+      {{- include "lamassu.configSecretInit" $ | nindent 6 }}
       {{- end }}
       containers:
         - name: kms
@@ -176,7 +181,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: api-config
+            - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
             {{- if $svc.pkcs11Sidecar.enabled }}
@@ -196,9 +201,7 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        - name: api-config
-          configMap:
-            name: {{ include "lamassu.componentName" (dict "root" $ "component" "kms-config") }}
+        {{- include "lamassu.configSecretVolumes" (dict "configName" (include "lamassu.componentName" (dict "root" $ "component" "kms-config"))) | nindent 8 }}
         {{- if $svc.pkcs11Sidecar.enabled }}
         - name: pkcs11-socket
           emptyDir: {}

@@ -67,19 +67,31 @@ postgres:
   port: 5432
   # -- Log level used by components that connect to PostgreSQL for their storage layer
   logLevel: "info"
-  # -- Username to be used to authenticate with the PostgreSQL server
+  # -- PostgreSQL username fallback for local testing. Prefer existingSecret in shared or production values.
   username: ""
-  # -- Password to be used to authenticate with the PostgreSQL server
+  # -- PostgreSQL password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret.
   password: ""
+  # -- Existing Secret containing PostgreSQL credentials. Prefer this over username/password.
+  existingSecret: ""
+  # -- Secret data key containing the PostgreSQL username.
+  usernameKey: username
+  # -- Secret data key containing the PostgreSQL password.
+  passwordKey: password
 amqp:
   # -- Hostname for the AMQP server
   hostname: ""
   # -- Port for the AMQP server
   port: 5672
-  # -- Username to be used to authenticate with the AMQP server
+  # -- AMQP username fallback for local testing. Prefer existingSecret in shared or production values.
   username: ""
-  # -- Password to be used to authenticate with the AMQP server
+  # -- AMQP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret.
   password: ""
+  # -- Existing Secret containing AMQP credentials. Prefer this over username/password.
+  existingSecret: ""
+  # -- Secret data key containing the AMQP username.
+  usernameKey: username
+  # -- Secret data key containing the AMQP password.
+  passwordKey: password
   # -- Enable AMQP over TLS (AMQPS). Set `port` to the broker's TLS listener port if it differs from `5672`.
   tls: false
   ca:
@@ -192,6 +204,8 @@ serviceDefaults:
   imagePullSecrets: []
   # -- Pod-level security context.
   podSecurityContext:
+    # -- Filesystem group used by non-root init containers and workloads to share generated files.
+    fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
   # -- Container-level security context. Owned distroless images run with their
@@ -413,10 +427,16 @@ services:
       insecure: false
       # -- use TLS for the SMTP connection
       enable_ssl: true
-      # -- SMTP server username
+      # -- SMTP username fallback for local testing. Prefer existingSecret in shared or production values.
       username: ""
-      # -- SMTP server password
+      # -- SMTP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret.
       password: ""
+      # -- Existing Secret containing SMTP credentials. Prefer this over username/password.
+      existingSecret: ""
+      # -- Secret data key containing the SMTP username.
+      usernameKey: username
+      # -- Secret data key containing the SMTP password.
+      passwordKey: password
       # -- SMTP server hostname
       host: ""
       # -- SMTP server port
@@ -482,11 +502,12 @@ migrations:
     image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4
     databases:
       - alerts
+      # The CA migrations require the KMS schema to exist first.
+      - kms
       - ca
       - va
       - devicemanager
       - dmsmanager
-      - kms
   caToKms:
     # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It uses the legacy unscoped `kms-config` ConfigMap while it still exists and falls back to the release-scoped `<chart fullname>-kms-config` (`lamassu-kms-config` when the release is named `lamassu`) once the legacy ConfigMap is gone.
     enabled: false

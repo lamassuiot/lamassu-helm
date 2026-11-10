@@ -131,6 +131,27 @@ The main configuration file for Lamassu is `lamassu.yaml`. You can create your o
 helm install lamassu lamassu/lamassu -f your-values.yaml -n lamassu --create-namespace
 ```
 
+### Secret management
+
+Do not commit database, AMQP, or SMTP passwords in Helm values files. The chart
+uses Kubernetes Secrets as its provider-neutral runtime interface:
+`postgres.existingSecret`, `amqp.existingSecret`, and
+`services.alerts.smtp_server.existingSecret` are consumed through
+`secretKeyRef`. ConfigMaps contain placeholders only; an init container
+materializes the configuration into an in-memory volume before the application
+starts.
+
+For production, External Secrets Operator is the recommended way to provision
+those Kubernetes Secrets from AWS Secrets Manager, Vault, Azure Key Vault,
+GCP Secret Manager, or another supported backend. Sealed Secrets and SOPS are
+valid alternatives for GitOps environments. The chart does not install any of
+these controllers because they are cluster-level infrastructure and differ
+between kind, EKS, and on-premise deployments.
+
+See the [complete secret management guide](charts/lamassu/README.md#secret-management)
+for the decision rationale, alternatives, examples, rotation behavior, and
+security limitations.
+
 ### External Dependencies
 
 Lamassu requires the following external services:

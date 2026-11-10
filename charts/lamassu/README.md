@@ -65,6 +65,154 @@ amqp:
     secretName: lamassu-amqp-client
 ```
 
+## Secret management
+
+### Problem and goals
+
+Lamassu services need PostgreSQL, AMQP, and optionally SMTP credentials. The
+application reads one YAML configuration file, so putting a password directly
+in a Helm value would previously make it appear in rendered ConfigMaps and in
+the Helm release values. The goals of this implementation are:
+
+1. Keep credentials out of Git-managed values files and ConfigMaps.
+2. Keep the chart usable on local kind clusters, EKS, and on-premise clusters.
+3. Avoid requiring one particular cloud provider or secret-management product.
+4. Preserve compatibility with existing installations during the transition.
+5. Make the ownership boundary clear: the chart consumes Secrets; the
+   operator or platform team provisions and rotates them.
+
+### Options considered
+
+| Option | Advantages | Disadvantages | Fit for this chart |
+|---|---|---|---|
+| Kubernetes Secret | Native Kubernetes API; no extra controller; works on kind, EKS, and on-premise | Base64 is encoding, not encryption; provisioning and rotation are external responsibilities | Required runtime interface and lowest common denominator |
+| External Secrets Operator | Synchronizes AWS Secrets Manager, Vault, GCP Secret Manager, Azure Key Vault, and others; supports refresh and rotation; Git contains only references | Requires an operator and a provider `SecretStore`/`ClusterSecretStore`; provider IAM and availability must be operated separately | **Recommended provisioning mechanism for production** |
+| Sealed Secrets | Encrypted Kubernetes manifests can be stored in Git; convenient for GitOps | Requires a controller and backup of its key; rotation is not automatic; encryption is tied to the controller | Good alternative for clusters without a central secret manager |
+| Vault Agent Injector | Vault dynamic secrets, leases, revocation, and strong audit capabilities | Requires Vault, injector webhooks, policies, and pod mutation; more moving parts than this chart needs | Suitable for Vault-centric platforms, but too coupled for a portable application chart |
+| SOPS | Encrypts values with KMS, PGP, or age; works well with Git and CI/CD | Decryption must happen in a trusted deployment environment; does not itself refresh running Kubernetes Secrets | Good for GitOps pipelines when ESO is unavailable |
+| Helm Secrets plugin | Convenient SOPS integration with Helm commands | Client-side plugin rather than a runtime store; every CI/operator environment needs the plugin and keys | Useful workflow tooling, but not a chart runtime dependency |
+
+### Decision
+
+The chart implements **Kubernetes Secret consumption through `existingSecret`**.
+For production, those Secrets should normally be created and refreshed by
+**External Secrets Operator**. This gives Lamassu a stable, provider-neutral
+interface while allowing each environment to choose its backing store:
+
+- kind: a manually created Kubernetes Secret is sufficient for development.
+- EKS: ESO can read AWS Secrets Manager using IRSA or another approved IAM
+  integration.
+- on-premise: ESO can read Vault or another supported provider, or the
+  platform can use Sealed Secrets/SOPS.
+
+ESO, Vault, Sealed Secrets, SOPS, and their provider configuration are
+intentionally not installed by this chart. Installing them would make the
+application chart provider-specific and could create cluster-wide ownership
+conflicts.
+
+### Implementation details
+
+The implementation has four parts:
+
+1. `postgres.existingSecret`, `amqp.existingSecret`, and
+   `services.alerts.smtp_server.existingSecret` identify Secrets in the
+   release namespace. `usernameKey` and `passwordKey` allow non-standard data
+   keys.
+2. ConfigMap templates contain non-sensitive placeholders such as
+   `__LAMASSU_POSTGRES_PASSWORD__`, never the Secret value. Credential fields
+   use YAML single-quoted scalars so double quotes and backslashes in a Secret
+   remain literal configuration data.
+3. The `lamassu.configSecretInit` helper adds a BusyBox init container. It reads
+   credentials through Kubernetes `secretKeyRef`, escapes backslashes for
+   `sed` and doubles embedded YAML single quotes, replaces the placeholders,
+   and writes the completed configuration to a memory-backed `emptyDir`.
+4. The application container mounts the generated file, while the original
+   ConfigMap is mounted only as the init container's read-only template.
+
+The `render-config` container runs explicitly as UID/GID `65532`, with
+`runAsNonRoot`, privilege escalation disabled, and all Linux capabilities
+dropped. The pod uses filesystem group `65532` so the non-root init container
+can write the generated file to the shared memory-backed volume and the
+application container can read it. This protection also applies to the
+database and CA-to-KMS migration hooks.
+
+The helper is parameterized per workload so each init container receives only
+the credential families used by its configuration. Regular services receive
+PostgreSQL and AMQP credentials, Alerts additionally receives SMTP
+credentials, AWS Connector receives AMQP credentials, and migration hooks
+receive only the database credentials they need. A missing SMTP Secret therefore
+cannot block PostgreSQL preparation or unrelated services.
+
+The same approach is used by the regular workloads, WFX, the database
+migration hook, and the optional CA-to-KMS pre-upgrade hook. The CA-to-KMS hook
+keeps its compatibility with both the release-scoped and legacy `kms-config`
+ConfigMaps, but renders the selected template through the Secret-aware init
+container before starting the migration binary. Therefore migration hooks do
+not need passwords in command arguments when an `existingSecret` is configured.
+
+The chart still accepts the old `username` and `password` values as a
+backwards-compatible fallback. They are intended for local, short-lived
+testing only and must not be committed to shared or Git-managed values files.
+When both a fallback value and `existingSecret` are supplied, the Secret
+reference takes precedence.
+
+### Creating and referencing a Secret
+
+For a local kind cluster, create Secrets outside the values file:
+
+```bash
+kubectl -n lamassu create secret generic lamassu-postgres \
+  --from-literal=username=lamassu \
+  --from-literal=password='change-me'
+
+kubectl -n lamassu create secret generic lamassu-amqp \
+  --from-literal=username=lamassu \
+  --from-literal=password='change-me'
+```
+
+Then reference them from a non-sensitive values file:
+
+```yaml
+postgres:
+  hostname: postgres.database.svc
+  existingSecret: lamassu-postgres
+  usernameKey: username
+  passwordKey: password
+amqp:
+  hostname: rabbitmq.messaging.svc
+  existingSecret: lamassu-amqp
+  usernameKey: username
+  passwordKey: password
+services:
+  alerts:
+    smtp_server:
+      existingSecret: lamassu-smtp
+```
+
+For ESO, create the provider-specific `SecretStore` and `ExternalSecret`
+outside this chart. The resulting Kubernetes Secret must contain the keys
+configured above and must be created in the same namespace as the Lamassu
+release.
+
+### Rotation, security boundaries, and limitations
+
+- Secret values are not copied into chart-managed ConfigMaps.
+- Secret values are exposed to the init container as environment variables and
+  exist in the generated configuration file inside the pod's memory-backed
+  volume. Kubernetes administrators and users with access to the namespace can
+  still inspect pod Secrets or process state; this is not a replacement for
+  Kubernetes RBAC and encryption at rest.
+- Updating a Secret does not rewrite a file already generated in a running
+  pod. Restart the affected Lamassu workloads after rotation. A rollout
+  annotation or an operator can automate this restart if required.
+- The chart does not validate that an external Secret exists or contains the
+  configured keys. Kubernetes reports a pod start error when a required
+  `secretKeyRef` key is missing.
+- The init image is only a rendering utility; it does not fetch secrets from
+  external systems and does not need Kubernetes API permissions.
+- TLS certificate Secrets for AMQP and the downstream Gateway remain separate
+  existing-Secret settings and are mounted directly as files.
+
 ## Values
 
 The complete generated values reference is maintained in [VALUES.md](VALUES.md).
@@ -233,7 +381,7 @@ This keeps token state, socket ownership, and failure domains isolated.
 | connectivityTest.image | string | `"curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"` | Image for the `helm test` connectivity-check hook |
 | connectivityTest.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the connectivity-check hook container |
 | migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4"` | Docker image for database migrations |
-| migrations.db.databases | list | `["alerts", "ca", "va", "devicemanager", "dmsmanager", "kms"]` | List of databases to migrate |
+| migrations.db.databases | list | `["alerts", "kms", "ca", "va", "devicemanager", "dmsmanager"]` | List of databases to migrate |
 | migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4"` | Docker image for the CA-to-KMS migration tool |
 
 ### In-Cluster HSM over `p11-kit`

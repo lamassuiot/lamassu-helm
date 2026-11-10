@@ -62,6 +62,9 @@
         "port": { "$ref": "#/definitions/port" },
         "username": { "type": "string" },
         "password": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "logLevel": { "type": "string" }
       },
       "additionalProperties": false
@@ -73,6 +76,9 @@
         "port": { "$ref": "#/definitions/port" },
         "username": { "type": "string" },
         "password": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "tls": { "type": "boolean" },
         "ca": {
           "type": "object",

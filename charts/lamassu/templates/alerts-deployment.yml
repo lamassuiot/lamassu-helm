@@ -23,6 +23,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc) | nindent 6 }}
+      {{- include "lamassu.configSecretInit" (dict "root" $ "includeSmtp" true) | nindent 6 }}
       containers:
         - name: alerts
           image: {{ $svc.image }}
@@ -51,7 +52,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: api-config
+            - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
             {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
@@ -60,7 +61,5 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        - name: api-config
-          configMap:
-            name: {{ include "lamassu.componentName" (dict "root" $ "component" "alerts-config") }}
+        {{- include "lamassu.configSecretVolumes" (dict "configName" (include "lamassu.componentName" (dict "root" $ "component" "alerts-config"))) | nindent 8 }}
         {{- include "lamassu.amqpVolumes" $ | nindent 8 }}

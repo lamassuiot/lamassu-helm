@@ -19,8 +19,8 @@ data:
       from: {{ .Values.services.alerts.smtp_server.from }}
       host: {{ .Values.services.alerts.smtp_server.host }}
       port: {{ .Values.services.alerts.smtp_server.port }}
-      username: {{ .Values.services.alerts.smtp_server.username }}
-      password: {{ .Values.services.alerts.smtp_server.password }}
+      username: '__LAMASSU_SMTP_USERNAME__'
+      password: '__LAMASSU_SMTP_PASSWORD__'
       ssl: {{ .Values.services.alerts.smtp_server.enable_ssl }}
       insecure: {{ .Values.services.alerts.smtp_server.insecure }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}

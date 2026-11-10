@@ -24,6 +24,7 @@ spec:
       {{- end }}
       {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc) | nindent 6 }}
       initContainers:
+        {{- include "lamassu.configSecretInitItem" $ | nindent 8 }}
         - name: build-cert-bundle
           image: {{ $svc.tlsInitContainer.image | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | quote }}
@@ -90,7 +91,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: api-config
+            - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
             - name: cert-output
@@ -101,9 +102,7 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        - name: api-config
-          configMap:
-            name: {{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager-config") }}
+        {{- include "lamassu.configSecretVolumes" (dict "configName" (include "lamassu.componentName" (dict "root" $ "component" "dms-manager-config"))) | nindent 8 }}
         - name: cert-input
           projected:
             sources:
