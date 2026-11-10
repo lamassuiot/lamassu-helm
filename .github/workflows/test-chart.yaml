@@ -43,6 +43,31 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check release test inputs
+        id: release-test-inputs
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
+            .github/workflows/release.yaml \
+            .github/workflows/test-chart.yaml \
+            .github/ci/ct.yaml \
+            scripts/update-release-images.sh \
+            scripts/test-release-image-updates.sh; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+      - name: Test release image updates
+        if: >-
+          github.event_name != 'pull_request' ||
+          steps.list-changed.outputs.changed == 'true' ||
+          steps.release-test-inputs.outputs.changed == 'true'
+        run: bash scripts/test-release-image-updates.sh
+
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct lint --charts charts/lamassu --github-groups --target-branch ${{ github.base_ref || 'main' }}
