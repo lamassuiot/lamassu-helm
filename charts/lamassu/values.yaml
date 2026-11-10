@@ -67,9 +67,9 @@ postgres:
   port: 5432
   # -- Log level used by components that connect to PostgreSQL for their storage layer
   logLevel: "info"
-  # -- Username to be used to authenticate with the PostgreSQL server
+  # -- PostgreSQL username fallback for local testing. Prefer existingSecret in shared or production values.
   username: ""
-  # -- Password to be used to authenticate with the PostgreSQL server
+  # -- PostgreSQL password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret.
   password: ""
   # -- Existing Secret containing PostgreSQL credentials. Prefer this over username/password.
   existingSecret: ""
@@ -82,9 +82,9 @@ amqp:
   hostname: ""
   # -- Port for the AMQP server
   port: 5672
-  # -- Username to be used to authenticate with the AMQP server
+  # -- AMQP username fallback for local testing. Prefer existingSecret in shared or production values.
   username: ""
-  # -- Password to be used to authenticate with the AMQP server
+  # -- AMQP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret.
   password: ""
   # -- Existing Secret containing AMQP credentials. Prefer this over username/password.
   existingSecret: ""
@@ -425,9 +425,9 @@ services:
       insecure: false
       # -- use TLS for the SMTP connection
       enable_ssl: true
-      # -- SMTP server username
+      # -- SMTP username fallback for local testing. Prefer existingSecret in shared or production values.
       username: ""
-      # -- SMTP server password
+      # -- SMTP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret.
       password: ""
       # -- Existing Secret containing SMTP credentials. Prefer this over username/password.
       existingSecret: ""

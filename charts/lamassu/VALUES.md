@@ -31,10 +31,13 @@ Kubernetes: `>=1.24.0-0`
 | amqp.client.privateKeyKey | string | `"tls.key"` | Secret data key containing the client private key in PEM format. |
 | amqp.client.secretName | string | `""` | Existing Secret in the release namespace containing the client certificate and private key for AMQP mutual TLS. Leave empty when the broker does not require a client certificate. |
 | amqp.hostname | string | `""` | Hostname for the AMQP server |
-| amqp.password | string | `""` | Password to be used to authenticate with the AMQP server |
+| amqp.password | string | `""` | AMQP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| amqp.existingSecret | string | `""` | Existing Secret containing AMQP credentials; preferred over username/password |
+| amqp.usernameKey | string | `"username"` | Secret data key containing the AMQP username |
+| amqp.passwordKey | string | `"password"` | Secret data key containing the AMQP password |
 | amqp.port | int | `5672` | Port for the AMQP server |
 | amqp.tls | bool | `false` | Enable AMQP over TLS (AMQPS). Set `port` to the broker's TLS listener port if it differs from `5672`. |
-| amqp.username | string | `""` | Username to be used to authenticate with the AMQP server |
+| amqp.username | string | `""` | AMQP username fallback for local testing. Prefer existingSecret in shared or production values. |
 | auth.externalAuthorization.enabled | bool | `true` | Protect routes labeled auth=external with Envoy Gateway external authorization. |
 | auth.externalAuthorization.failOpen | bool | `false` | Allow traffic when the external authorization service cannot be reached. |
 | auth.externalAuthorization.path | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+. |
@@ -87,9 +90,12 @@ Kubernetes: `>=1.24.0-0`
 | observability.traces.scheme | string | `"http"` | Scheme for the OTLP traces endpoint (http | https) |
 | postgres.hostname | string | `""` | Hostname for the PostgreSQL server |
 | postgres.logLevel | string | `"info"` | Log level used by components that connect to PostgreSQL for their storage layer |
-| postgres.password | string | `""` | Password to be used to authenticate with the PostgreSQL server |
+| postgres.password | string | `""` | PostgreSQL password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| postgres.existingSecret | string | `""` | Existing Secret containing PostgreSQL credentials; preferred over username/password |
+| postgres.usernameKey | string | `"username"` | Secret data key containing the PostgreSQL username |
+| postgres.passwordKey | string | `"password"` | Secret data key containing the PostgreSQL password |
 | postgres.port | int | `5432` | Port for the PostgreSQL server |
-| postgres.username | string | `""` | Username to be used to authenticate with the PostgreSQL server |
+| postgres.username | string | `""` | PostgreSQL username fallback for local testing. Prefer existingSecret in shared or production values. |
 | serviceAccount.annotations | object | `{}` | Annotations added to the generated ServiceAccount. |
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods. |
 | serviceAccount.create | bool | `true` | Create a dedicated ServiceAccount for Lamassu workloads. |
@@ -121,9 +127,12 @@ Kubernetes: `>=1.24.0-0`
 | services.alerts.smtp_server.from | string | `""` | email address to use as the sender of the alerts |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
 | services.alerts.smtp_server.insecure | bool | `false` | skip TLS verification |
-| services.alerts.smtp_server.password | string | `""` | SMTP server password |
+| services.alerts.smtp_server.password | string | `""` | SMTP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| services.alerts.smtp_server.existingSecret | string | `""` | Existing Secret containing SMTP credentials; preferred over username/password |
+| services.alerts.smtp_server.usernameKey | string | `"username"` | Secret data key containing the SMTP username |
+| services.alerts.smtp_server.passwordKey | string | `"password"` | Secret data key containing the SMTP password |
 | services.alerts.smtp_server.port | int | `25` | SMTP server port |
-| services.alerts.smtp_server.username | string | `""` | SMTP server username |
+| services.alerts.smtp_server.username | string | `""` | SMTP username fallback for local testing. Prefer existingSecret in shared or production values. |
 | services.authz.bootstrap | list | `[{"auth_config":{"claims":[{"claim":"realm_access.roles","operator":"contains","value":"pki-admin"}]},"policy_ids":["lamassu.a6811b60-5f89-4ce7-badb-78ea234794d3","lamassu.7df018c1-3140-4a35-9067-2e7d6cec3ed2"],"principal_id":"oidc:pki-admin","principal_name":"PKI Admin","principal_type":"oidc"}]` | Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids} Seeded by the pre-install/pre-upgrade database Job, after the policies are preloaded. Creating a principal that already exists is a no-op, so these entries are safe to leave in place across upgrades.  The default grants full access to anyone whose OIDC token carries the "pki-admin" realm role. Without it a fresh install — and an upgrade from 3.8.0, where authz did not exist — comes up with no principals at all and nobody able to administer the PKI. Assign that role deliberately in the identity provider, or replace this entry with your own matching rule. |
 | services.authz.credentials | object | `{}` | Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials. e.g. credentials: { pki: { database: pki_db } } |
 | services.authz.database | string | `"authz"` | PostgreSQL database name for authz principals, grants, and policies |

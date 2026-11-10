@@ -72,6 +72,50 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify Secret-backed credentials
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          cat >/tmp/lamassu-secret-values.yaml <<'EOF'
+          postgres:
+            existingSecret: lamassu-postgres
+            username: POSTGRES_SENTINEL_USERNAME
+            password: POSTGRES_SENTINEL_PASSWORD
+          amqp:
+            existingSecret: lamassu-amqp
+            username: AMQP_SENTINEL_USERNAME
+            password: AMQP_SENTINEL_PASSWORD
+          services:
+            alerts:
+              smtp_server:
+                existingSecret: lamassu-smtp
+                username: SMTP_SENTINEL_USERNAME
+                password: SMTP_SENTINEL_PASSWORD
+          EOF
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-secret-values.yaml \
+            >/tmp/lamassu-secret-rendered.yaml
+
+          # Every application config must be rendered through the Secret-aware
+          # init container rather than mounting credentials from a ConfigMap.
+          test "$(grep -c 'name: render-config' /tmp/lamassu-secret-rendered.yaml)" -ge 7
+          grep -q 'name: "lamassu-postgres"' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: "lamassu-amqp"' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: "lamassu-smtp"' /tmp/lamassu-secret-rendered.yaml
+          grep -q '__LAMASSU_POSTGRES_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
+          grep -q '__LAMASSU_AMQP_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
+          grep -q '__LAMASSU_SMTP_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
+
+          # Existing Secret references must win over the backwards-compatible
+          # plaintext values and those sentinel values must never be rendered.
+          if grep -q 'SENTINEL' /tmp/lamassu-secret-rendered.yaml; then
+            echo "A plaintext credential fallback was rendered despite existingSecret"
+            exit 1
+          fi
+
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
         run: |
