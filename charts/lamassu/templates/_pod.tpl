@@ -86,6 +86,111 @@ securityContext:
 {{- end }}
 {{- end -}}
 
+{{/*
+Render credentials into the config file in an init container. Credentials are
+never written to a ConfigMap; existingSecret is the preferred source and the
+value fields remain only as a backwards-compatible fallback.
+*/}}
+{{- define "lamassu.configSecretInitItem" -}}
+- name: render-config
+  image: docker.io/library/busybox:1.36
+  imagePullPolicy: IfNotPresent
+  command: ["sh", "-c"]
+  args:
+    - |
+      set -eu
+      escape() { printf '%s' "$1" | sed 's/[\\&|]/\\&/g'; }
+      pg_user=$(escape "$LAMASSU_POSTGRES_USERNAME")
+      pg_password=$(escape "$LAMASSU_POSTGRES_PASSWORD")
+      amqp_user=$(escape "$LAMASSU_AMQP_USERNAME")
+      amqp_password=$(escape "$LAMASSU_AMQP_PASSWORD")
+      smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
+      smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
+      sed \
+        -e "s|__LAMASSU_POSTGRES_USERNAME__|$pg_user|g" \
+        -e "s|__LAMASSU_POSTGRES_PASSWORD__|$pg_password|g" \
+        -e "s|__LAMASSU_AMQP_USERNAME__|$amqp_user|g" \
+        -e "s|__LAMASSU_AMQP_PASSWORD__|$amqp_password|g" \
+        -e "s|__LAMASSU_SMTP_USERNAME__|$smtp_user|g" \
+        -e "s|__LAMASSU_SMTP_PASSWORD__|$smtp_password|g" \
+        /config-template/config > /config/config
+  env:
+    - name: LAMASSU_POSTGRES_USERNAME
+      {{- if .Values.postgres.existingSecret }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.postgres.existingSecret | quote }}
+          key: {{ .Values.postgres.usernameKey | quote }}
+      {{- else }}
+      value: {{ .Values.postgres.username | quote }}
+      {{- end }}
+    - name: LAMASSU_POSTGRES_PASSWORD
+      {{- if .Values.postgres.existingSecret }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.postgres.existingSecret | quote }}
+          key: {{ .Values.postgres.passwordKey | quote }}
+      {{- else }}
+      value: {{ .Values.postgres.password | quote }}
+      {{- end }}
+    - name: LAMASSU_AMQP_USERNAME
+      {{- if .Values.amqp.existingSecret }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.amqp.existingSecret | quote }}
+          key: {{ .Values.amqp.usernameKey | quote }}
+      {{- else }}
+      value: {{ .Values.amqp.username | quote }}
+      {{- end }}
+    - name: LAMASSU_AMQP_PASSWORD
+      {{- if .Values.amqp.existingSecret }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.amqp.existingSecret | quote }}
+          key: {{ .Values.amqp.passwordKey | quote }}
+      {{- else }}
+      value: {{ .Values.amqp.password | quote }}
+      {{- end }}
+    - name: LAMASSU_SMTP_USERNAME
+      {{- if .Values.services.alerts.smtp_server.existingSecret }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.services.alerts.smtp_server.existingSecret | quote }}
+          key: {{ .Values.services.alerts.smtp_server.usernameKey | quote }}
+      {{- else }}
+      value: {{ .Values.services.alerts.smtp_server.username | quote }}
+      {{- end }}
+    - name: LAMASSU_SMTP_PASSWORD
+      {{- if .Values.services.alerts.smtp_server.existingSecret }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.services.alerts.smtp_server.existingSecret | quote }}
+          key: {{ .Values.services.alerts.smtp_server.passwordKey | quote }}
+      {{- else }}
+      value: {{ .Values.services.alerts.smtp_server.password | quote }}
+      {{- end }}
+  volumeMounts:
+    - name: config-template
+      mountPath: /config-template
+      readOnly: true
+    - name: rendered-config
+      mountPath: /config
+{{- end -}}
+
+{{- define "lamassu.configSecretInit" -}}
+initContainers:
+  {{- include "lamassu.configSecretInitItem" . | nindent 2 }}
+{{- end -}}
+
+{{- define "lamassu.configSecretVolumes" -}}
+- name: config-template
+  configMap:
+    name: {{ .configName }}
+- name: rendered-config
+  emptyDir:
+    medium: Memory
+{{- end -}}
+
 {{/* User-supplied pod placement policy. */}}
 {{- define "lamassu.podPlacement" -}}
 {{- with .svc.nodeSelector }}
