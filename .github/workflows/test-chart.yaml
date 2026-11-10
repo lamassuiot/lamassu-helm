@@ -124,7 +124,7 @@ jobs:
             sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g')
           rendered=$(printf "password: '__SECRET__'\n" |
             sed "s|__SECRET__|$escaped|g")
-          test "$rendered" = "password: 'a\"b\\\\c|d&e''f'"
+          test "$rendered" = "password: 'a\"b\\c|d&e''f'"
 
           migration_job=$(awk '
             /^kind: Job$/ { in_job=1 }
@@ -132,7 +132,7 @@ jobs:
             found { print }
             found && /^---$/ { exit }
           ' /tmp/lamassu-secret-rendered.yaml)
-          if grep -q 'LAMASSU_SMTP\\|LAMASSU_AMQP' <<<"$migration_job"; then
+          if grep -Eq 'LAMASSU_SMTP|LAMASSU_AMQP' <<<"$migration_job"; then
             echo "Database migration received unrelated AMQP or SMTP credentials"
             exit 1
           fi
