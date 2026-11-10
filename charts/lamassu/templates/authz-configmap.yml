@@ -20,8 +20,8 @@ data:
       provider: "postgres"
       hostname: {{ .Values.postgres.hostname }}
       port: {{ .Values.postgres.port }}
-      username: "{{ .Values.postgres.username }}"
-      password: "{{ .Values.postgres.password }}"
+      username: "__LAMASSU_POSTGRES_USERNAME__"
+      password: "__LAMASSU_POSTGRES_PASSWORD__"
       database: {{ .Values.services.authz.database }}
 
     {{- include "lamassu.config.authzClient" $ | nindent 4 }}
@@ -33,8 +33,8 @@ data:
         provider: "postgres"
         hostname: {{ $.Values.postgres.hostname }}
         port: {{ $.Values.postgres.port }}
-        username: "{{ $.Values.postgres.username }}"
-        password: "{{ $.Values.postgres.password }}"
+        username: "__LAMASSU_POSTGRES_USERNAME__"
+        password: "__LAMASSU_POSTGRES_PASSWORD__"
         database: {{ $cred.database }}
       {{- end }}
     {{- end }}
