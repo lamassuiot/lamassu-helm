@@ -87,6 +87,10 @@ yq eval '.services.connectors."aws.primary" = {
   "type": "awsiot",
   "image": "ghcr.io/lamassuiot/lamassu-aws-connector:old"
 }' -i "$fixture"
+yq eval '.services.connectors."aws.secondary" = {
+  "type": "awsiot",
+  "image": "ghcr.io/lamassuiot/lamassu-aws-connector:old"
+}' -i "$fixture"
 yq eval '.services.connectors."emqx.primary" = {
   "type": "emqx",
   "image": "ghcr.io/example/emqx-connector:custom"
@@ -159,6 +163,8 @@ assert_image 'CA-to-KMS migration image uses app version' \
   '.migrations.caToKms.image' 'ghcr.io/lamassuiot/lamassu-ca-to-kms-migration'
 assert_image 'AWS connector image uses app version' \
   '.services.connectors."aws.primary".image' 'ghcr.io/lamassuiot/lamassu-aws-connector'
+assert_image 'Secondary AWS connector image uses app version' \
+  '.services.connectors."aws.secondary".image' 'ghcr.io/lamassuiot/lamassu-aws-connector'
 assert_equals \
   'Non-AWS connector image is preserved' \
   'ghcr.io/example/emqx-connector:custom' \
