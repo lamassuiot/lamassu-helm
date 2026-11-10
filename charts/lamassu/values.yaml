@@ -204,6 +204,8 @@ serviceDefaults:
   imagePullSecrets: []
   # -- Pod-level security context.
   podSecurityContext:
+    # -- Filesystem group used by non-root init containers and workloads to share generated files.
+    fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
   # -- Container-level security context. Owned distroless images run with their

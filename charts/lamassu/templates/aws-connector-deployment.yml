@@ -28,7 +28,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc) | nindent 6 }}
-      {{- include "lamassu.configSecretInit" $ | nindent 6 }}
+      {{- include "lamassu.configSecretInit" (dict "root" $ "includePostgres" false) | nindent 6 }}
       containers:
         - name: {{ $component }}
           image: {{ $svc.image }}

@@ -129,6 +129,20 @@ The implementation has four parts:
 4. The application container mounts the generated file, while the original
    ConfigMap is mounted only as the init container's read-only template.
 
+The `render-config` container runs explicitly as UID/GID `65532`, with
+`runAsNonRoot`, privilege escalation disabled, and all Linux capabilities
+dropped. The pod uses filesystem group `65532` so the non-root init container
+can write the generated file to the shared memory-backed volume and the
+application container can read it. This protection also applies to the
+database and CA-to-KMS migration hooks.
+
+The helper is parameterized per workload so each init container receives only
+the credential families used by its configuration. Regular services receive
+PostgreSQL and AMQP credentials, Alerts additionally receives SMTP
+credentials, AWS Connector receives AMQP credentials, and migration hooks
+receive only the database credentials they need. A missing SMTP Secret therefore
+cannot block PostgreSQL preparation or unrelated services.
+
 The same approach is used by the regular workloads, WFX, the database
 migration hook, and the optional CA-to-KMS pre-upgrade hook. The CA-to-KMS hook
 keeps its compatibility with both the release-scoped and legacy `kms-config`

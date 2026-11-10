@@ -24,7 +24,7 @@ spec:
         {{- toYaml .Values.serviceDefaults.podSecurityContext | nindent 8 }}
       restartPolicy: OnFailure
       initContainers:
-        {{- include "lamassu.configSecretInitItem" $ | nindent 8 }}
+        {{- include "lamassu.configSecretInitItem" (dict "root" $ "includeSmtp" false) | nindent 8 }}
       containers:
         - name: ca-to-kms-migration
           image: {{ .Values.migrations.caToKms.image }}

@@ -126,6 +126,17 @@ jobs:
             sed "s|__SECRET__|$escaped|g")
           test "$rendered" = "password: 'a\"b\\\\c|d&e''f'"
 
+          migration_job=$(awk '
+            /^kind: Job$/ { in_job=1 }
+            in_job && /^  name: lamassu-db-migration$/ { found=1 }
+            found { print }
+            found && /^---$/ { exit }
+          ' /tmp/lamassu-secret-rendered.yaml)
+          if grep -q 'LAMASSU_SMTP\\|LAMASSU_AMQP' <<<"$migration_job"; then
+            echo "Database migration received unrelated AMQP or SMTP credentials"
+            exit 1
+          fi
+
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
         run: |

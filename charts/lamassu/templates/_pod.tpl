@@ -92,9 +92,25 @@ never written to a ConfigMap; existingSecret is the preferred source and the
 value fields remain only as a backwards-compatible fallback.
 */}}
 {{- define "lamassu.configSecretInitItem" -}}
+{{- $root := .root | default . -}}
+{{- $includePostgres := true -}}
+{{- $includeAmqp := true -}}
+{{- $includeSmtp := false -}}
+{{- if hasKey . "includePostgres" }}{{ $includePostgres = .includePostgres }}{{ end -}}
+{{- if hasKey . "includeAmqp" }}{{ $includeAmqp = .includeAmqp }}{{ end -}}
+{{- if hasKey . "includeSmtp" }}{{ $includeSmtp = .includeSmtp }}{{ end -}}
 - name: render-config
   image: docker.io/library/busybox:1.36
   imagePullPolicy: IfNotPresent
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    runAsGroup: 65532
+    runAsNonRoot: true
+    runAsUser: 65532
   command: ["sh", "-c"]
   args:
     - |
@@ -103,75 +119,93 @@ value fields remain only as a backwards-compatible fallback.
         printf '%s' "$1" |
           sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g'
       }
+      {{- if $includePostgres }}
       pg_user=$(escape "$LAMASSU_POSTGRES_USERNAME")
       pg_password=$(escape "$LAMASSU_POSTGRES_PASSWORD")
+      {{- end }}
+      {{- if $includeAmqp }}
       amqp_user=$(escape "$LAMASSU_AMQP_USERNAME")
       amqp_password=$(escape "$LAMASSU_AMQP_PASSWORD")
+      {{- end }}
+      {{- if $includeSmtp }}
       smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
       smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
+      {{- end }}
       sed \
+        {{- if $includePostgres }}
         -e "s|__LAMASSU_POSTGRES_USERNAME__|$pg_user|g" \
         -e "s|__LAMASSU_POSTGRES_PASSWORD__|$pg_password|g" \
+        {{- end }}
+        {{- if $includeAmqp }}
         -e "s|__LAMASSU_AMQP_USERNAME__|$amqp_user|g" \
         -e "s|__LAMASSU_AMQP_PASSWORD__|$amqp_password|g" \
+        {{- end }}
+        {{- if $includeSmtp }}
         -e "s|__LAMASSU_SMTP_USERNAME__|$smtp_user|g" \
         -e "s|__LAMASSU_SMTP_PASSWORD__|$smtp_password|g" \
+        {{- end }}
         /config-template/config > /config/config
   env:
+    {{- if $includePostgres }}
     - name: LAMASSU_POSTGRES_USERNAME
-      {{- if .Values.postgres.existingSecret }}
+      {{- if $root.Values.postgres.existingSecret }}
       valueFrom:
         secretKeyRef:
-          name: {{ .Values.postgres.existingSecret | quote }}
-          key: {{ .Values.postgres.usernameKey | quote }}
+          name: {{ $root.Values.postgres.existingSecret | quote }}
+          key: {{ $root.Values.postgres.usernameKey | quote }}
       {{- else }}
-      value: {{ .Values.postgres.username | quote }}
+      value: {{ $root.Values.postgres.username | quote }}
       {{- end }}
     - name: LAMASSU_POSTGRES_PASSWORD
-      {{- if .Values.postgres.existingSecret }}
+      {{- if $root.Values.postgres.existingSecret }}
       valueFrom:
         secretKeyRef:
-          name: {{ .Values.postgres.existingSecret | quote }}
-          key: {{ .Values.postgres.passwordKey | quote }}
+          name: {{ $root.Values.postgres.existingSecret | quote }}
+          key: {{ $root.Values.postgres.passwordKey | quote }}
       {{- else }}
-      value: {{ .Values.postgres.password | quote }}
+      value: {{ $root.Values.postgres.password | quote }}
       {{- end }}
+    {{- end }}
+    {{- if $includeAmqp }}
     - name: LAMASSU_AMQP_USERNAME
-      {{- if .Values.amqp.existingSecret }}
+      {{- if $root.Values.amqp.existingSecret }}
       valueFrom:
         secretKeyRef:
-          name: {{ .Values.amqp.existingSecret | quote }}
-          key: {{ .Values.amqp.usernameKey | quote }}
+          name: {{ $root.Values.amqp.existingSecret | quote }}
+          key: {{ $root.Values.amqp.usernameKey | quote }}
       {{- else }}
-      value: {{ .Values.amqp.username | quote }}
+      value: {{ $root.Values.amqp.username | quote }}
       {{- end }}
     - name: LAMASSU_AMQP_PASSWORD
-      {{- if .Values.amqp.existingSecret }}
+      {{- if $root.Values.amqp.existingSecret }}
       valueFrom:
         secretKeyRef:
-          name: {{ .Values.amqp.existingSecret | quote }}
-          key: {{ .Values.amqp.passwordKey | quote }}
+          name: {{ $root.Values.amqp.existingSecret | quote }}
+          key: {{ $root.Values.amqp.passwordKey | quote }}
       {{- else }}
-      value: {{ .Values.amqp.password | quote }}
+      value: {{ $root.Values.amqp.password | quote }}
       {{- end }}
+    {{- end }}
+    {{- if $includeSmtp }}
     - name: LAMASSU_SMTP_USERNAME
-      {{- if .Values.services.alerts.smtp_server.existingSecret }}
+      {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
       valueFrom:
         secretKeyRef:
-          name: {{ .Values.services.alerts.smtp_server.existingSecret | quote }}
-          key: {{ .Values.services.alerts.smtp_server.usernameKey | quote }}
+          name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
+          key: {{ $root.Values.services.alerts.smtp_server.usernameKey | quote }}
       {{- else }}
-      value: {{ .Values.services.alerts.smtp_server.username | quote }}
+      value: {{ $root.Values.services.alerts.smtp_server.username | quote }}
       {{- end }}
     - name: LAMASSU_SMTP_PASSWORD
-      {{- if .Values.services.alerts.smtp_server.existingSecret }}
+      {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
       valueFrom:
         secretKeyRef:
-          name: {{ .Values.services.alerts.smtp_server.existingSecret | quote }}
-          key: {{ .Values.services.alerts.smtp_server.passwordKey | quote }}
+          name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
+          key: {{ $root.Values.services.alerts.smtp_server.passwordKey | quote }}
       {{- else }}
-      value: {{ .Values.services.alerts.smtp_server.password | quote }}
+      value: {{ $root.Values.services.alerts.smtp_server.password | quote }}
       {{- end }}
+    {{- end }}
   volumeMounts:
     - name: config-template
       mountPath: /config-template

@@ -23,7 +23,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc) | nindent 6 }}
-      {{- include "lamassu.configSecretInit" $ | nindent 6 }}
+      {{- include "lamassu.configSecretInit" (dict "root" $ "includeSmtp" true) | nindent 6 }}
       containers:
         - name: alerts
           image: {{ $svc.image }}

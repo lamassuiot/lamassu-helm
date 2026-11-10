@@ -338,7 +338,7 @@ spec:
         {{- end }}
 
         {{- if $authzImage }}
-        {{- include "lamassu.configSecretInitItem" $ | nindent 8 }}
+        {{- include "lamassu.configSecretInitItem" (dict "root" $ "includeAmqp" false) | nindent 8 }}
         # Step 3 — authz migrations, policy preload and bootstrap principals.
         # Same image as the authz Deployment, so the embedded migrations can
         # never drift from the service that reads them.
