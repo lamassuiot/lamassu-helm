@@ -116,6 +116,16 @@ jobs:
             exit 1
           fi
 
+          # Exercise the same YAML/sed escaping contract used by
+          # lamassu.configSecretInitItem. Single-quoted YAML scalars preserve
+          # double quotes and backslashes; embedded single quotes are doubled.
+          special='a"b\c|d&e'\''f'
+          escaped=$(printf '%s' "$special" |
+            sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g')
+          rendered=$(printf "password: '__SECRET__'\n" |
+            sed "s|__SECRET__|$escaped|g")
+          test "$rendered" = "password: 'a\"b\\\\c|d&e''f'"
+
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
         run: |

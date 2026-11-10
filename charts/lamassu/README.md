@@ -119,16 +119,22 @@ The implementation has four parts:
    release namespace. `usernameKey` and `passwordKey` allow non-standard data
    keys.
 2. ConfigMap templates contain non-sensitive placeholders such as
-   `__LAMASSU_POSTGRES_PASSWORD__`, never the Secret value.
+   `__LAMASSU_POSTGRES_PASSWORD__`, never the Secret value. Credential fields
+   use YAML single-quoted scalars so double quotes and backslashes in a Secret
+   remain literal configuration data.
 3. The `lamassu.configSecretInit` helper adds a BusyBox init container. It reads
-   credentials through Kubernetes `secretKeyRef`, replaces the placeholders,
+   credentials through Kubernetes `secretKeyRef`, escapes backslashes for
+   `sed` and doubles embedded YAML single quotes, replaces the placeholders,
    and writes the completed configuration to a memory-backed `emptyDir`.
 4. The application container mounts the generated file, while the original
    ConfigMap is mounted only as the init container's read-only template.
 
-The same approach is used by the regular workloads, WFX, and the database
-migration hook. Therefore the migration Job does not need passwords in command
-arguments when an `existingSecret` is configured.
+The same approach is used by the regular workloads, WFX, the database
+migration hook, and the optional CA-to-KMS pre-upgrade hook. The CA-to-KMS hook
+keeps its compatibility with both the release-scoped and legacy `kms-config`
+ConfigMaps, but renders the selected template through the Secret-aware init
+container before starting the migration binary. Therefore migration hooks do
+not need passwords in command arguments when an `existingSecret` is configured.
 
 The chart still accepts the old `username` and `password` values as a
 backwards-compatible fallback. They are intended for local, short-lived

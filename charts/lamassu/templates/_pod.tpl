@@ -99,7 +99,10 @@ value fields remain only as a backwards-compatible fallback.
   args:
     - |
       set -eu
-      escape() { printf '%s' "$1" | sed 's/[\\&|]/\\&/g'; }
+      escape() {
+        printf '%s' "$1" |
+          sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g'
+      }
       pg_user=$(escape "$LAMASSU_POSTGRES_USERNAME")
       pg_password=$(escape "$LAMASSU_POSTGRES_PASSWORD")
       amqp_user=$(escape "$LAMASSU_AMQP_USERNAME")

@@ -67,8 +67,8 @@ AMQP event bus block. Context dict:
   {{- end }}
   basic_auth:
     enabled: true
-    username: "__LAMASSU_AMQP_USERNAME__"
-    password: "__LAMASSU_AMQP_PASSWORD__"
+    username: '__LAMASSU_AMQP_USERNAME__'
+    password: '__LAMASSU_AMQP_PASSWORD__'
 {{- end -}}
 
 {{/* PostgreSQL storage block. Context: chart root ($) */}}
@@ -78,8 +78,8 @@ storage:
   provider: "postgres" #couch_db | postgres | dynamo_db
   hostname: {{ .Values.postgres.hostname }}
   port: {{ .Values.postgres.port }}
-  username: "__LAMASSU_POSTGRES_USERNAME__"
-  password: "__LAMASSU_POSTGRES_PASSWORD__"
+  username: '__LAMASSU_POSTGRES_USERNAME__'
+  password: '__LAMASSU_POSTGRES_PASSWORD__'
 {{- end -}}
 
 {{/* Authz client block, used by every service that enforces authorization checks. Context: chart root ($) */}}
