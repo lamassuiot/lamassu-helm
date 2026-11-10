@@ -502,11 +502,12 @@ migrations:
     image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4
     databases:
       - alerts
+      # The CA migrations require the KMS schema to exist first.
+      - kms
       - ca
       - va
       - devicemanager
       - dmsmanager
-      - kms
   caToKms:
     # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It uses the legacy unscoped `kms-config` ConfigMap while it still exists and falls back to the release-scoped `<chart fullname>-kms-config` (`lamassu-kms-config` when the release is named `lamassu`) once the legacy ConfigMap is gone.
     enabled: false
