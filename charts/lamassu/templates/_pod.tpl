@@ -121,8 +121,8 @@ value fields remain only as a backwards-compatible fallback.
         carriage_return=$(printf '\r_')
         carriage_return=${carriage_return%_}
         case "$1" in
-          *"$newline"*|*"$carriage_return"*)
-            echo "Secret values for rendered configuration must not contain newline or carriage return characters" >&2
+          *"$newline"*|*"$carriage_return"*|*'__LAMASSU_'*)
+            echo "Secret values for rendered configuration must not contain newline, carriage return, or Lamassu placeholder characters" >&2
             return 1
             ;;
         esac
@@ -143,18 +143,22 @@ value fields remain only as a backwards-compatible fallback.
       {{- end }}
       sed \
         {{- if $includePostgres }}
-        -e "s|__LAMASSU_POSTGRES_USERNAME__|$pg_user|g" \
-        -e "s|__LAMASSU_POSTGRES_PASSWORD__|$pg_password|g" \
+        -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1'$pg_user'|g" \
+        -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1'$pg_password'|g" \
         {{- end }}
         {{- if $includeAmqp }}
-        -e "s|__LAMASSU_AMQP_USERNAME__|$amqp_user|g" \
-        -e "s|__LAMASSU_AMQP_PASSWORD__|$amqp_password|g" \
+        -e "s|^\([[:space:]]*username: \)'__LAMASSU_AMQP_USERNAME__'\$|\1'$amqp_user'|g" \
+        -e "s|^\([[:space:]]*password: \)'__LAMASSU_AMQP_PASSWORD__'\$|\1'$amqp_password'|g" \
         {{- end }}
         {{- if $includeSmtp }}
-        -e "s|__LAMASSU_SMTP_USERNAME__|$smtp_user|g" \
-        -e "s|__LAMASSU_SMTP_PASSWORD__|$smtp_password|g" \
+        -e "s|^\([[:space:]]*username: \)'__LAMASSU_SMTP_USERNAME__'\$|\1'$smtp_user'|g" \
+        -e "s|^\([[:space:]]*password: \)'__LAMASSU_SMTP_PASSWORD__'\$|\1'$smtp_password'|g" \
         {{- end }}
         /config-template/config > /config/config
+      if grep -q '__LAMASSU_[A-Z_]*__' /config/config; then
+        echo "Unresolved Lamassu configuration placeholder remains after Secret rendering" >&2
+        exit 1
+      fi
   env:
     {{- if $includePostgres }}
     - name: LAMASSU_POSTGRES_USERNAME

@@ -157,12 +157,16 @@ The implementation has four parts:
    placeholders such as `__LAMASSU_POSTGRES_PASSWORD__`, never the
    corresponding Secret value. Credential fields use YAML single-quoted
    scalars so double quotes and backslashes in a Secret remain literal
-   configuration data. AWS connector credentials are a known exception and
-   are currently rendered into the connector ConfigMap.
+   configuration data. Secret values containing Lamassu placeholder tokens
+   are rejected to prevent a later substitution from rewriting the value.
+   AWS connector credentials are a known exception and are currently rendered
+   into the connector ConfigMap.
 3. The `lamassu.configSecretInit` helper adds a BusyBox init container. It reads
    credentials through Kubernetes `secretKeyRef`, escapes backslashes for
-   `sed` and doubles embedded YAML single quotes, replaces the placeholders,
-   and writes the completed configuration to a memory-backed `emptyDir`.
+   `sed` and doubles embedded YAML single quotes, replaces only exact
+   credential placeholder lines, and writes the completed configuration to a
+   memory-backed `emptyDir`. Any unresolved placeholder causes the init
+   container to fail rather than being left in the running configuration.
 4. The application container mounts the generated file, while the original
    ConfigMap is mounted only as the init container's read-only template.
 
@@ -254,9 +258,10 @@ release.
 - The chart does not validate that an external Secret exists or contains the
   configured keys. Kubernetes reports a pod start error when a required
   `secretKeyRef` key is missing.
-- Secret values used in generated YAML must not contain newline or carriage
-  return characters. The rendering init container rejects them explicitly
-  rather than producing invalid or silently corrupted configuration.
+- Secret values used in generated YAML must not contain newline, carriage
+  return, or Lamassu placeholder-token characters. The rendering init
+  container rejects them explicitly rather than producing invalid or silently
+  corrupted configuration.
 - The init image is only a rendering utility; it does not fetch secrets from
   external systems and does not need Kubernetes API permissions.
 - TLS certificate Secrets for AMQP and the downstream Gateway remain separate

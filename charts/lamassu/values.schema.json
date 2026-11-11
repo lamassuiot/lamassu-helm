@@ -235,8 +235,7 @@
                     "passwordKey": { "type": "string", "minLength": 1 },
                     "host": { "type": "string" },
                     "port": { "$ref": "#/definitions/port" }
-                  },
-                  "additionalProperties": false
+                  }
                 }
               }
             }

