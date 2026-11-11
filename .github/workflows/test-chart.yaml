@@ -139,7 +139,7 @@ jobs:
           grep -q 'jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__' \
             <<<"$anchored_rendered"
           grep -q "password: 'secret-value'" <<<"$anchored_rendered"
-          grep -Fq "grep -q '__LAMASSU_[A-Z_]*__' /config/config" \
+          grep -Fq "Unresolved Lamassu credential placeholder remains after Secret rendering" \
             /tmp/lamassu-secret-rendered.yaml
 
           newline=$(printf '\n_')
@@ -213,7 +213,7 @@ jobs:
             found { print }
             found && /^---$/ { exit }
           ' /tmp/lamassu-secret-rendered.yaml)
-          if grep -Eq 'LAMASSU_SMTP|LAMASSU_AMQP' <<<"$migration_job"; then
+          if grep -Eq '^[[:space:]]*- name: LAMASSU_(AMQP|SMTP)_(USERNAME|PASSWORD)$' <<<"$migration_job"; then
             echo "Database migration received unrelated AMQP or SMTP credentials"
             exit 1
           fi

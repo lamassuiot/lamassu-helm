@@ -228,13 +228,28 @@
                     "from": { "type": "string" },
                     "insecure": { "type": "boolean" },
                     "enable_ssl": { "type": "boolean" },
-                    "username": { "type": "string" },
-                    "password": { "type": "string" },
+                    "username": {
+                      "oneOf": [
+                        { "type": "string" },
+                        { "type": "number" }
+                      ]
+                    },
+                    "password": {
+                      "oneOf": [
+                        { "type": "string" },
+                        { "type": "number" }
+                      ]
+                    },
                     "existingSecret": { "type": "string" },
                     "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
                     "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
                     "host": { "type": "string" },
-                    "port": { "$ref": "#/definitions/port" }
+                    "port": {
+                      "oneOf": [
+                        { "$ref": "#/definitions/port" },
+                        { "type": "string" }
+                      ]
+                    }
                   }
                 }
               }

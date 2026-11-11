@@ -291,10 +291,10 @@ the Secret immediately through `secretKeyRef`. A typical order is:
 - The chart does not validate that an external Secret exists or contains the
   configured keys. Kubernetes reports a pod start error when a required
   `secretKeyRef` key is missing.
-- Secret values used in generated YAML must not contain newline, carriage
-  return, or Lamassu placeholder-token characters. The rendering init
-  container rejects them explicitly rather than producing invalid or silently
-  corrupted configuration.
+- Secret values used in generated YAML must not contain leading or trailing
+  whitespace, newline, carriage return, or Lamassu placeholder-token
+  characters. The rendering init container rejects them explicitly rather than
+  producing invalid or silently corrupted configuration.
 - The init image is only a rendering utility; it does not fetch secrets from
   external systems and does not need Kubernetes API permissions.
 - TLS certificate Secrets for AMQP and the downstream Gateway remain separate

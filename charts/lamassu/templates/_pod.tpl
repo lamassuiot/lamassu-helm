@@ -121,8 +121,8 @@ value fields remain only as a backwards-compatible fallback.
         carriage_return=$(printf '\r_')
         carriage_return=${carriage_return%_}
         case "$1" in
-          *"$newline"*|*"$carriage_return"*|*'__LAMASSU_'*)
-            echo "Secret values for rendered configuration must not contain newline, carriage return, or Lamassu placeholder characters" >&2
+          *"$newline"*|*"$carriage_return"*|[[:space:]]*|*[[:space:]]|*'__LAMASSU_'*)
+            echo "Secret values for rendered configuration must not contain leading or trailing whitespace, newline, carriage return, or Lamassu placeholder characters" >&2
             return 1
             ;;
         esac
