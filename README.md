@@ -137,9 +137,11 @@ Do not commit database, AMQP, or SMTP passwords in Helm values files. The chart
 uses Kubernetes Secrets as its provider-neutral runtime interface:
 `postgres.existingSecret`, `amqp.existingSecret`, and
 `services.alerts.smtp_server.existingSecret` are consumed through
-`secretKeyRef`. ConfigMaps contain placeholders only; an init container
-materializes the configuration into an in-memory volume before the application
-starts.
+`secretKeyRef`. PostgreSQL, AMQP, and SMTP configuration templates contain
+placeholders rather than those Secret values; an init container materializes
+the configuration into an in-memory volume before the application starts.
+AWS connector credentials remain a known exception and are currently rendered
+into the connector ConfigMap.
 
 For production, External Secrets Operator is the recommended way to provision
 those Kubernetes Secrets from AWS Secrets Manager, Vault, Azure Key Vault,

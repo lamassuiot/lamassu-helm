@@ -110,6 +110,41 @@ intentionally not installed by this chart. Installing them would make the
 application chart provider-specific and could create cluster-wide ownership
 conflicts.
 
+### Secret and password flow
+
+The chart uses the same runtime path regardless of where the Kubernetes Secret
+comes from. In production, ESO normally synchronizes the value from an
+external provider. For local development, the operator can create the
+Kubernetes Secret directly:
+
+```mermaid
+flowchart LR
+    subgraph Provisioning
+        SM[External secret manager]
+        ESO[External Secrets Operator]
+        LOCAL[Manual kubectl Secret]
+        SM -->|sync| ESO
+        ESO -->|creates or refreshes| KS[Kubernetes Secret]
+        LOCAL --> KS
+    end
+
+    VALUES[Helm values<br/>existingSecret + key names] --> HELM[Lamassu Helm chart]
+    KS -->|secretKeyRef| INIT[render-config init container]
+    HELM -->|ConfigMap template<br/>non-sensitive placeholders| INIT
+    INIT -->|substitutes credentials| MEM[Memory-backed emptyDir<br/>generated config]
+    MEM --> APP[Lamassu application container]
+    MEM --> MIG[Migration hook container]
+```
+
+The Secret is referenced by name and key; its value is not placed in the
+Helm values file. `render-config` receives the credentials through
+`secretKeyRef`, replaces the placeholders once during pod startup, and writes
+the final YAML configuration to the in-memory volume. The application or
+migration container reads that generated file, while the template ConfigMap
+remains free of PostgreSQL, AMQP, and SMTP Secret values. AWS connector
+credentials remain the documented exception because they are currently
+rendered directly into the connector ConfigMap.
+
 ### Implementation details
 
 The implementation has four parts:
@@ -118,10 +153,12 @@ The implementation has four parts:
    `services.alerts.smtp_server.existingSecret` identify Secrets in the
    release namespace. `usernameKey` and `passwordKey` allow non-standard data
    keys.
-2. ConfigMap templates contain non-sensitive placeholders such as
-   `__LAMASSU_POSTGRES_PASSWORD__`, never the Secret value. Credential fields
-   use YAML single-quoted scalars so double quotes and backslashes in a Secret
-   remain literal configuration data.
+2. PostgreSQL, AMQP, and SMTP ConfigMap templates contain non-sensitive
+   placeholders such as `__LAMASSU_POSTGRES_PASSWORD__`, never the
+   corresponding Secret value. Credential fields use YAML single-quoted
+   scalars so double quotes and backslashes in a Secret remain literal
+   configuration data. AWS connector credentials are a known exception and
+   are currently rendered into the connector ConfigMap.
 3. The `lamassu.configSecretInit` helper adds a BusyBox init container. It reads
    credentials through Kubernetes `secretKeyRef`, escapes backslashes for
    `sed` and doubles embedded YAML single quotes, replaces the placeholders,
@@ -170,6 +207,10 @@ kubectl -n lamassu create secret generic lamassu-postgres \
 kubectl -n lamassu create secret generic lamassu-amqp \
   --from-literal=username=lamassu \
   --from-literal=password='change-me'
+
+kubectl -n lamassu create secret generic lamassu-smtp \
+  --from-literal=username=alerts \
+  --from-literal=password='change-me'
 ```
 
 Then reference them from a non-sensitive values file:
@@ -198,7 +239,10 @@ release.
 
 ### Rotation, security boundaries, and limitations
 
-- Secret values are not copied into chart-managed ConfigMaps.
+- PostgreSQL, AMQP, and SMTP Secret values are not copied into their
+  chart-managed ConfigMap templates. AWS connector credentials configured
+  under `services.connectors.<id>.credentials` are still rendered into the
+  connector ConfigMap and should be protected with appropriate ConfigMap RBAC.
 - Secret values are exposed to the init container as environment variables and
   exist in the generated configuration file inside the pod's memory-backed
   volume. Kubernetes administrators and users with access to the namespace can
@@ -230,7 +274,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | fullnameOverride | string | `""` | Fully override the release-scoped name prefix |
 | commonLabels | object | `{}` | Labels added to chart-managed resources |
 | commonAnnotations | object | `{}` | Annotations added to chart-managed resources |
-| configRender.image | string | `"docker.io/library/busybox:1.36"` | Image used to render Secret-backed configuration; mirror it for air-gapped or registry-restricted clusters |
+| configRender.image | string | `"docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"` | Digest-pinned image used to render Secret-backed configuration; mirror it for air-gapped or registry-restricted clusters |
 | serviceAccount.create | bool | `true` | Create a release-scoped ServiceAccount |
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods |
 | **TLS Configuration** | | | |

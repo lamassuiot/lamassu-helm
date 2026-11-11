@@ -216,7 +216,32 @@
             }
           ]
         },
-        "alerts": { "$ref": "#/definitions/service" },
+        "alerts": {
+          "allOf": [
+            { "$ref": "#/definitions/service" },
+            {
+              "type": "object",
+              "properties": {
+                "smtp_server": {
+                  "type": "object",
+                  "properties": {
+                    "from": { "type": "string" },
+                    "insecure": { "type": "boolean" },
+                    "enable_ssl": { "type": "boolean" },
+                    "username": { "type": "string" },
+                    "password": { "type": "string" },
+                    "existingSecret": { "type": "string" },
+                    "usernameKey": { "type": "string", "minLength": 1 },
+                    "passwordKey": { "type": "string", "minLength": 1 },
+                    "host": { "type": "string" },
+                    "port": { "$ref": "#/definitions/port" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          ]
+        },
         "authz": {
           "allOf": [
             { "$ref": "#/definitions/service" },
