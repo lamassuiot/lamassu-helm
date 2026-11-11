@@ -21,7 +21,7 @@ database:
   host: "postgresql"
   port: "5432"
   username: "admin"
-  password: "admin"
+  password: 'a"b\c|d&e''f'
   name: auth
 
 extraInitContainers:
