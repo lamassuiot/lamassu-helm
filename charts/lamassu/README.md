@@ -34,8 +34,14 @@ operator.
 > **Upgrade notice:** this version changes chart-owned resource names to the
 > release-scoped form `<release>-lamassu-<component>`. StatefulSet PVCs are not
 > renamed by Kubernetes; plan a data migration or bind existing data before an
-> in-place upgrade. AWS connectors are now configured as a map keyed by their
-> stable connector ID instead of a list containing `id` fields.
+> in-place upgrade. The default pod `fsGroup` is `65532` so the non-root
+> render-config init container and application share generated files; Kubernetes
+> may apply that group to mounted volumes such as VA CRL and CA storage.
+> `fsGroupChangePolicy: OnRootMismatch` limits recursive ownership changes when
+> the volume root already has the expected group, but operators should still
+> verify access for backup helpers or jobs using a different GID. AWS connectors
+> are now configured as a map keyed by their stable connector ID instead of a
+> list containing `id` fields.
 
 ## AMQP TLS
 
@@ -213,8 +219,11 @@ not need passwords in command arguments when an `existingSecret` is configured.
 The chart still accepts the old `username` and `password` values as a
 backwards-compatible fallback. They are intended for local, short-lived
 testing only and must not be committed to shared or Git-managed values files.
-When both a fallback value and `existingSecret` are supplied, the Secret
-reference takes precedence.
+Without `existingSecret`, these fallback credentials are also rendered as
+plaintext `value` entries in the render-config init container's Pod
+environment, so a principal that can read Pods may retrieve them from the Pod
+specification. When both a fallback value and `existingSecret` are supplied,
+the Secret reference takes precedence.
 
 ### Creating and referencing a Secret
 
@@ -335,13 +344,19 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | **Database Configuration** | | | |
 | postgres.hostname | string | `""` | PostgreSQL server hostname |
 | postgres.port | int | `5432` | PostgreSQL server port |
-| postgres.username | string | `""` | PostgreSQL username |
-| postgres.password | string | `""` | PostgreSQL password |
+| postgres.existingSecret | string | `""` | Existing Secret containing PostgreSQL credentials. Prefer this over username/password. |
+| postgres.username | string | `""` | PostgreSQL username fallback for local testing. Prefer existingSecret in shared or production values. |
+| postgres.usernameKey | string | `"username"` | Secret data key containing the PostgreSQL username. |
+| postgres.password | string | `""` | PostgreSQL password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| postgres.passwordKey | string | `"password"` | Secret data key containing the PostgreSQL password. |
 | **Message Queue Configuration** | | | |
 | amqp.hostname | string | `""` | AMQP server hostname |
 | amqp.port | int | `5672` | AMQP server port |
-| amqp.username | string | `""` | AMQP username |
-| amqp.password | string | `""` | AMQP password |
+| amqp.existingSecret | string | `""` | Existing Secret containing AMQP credentials. Prefer this over username/password. |
+| amqp.username | string | `""` | AMQP username fallback for local testing. Prefer existingSecret in shared or production values. |
+| amqp.usernameKey | string | `"username"` | Secret data key containing the AMQP username. |
+| amqp.password | string | `""` | AMQP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| amqp.passwordKey | string | `"password"` | Secret data key containing the AMQP password. |
 | amqp.tls | bool | `false` | Enable AMQP over TLS (AMQPS). Set `port` to the broker's TLS listener port if it differs from `5672`. |
 | amqp.ca.secretName | string | `""` | Existing Secret in the release namespace containing the private CA certificate trusted for the AMQP broker. Leave empty to use system-trusted CAs. |
 | amqp.ca.certificateKey | string | `"ca.crt"` | Secret data key containing the CA certificate in PEM format. |
@@ -461,8 +476,11 @@ This keeps token state, socket ownership, and failure domains isolated.
 | services.alerts.smtp_server.from | string | `""` | Email address for alert sender |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
 | services.alerts.smtp_server.port | int | `25` | SMTP server port |
-| services.alerts.smtp_server.username | string | `""` | SMTP username |
-| services.alerts.smtp_server.password | string | `""` | SMTP password |
+| services.alerts.smtp_server.existingSecret | string | `""` | Existing Secret containing SMTP credentials. Prefer this over username/password. |
+| services.alerts.smtp_server.username | string | `""` | SMTP username fallback for local testing. Prefer existingSecret in shared or production values. |
+| services.alerts.smtp_server.usernameKey | string | `"username"` | Secret data key containing the SMTP username. |
+| services.alerts.smtp_server.password | string | `""` | SMTP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| services.alerts.smtp_server.passwordKey | string | `"password"` | Secret data key containing the SMTP password. |
 | services.alerts.smtp_server.enable_ssl | bool | `true` | Enable TLS for SMTP connection |
 | services.alerts.smtp_server.insecure | bool | `false` | Skip TLS certificate verification |
 | **Connectivity Test & Migrations** | | | |

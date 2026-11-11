@@ -210,6 +210,8 @@ serviceDefaults:
   podSecurityContext:
     # -- Filesystem group used by non-root init containers and workloads to share generated files.
     fsGroup: 65532
+    # -- Avoid recursively changing existing volume ownership when the root directory already matches fsGroup.
+    fsGroupChangePolicy: OnRootMismatch
     seccompProfile:
       type: RuntimeDefault
   # -- Container-level security context. Owned distroless images run with their
