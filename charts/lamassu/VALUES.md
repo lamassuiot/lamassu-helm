@@ -30,7 +30,7 @@ Kubernetes: `>=1.24.0-0`
 | amqp.client.certificateKey | string | `"tls.crt"` | Secret data key containing the client certificate in PEM format. |
 | amqp.client.privateKeyKey | string | `"tls.key"` | Secret data key containing the client private key in PEM format. |
 | amqp.client.secretName | string | `""` | Existing Secret in the release namespace containing the client certificate and private key for AMQP mutual TLS. Leave empty when the broker does not require a client certificate. |
-| amqp.existingSecret | string | `""` | Existing Secret containing AMQP credentials. Prefer this over username/password. |
+| amqp.existingSecret | string | `""` | Existing Secret containing AMQP credentials. Prefer this over username/password.    Values-file authors must be trusted for namespace Secrets because this reference    can cause the selected key to be injected into the workload configuration. |
 | amqp.hostname | string | `""` | Hostname for the AMQP server |
 | amqp.password | string | `""` | AMQP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
 | amqp.passwordKey | string | `"password"` | Secret data key containing the AMQP password. |
@@ -89,7 +89,7 @@ Kubernetes: `>=1.24.0-0`
 | observability.traces.hostname | string | `"otel-collector"` |  |
 | observability.traces.port | int | `4318` | OTLP HTTP port exposed by the OTel Collector |
 | observability.traces.scheme | string | `"http"` | Scheme for the OTLP traces endpoint (http | https) |
-| postgres.existingSecret | string | `""` | Existing Secret containing PostgreSQL credentials. Prefer this over username/password. |
+| postgres.existingSecret | string | `""` | Existing Secret containing PostgreSQL credentials. Prefer this over username/password.    Values-file authors must be trusted for namespace Secrets because this reference    can cause the selected key to be injected into the workload configuration. |
 | postgres.hostname | string | `""` | Hostname for the PostgreSQL server |
 | postgres.logLevel | string | `"info"` | Log level used by components that connect to PostgreSQL for their storage layer |
 | postgres.password | string | `""` | PostgreSQL password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
@@ -126,7 +126,7 @@ Kubernetes: `>=1.24.0-0`
 | services.alerts.autoscaling.maxReplicas | int | `3` |  |
 | services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:dev-v4"` | Docker image for the Alerts component |
 | services.alerts.smtp_server.enable_ssl | bool | `true` | use TLS for the SMTP connection |
-| services.alerts.smtp_server.existingSecret | string | `""` | Existing Secret containing SMTP credentials. Prefer this over username/password. |
+| services.alerts.smtp_server.existingSecret | string | `""` | Existing Secret containing SMTP credentials. Prefer this over username/password.    Values-file authors must be trusted for namespace Secrets because this reference    can cause the selected key to be injected into the Alerts configuration. |
 | services.alerts.smtp_server.from | string | `""` | email address to use as the sender of the alerts |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
 | services.alerts.smtp_server.insecure | bool | `false` | skip TLS verification |

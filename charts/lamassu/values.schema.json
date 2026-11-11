@@ -231,8 +231,8 @@
                     "username": { "type": "string" },
                     "password": { "type": "string" },
                     "existingSecret": { "type": "string" },
-                    "usernameKey": { "type": "string", "minLength": 1 },
-                    "passwordKey": { "type": "string", "minLength": 1 },
+                    "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+                    "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
                     "host": { "type": "string" },
                     "port": { "$ref": "#/definitions/port" }
                   }

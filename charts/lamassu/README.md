@@ -145,6 +145,23 @@ remains free of PostgreSQL, AMQP, and SMTP Secret values. AWS connector
 credentials remain the documented exception because they are currently
 rendered directly into the connector ConfigMap.
 
+### Values-file trust boundary
+
+`existingSecret`, `usernameKey`, and `passwordKey` are deployment inputs, not
+an authorization boundary. Anyone who can modify the values supplied to Helm
+or approve a Helm upgrade must be trusted with the Secrets in the release
+namespace: they can select a Secret and data key, and can also control
+configuration such as `postgres.hostname` or `amqp.hostname` that determines
+where the resulting credential is sent.
+
+This means a values-repository writer or GitOps principal without direct
+Secret `get` permission may still be able to route a referenced Secret value
+to a destination controlled by that principal. In multi-tenant namespaces,
+gate values changes with repository permissions, policy or admission controls,
+and keep Secret provisioning and Helm values approval under separate trusted
+roles. The chart cannot enforce this boundary because Helm resolves the
+values before Kubernetes applies the workload.
+
 ### Implementation details
 
 The implementation has four parts:
@@ -217,6 +234,14 @@ kubectl -n lamassu create secret generic lamassu-smtp \
   --from-literal=password='change-me'
 ```
 
+Create these Secrets before running `helm install` or `helm upgrade`. The
+database migration hooks consume the PostgreSQL (and, where applicable, AMQP)
+credentials through `secretKeyRef` during the release operation itself. If an
+`existingSecret` does not exist yet, the hook cannot start, retries are
+exhausted, and Helm fails the install or upgrade. Applying an
+`ExternalSecret` after starting Helm is therefore too late for these hooks;
+wait until the synchronized Kubernetes Secret exists in the release namespace.
+
 Then reference them from a non-sensitive values file:
 
 ```yaml
@@ -239,7 +264,15 @@ services:
 For ESO, create the provider-specific `SecretStore` and `ExternalSecret`
 outside this chart. The resulting Kubernetes Secret must contain the keys
 configured above and must be created in the same namespace as the Lamassu
-release.
+release. Reconcile and verify that the generated Kubernetes Secret exists
+before invoking `helm install` or `helm upgrade`; ESO provisioning is
+asynchronous, but the chart's pre-install and pre-upgrade migration hooks need
+the Secret immediately through `secretKeyRef`. A typical order is:
+
+1. Apply the `SecretStore`/`ClusterSecretStore` and `ExternalSecret`.
+2. Wait for the `ExternalSecret` to report `Ready` and for the target Secret
+   to contain the configured keys.
+3. Run Helm against the chart.
 
 ### Rotation, security boundaries, and limitations
 

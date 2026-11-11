@@ -78,6 +78,7 @@ spec:
             - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             {{- if $isLocal }}
             - name: local-crl-file-storage
               mountPath: {{ $storageDir }}

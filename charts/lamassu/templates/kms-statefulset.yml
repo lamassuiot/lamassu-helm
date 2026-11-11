@@ -184,6 +184,7 @@ spec:
             - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             {{- if $svc.pkcs11Sidecar.enabled }}
             - name: pkcs11-socket
               mountPath: {{ $svc.pkcs11Sidecar.socketDir | quote }}

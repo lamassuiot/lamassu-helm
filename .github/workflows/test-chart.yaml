@@ -139,7 +139,7 @@ jobs:
           grep -q 'jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__' \
             <<<"$anchored_rendered"
           grep -q "password: 'secret-value'" <<<"$anchored_rendered"
-          grep -q "grep -q '__LAMASSU_[A-Z_]*__' /config/config" \
+          grep -Fq "grep -q '__LAMASSU_[A-Z_]*__' /config/config" \
             /tmp/lamassu-secret-rendered.yaml
 
           newline=$(printf '\n_')
@@ -168,6 +168,44 @@ jobs:
             echo "Secret placeholder tokens were not rejected"
             exit 1
           fi
+
+          docker run --rm \
+            docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
+            sh -c "$(cat <<'EOF'
+          set -eu
+          special='a"b\c|d&e'\''f'
+          escaped=$(printf '%s' "$special" |
+            sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g')
+          rendered=$(printf "password: '__SECRET__'\n" |
+            sed "s|__SECRET__|$escaped|g")
+          test "$rendered" = "password: 'a\"b\\c|d&e''f'"
+
+          cat >/tmp/config-template.yaml <<'CONFIG'
+          jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__
+          database:
+            username: '__LAMASSU_POSTGRES_USERNAME__'
+            password: '__LAMASSU_POSTGRES_PASSWORD__'
+          CONFIG
+          anchored_rendered=$(sed \
+            -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1'admin'|g" \
+            -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1'secret-value'|g" \
+            /tmp/config-template.yaml)
+          printf '%s\n' "$anchored_rendered" |
+            grep -q 'jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__'
+          printf '%s\n' "$anchored_rendered" |
+            grep -q "password: 'secret-value'"
+          newline=$(printf '\n_'); newline=${newline%_}
+          carriage_return=$(printf '\r_'); carriage_return=${carriage_return%_}
+          case "line-one${newline}line-two" in
+            *"$newline"*|*"$carriage_return"*) ;;
+            *) exit 1 ;;
+          esac
+          case 'prefix__LAMASSU_AMQP_USERNAME__suffix' in
+            *'__LAMASSU_'*) ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          )"
 
           migration_job=$(awk '
             /^kind: Job$/ { in_job=1 }

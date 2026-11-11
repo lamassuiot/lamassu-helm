@@ -60,6 +60,7 @@ spec:
             - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}

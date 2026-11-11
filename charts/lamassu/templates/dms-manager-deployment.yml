@@ -94,6 +94,7 @@ spec:
             - name: rendered-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             - name: cert-output
               mountPath: /shared
             {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}

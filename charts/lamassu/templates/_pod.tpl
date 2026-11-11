@@ -39,7 +39,7 @@ annotations:
 {{- if hasKey . "podSecurityContext" -}}
 {{- $securityContext = deepCopy .podSecurityContext -}}
 {{- end -}}
-{{- if and .root.Values.amqp.client.secretName (not (hasKey $securityContext "fsGroup")) -}}
+{{- if .root.Values.amqp.client.secretName -}}
 {{- $_ := set $securityContext "fsGroup" (dig "runAsGroup" 65532 (.svc.securityContext | default dict)) -}}
 {{- end -}}
 {{- with $securityContext }}
@@ -155,8 +155,8 @@ value fields remain only as a backwards-compatible fallback.
         -e "s|^\([[:space:]]*password: \)'__LAMASSU_SMTP_PASSWORD__'\$|\1'$smtp_password'|g" \
         {{- end }}
         /config-template/config > /config/config
-      if grep -q '__LAMASSU_[A-Z_]*__' /config/config; then
-        echo "Unresolved Lamassu configuration placeholder remains after Secret rendering" >&2
+      if grep -Eq "^[[:space:]]*(username|password): '__LAMASSU_(POSTGRES_USERNAME|POSTGRES_PASSWORD|AMQP_USERNAME|AMQP_PASSWORD|SMTP_USERNAME|SMTP_PASSWORD)__'\$" /config/config; then
+        echo "Unresolved Lamassu credential placeholder remains after Secret rendering" >&2
         exit 1
       fi
   env:
