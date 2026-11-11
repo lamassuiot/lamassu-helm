@@ -40,7 +40,13 @@ annotations:
 {{- $securityContext = deepCopy .podSecurityContext -}}
 {{- end -}}
 {{- if .root.Values.amqp.client.secretName -}}
+{{- $preserveFsGroup := and (hasKey $securityContext "fsGroup") (ne (int $securityContext.fsGroup) 65532) -}}
+{{- if and (hasKey . "podSecurityContext") (hasKey .podSecurityContext "fsGroup") -}}
+{{- $preserveFsGroup = true -}}
+{{- end -}}
+{{- if not $preserveFsGroup -}}
 {{- $_ := set $securityContext "fsGroup" (dig "runAsGroup" 65532 (.svc.securityContext | default dict)) -}}
+{{- end -}}
 {{- end -}}
 {{- with $securityContext }}
 securityContext:
