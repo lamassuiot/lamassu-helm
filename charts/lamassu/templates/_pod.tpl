@@ -100,8 +100,8 @@ value fields remain only as a backwards-compatible fallback.
 {{- if hasKey . "includeAmqp" }}{{ $includeAmqp = .includeAmqp }}{{ end -}}
 {{- if hasKey . "includeSmtp" }}{{ $includeSmtp = .includeSmtp }}{{ end -}}
 - name: render-config
-  image: docker.io/library/busybox:1.36
-  imagePullPolicy: IfNotPresent
+  image: {{ $root.Values.configRender.image | quote }}
+  imagePullPolicy: {{ $root.Values.global.imagePullPolicy | quote }}
   securityContext:
     allowPrivilegeEscalation: false
     capabilities:
@@ -116,6 +116,16 @@ value fields remain only as a backwards-compatible fallback.
     - |
       set -eu
       escape() {
+        newline=$(printf '\n_')
+        newline=${newline%_}
+        carriage_return=$(printf '\r_')
+        carriage_return=${carriage_return%_}
+        case "$1" in
+          *"$newline"*|*"$carriage_return"*)
+            echo "Secret values for rendered configuration must not contain newline or carriage return characters" >&2
+            return 1
+            ;;
+        esac
         printf '%s' "$1" |
           sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g'
       }

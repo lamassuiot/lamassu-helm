@@ -139,9 +139,11 @@ database and CA-to-KMS migration hooks.
 The helper is parameterized per workload so each init container receives only
 the credential families used by its configuration. Regular services receive
 PostgreSQL and AMQP credentials, Alerts additionally receives SMTP
-credentials, AWS Connector receives AMQP credentials, and migration hooks
-receive only the database credentials they need. A missing SMTP Secret therefore
-cannot block PostgreSQL preparation or unrelated services.
+credentials, AWS Connector receives AMQP credentials, and the database
+migration Job receives only PostgreSQL credentials. The CA-to-KMS hook also
+receives AMQP credentials because its `kms-config` template includes the
+event-bus block. A missing SMTP Secret therefore cannot block PostgreSQL
+preparation or unrelated services.
 
 The same approach is used by the regular workloads, WFX, the database
 migration hook, and the optional CA-to-KMS pre-upgrade hook. The CA-to-KMS hook
@@ -208,6 +210,9 @@ release.
 - The chart does not validate that an external Secret exists or contains the
   configured keys. Kubernetes reports a pod start error when a required
   `secretKeyRef` key is missing.
+- Secret values used in generated YAML must not contain newline or carriage
+  return characters. The rendering init container rejects them explicitly
+  rather than producing invalid or silently corrupted configuration.
 - The init image is only a rendering utility; it does not fetch secrets from
   external systems and does not need Kubernetes API permissions.
 - TLS certificate Secrets for AMQP and the downstream Gateway remain separate
@@ -225,6 +230,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | fullnameOverride | string | `""` | Fully override the release-scoped name prefix |
 | commonLabels | object | `{}` | Labels added to chart-managed resources |
 | commonAnnotations | object | `{}` | Annotations added to chart-managed resources |
+| configRender.image | string | `"docker.io/library/busybox:1.36"` | Image used to render Secret-backed configuration; mirror it for air-gapped or registry-restricted clusters |
 | serviceAccount.create | bool | `true` | Create a release-scoped ServiceAccount |
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods |
 | **TLS Configuration** | | | |

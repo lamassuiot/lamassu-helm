@@ -1,14 +1,23 @@
 postgres:
   hostname: "postgresql"
   port: 5432
-  username: "admin"
-  password: "admin"
+  existingSecret: "lamassu-postgres"
+  usernameKey: "username"
+  passwordKey: "password"
 
 amqp:
   hostname: "rabbitmq"
   port: 5672
-  username: "admin"
-  password: "admin"
+  existingSecret: "lamassu-amqp"
+  usernameKey: "username"
+  passwordKey: "password"
+
+services:
+  alerts:
+    smtp_server:
+      existingSecret: "lamassu-smtp"
+      usernameKey: "username"
+      passwordKey: "password"
 
 auth:
   oidc:

@@ -497,6 +497,10 @@ connectivityTest:
     capabilities:
       drop:
         - ALL
+configRender:
+  # -- Image used to materialize Secret-backed configuration in an in-memory volume.
+  #    Mirror this image for air-gapped or registry-restricted clusters.
+  image: docker.io/library/busybox:1.36
 migrations:
   db:
     image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4

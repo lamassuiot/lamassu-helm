@@ -126,6 +126,22 @@ jobs:
             sed "s|__SECRET__|$escaped|g")
           test "$rendered" = "password: 'a\"b\\c|d&e''f'"
 
+          newline=$(printf '\n_')
+          newline=${newline%_}
+          carriage_return=$(printf '\r_')
+          carriage_return=${carriage_return%_}
+          multiline_secret="line-one${newline}line-two"
+          if case "$multiline_secret" in
+            *"$newline"*|*"$carriage_return"*) true ;;
+            *) false ;;
+          esac
+          then
+            :
+          else
+            echo "Multiline Secret values were not rejected"
+            exit 1
+          fi
+
           migration_job=$(awk '
             /^kind: Job$/ { in_job=1 }
             in_job && /^  name: lamassu-db-migration$/ { found=1 }
@@ -136,6 +152,16 @@ jobs:
             echo "Database migration received unrelated AMQP or SMTP credentials"
             exit 1
           fi
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set configRender.image=registry.example.invalid/mirror/busybox:1.36 \
+            --set global.imagePullPolicy=IfNotPresent \
+            >/tmp/lamassu-config-render-image.yaml
+          grep -q 'image: "registry.example.invalid/mirror/busybox:1.36"' \
+            /tmp/lamassu-config-render-image.yaml
+          grep -q 'imagePullPolicy: "IfNotPresent"' \
+            /tmp/lamassu-config-render-image.yaml
 
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
@@ -295,6 +321,18 @@ jobs:
           kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
           kubectl create namespace lamassu-test
+          kubectl create secret generic lamassu-postgres \
+            --from-literal=username=admin \
+            --from-literal='password=a"b\c|d&e'\''f' \
+            -n lamassu-test
+          kubectl create secret generic lamassu-amqp \
+            --from-literal=username=admin \
+            --from-literal='password=a"b\c|d&e'\''f' \
+            -n lamassu-test
+          kubectl create secret generic lamassu-smtp \
+            --from-literal=username=smtp-ci \
+            --from-literal='password=a"b\c|d&e'\''f' \
+            -n lamassu-test
           helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml --wait --timeout 600s
 
           # CRITICAL: Wait for PostgreSQL to be fully ready before proceeding
@@ -342,3 +380,12 @@ jobs:
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct install --config .github/ci/ct.yaml --github-groups --target-branch ${{ github.base_ref || 'main' }}
+
+      - name: Verify Secret-backed workloads are healthy
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          kubectl get pods -n lamassu-test -l app.kubernetes.io/instance=lamassu -o wide
+          kubectl wait --for=condition=Available deployment \
+            -l app.kubernetes.io/instance=lamassu \
+            -n lamassu-test \
+            --timeout=300s

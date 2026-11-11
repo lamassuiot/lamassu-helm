@@ -300,6 +300,14 @@
       },
       "additionalProperties": false
     },
+    "configRender": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "image": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
     "migrations": {
       "type": "object",
       "properties": {
@@ -326,7 +334,7 @@
       "additionalProperties": false
     }
   },
-  "required": ["global", "serviceAccount", "tls", "gateway", "postgres", "amqp", "auth", "serviceDefaults", "services", "connectivityTest", "migrations"],
+  "required": ["global", "serviceAccount", "tls", "gateway", "postgres", "amqp", "auth", "serviceDefaults", "services", "connectivityTest", "configRender", "migrations"],
   "additionalProperties": false,
   "definitions": {
     "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
