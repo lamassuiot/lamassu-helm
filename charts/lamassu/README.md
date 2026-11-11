@@ -36,7 +36,8 @@ operator.
 > renamed by Kubernetes; plan a data migration or bind existing data before an
 > in-place upgrade. The default pod `fsGroup` is `65532` so the non-root
 > render-config init container and application share generated files; Kubernetes
-> may apply that group to mounted volumes such as VA CRL and CA storage.
+> may apply that group to mounted volumes such as VA CRL and KMS crypto-engine
+> storage.
 > `fsGroupChangePolicy: OnRootMismatch` limits recursive ownership changes when
 > the volume root already has the expected group, but operators should still
 > verify access for backup helpers or jobs using a different GID. AWS connectors
