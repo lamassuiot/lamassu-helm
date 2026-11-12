@@ -105,18 +105,18 @@ value fields remain only as a backwards-compatible fallback.
 {{- if hasKey . "includePostgres" }}{{ $includePostgres = .includePostgres }}{{ end -}}
 {{- if hasKey . "includeAmqp" }}{{ $includeAmqp = .includeAmqp }}{{ end -}}
 {{- if hasKey . "includeSmtp" }}{{ $includeSmtp = .includeSmtp }}{{ end -}}
+{{- $renderSecurityContext := deepCopy ($root.Values.configRender.securityContext | default dict) -}}
+{{- if not (hasKey $renderSecurityContext "runAsUser") }}{{ $_ := set $renderSecurityContext "runAsUser" 65532 }}{{ end -}}
+{{- if not (hasKey $renderSecurityContext "runAsGroup") }}{{ $_ := set $renderSecurityContext "runAsGroup" 65532 }}{{ end -}}
+{{- $_ := set $renderSecurityContext "runAsNonRoot" true -}}
+{{- $_ := set $renderSecurityContext "allowPrivilegeEscalation" false -}}
+{{- $_ := set $renderSecurityContext "readOnlyRootFilesystem" true -}}
+{{- $_ := set $renderSecurityContext "capabilities" (dict "drop" (list "ALL")) -}}
 - name: render-config
   image: {{ $root.Values.configRender.image | quote }}
   imagePullPolicy: {{ $root.Values.global.imagePullPolicy | quote }}
   securityContext:
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    readOnlyRootFilesystem: true
-    runAsGroup: 65532
-    runAsNonRoot: true
-    runAsUser: 65532
+    {{- toYaml $renderSecurityContext | nindent 4 }}
   resources:
     {{- toYaml $root.Values.configRender.resources | nindent 4 }}
   command: ["sh", "-c"]

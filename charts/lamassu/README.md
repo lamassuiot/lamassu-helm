@@ -504,6 +504,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | commonLabels | object | `{}` | Labels added to chart-managed resources |
 | commonAnnotations | object | `{}` | Annotations added to chart-managed resources |
 | configRender.image | string | `"docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"` | Digest-pinned image used to render Secret-backed configuration; mirror it for air-gapped or registry-restricted clusters |
+| configRender.securityContext | object | `{}` | Optional security context override for the renderer identity; hardening settings remain enforced |
 | configRender.resources | object | `{"limits":{"cpu":"100m","memory":"64Mi"},"requests":{"cpu":"10m","memory":"16Mi"}}` | CPU and memory resources for the Secret-backed configuration renderer |
 | serviceAccount.create | bool | `true` | Create a release-scoped ServiceAccount |
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods |
