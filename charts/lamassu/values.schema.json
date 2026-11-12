@@ -352,7 +352,8 @@
       "type": "object",
       "required": ["image"],
       "properties": {
-        "image": { "type": "string", "minLength": 1 }
+        "image": { "type": "string", "minLength": 1 },
+        "resources": { "type": "object" }
       },
       "additionalProperties": false
     },

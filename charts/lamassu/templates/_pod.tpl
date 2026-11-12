@@ -117,6 +117,8 @@ value fields remain only as a backwards-compatible fallback.
     runAsGroup: 65532
     runAsNonRoot: true
     runAsUser: 65532
+  resources:
+    {{- toYaml $root.Values.configRender.resources | nindent 4 }}
   command: ["sh", "-c"]
   args:
     - |

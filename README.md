@@ -141,7 +141,10 @@ uses Kubernetes Secrets as its provider-neutral runtime interface:
 placeholders rather than those Secret values; an init container materializes
 the configuration into an in-memory volume before the application starts.
 AWS connector credentials remain a known exception and are currently rendered
-into the connector ConfigMap.
+into the connector ConfigMap. KMS crypto-engine values under
+`services.kms.cryptoEngines.engines` and VA S3 values under
+`services.va.fileStore.s3` are also rendered into ConfigMaps and should be
+protected with appropriate ConfigMap RBAC.
 
 For production, External Secrets Operator is the recommended way to provision
 those Kubernetes Secrets from AWS Secrets Manager, Vault, Azure Key Vault,

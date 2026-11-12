@@ -48,6 +48,7 @@ Kubernetes: `>=1.24.0-0`
 | commonAnnotations | object | `{}` | Annotations added to every chart-managed object. |
 | commonLabels | object | `{}` | Labels added to every chart-managed object. Selector labels remain chart controlled. |
 | configRender.image | string | `"docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"` | Image used to materialize Secret-backed configuration in an in-memory volume.    Mirror this image for air-gapped or registry-restricted clusters. |
+| configRender.resources | object | `{"limits":{"cpu":"100m","memory":"64Mi"},"requests":{"cpu":"10m","memory":"16Mi"}}` | CPU and memory resources for the Secret-backed configuration renderer. |
 | connectivityTest.image | string | `"curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"` | Image for the `helm test` connectivity-check hook. The public,    upstream-maintained curl image (pinned by digest) rather than a    chart-owned image, since the hook only needs curl and a POSIX shell. |
 | connectivityTest.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Security context for the connectivity-check hook container. |
 | fullnameOverride | string | `""` | Fully override the release-scoped resource-name prefix. |
@@ -113,7 +114,7 @@ Kubernetes: `>=1.24.0-0`
 | serviceDefaults.pdb.minAvailable | int | `1` | minAvailable for PodDisruptionBudget. Only active when effective replica count > 1. |
 | serviceDefaults.podAnnotations | object | `{}` | Extra annotations for the pods |
 | serviceDefaults.podLabels | object | `{}` | Extra labels for the pods only |
-| serviceDefaults.podSecurityContext | object | `{"fsGroup":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level security context. |
+| serviceDefaults.podSecurityContext | object | `{"fsGroup":65532,"fsGroupChangePolicy":"OnRootMismatch","seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level security context. |
 | serviceDefaults.podSecurityContext.fsGroup | int | `65532` | Filesystem group used by non-root init containers and workloads to share generated files. |
 | serviceDefaults.podSecurityContext.fsGroupChangePolicy | string | `"OnRootMismatch"` | Avoid recursively changing existing volume ownership when the root directory already matches fsGroup. |
 | serviceDefaults.port | int | `8085` | HTTP port the service listens on (also used for Service, probes and gateway routes) |

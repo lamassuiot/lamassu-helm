@@ -148,9 +148,10 @@ Helm values file. `render-config` receives the credentials through
 `secretKeyRef`, replaces the placeholders once during pod startup, and writes
 the final YAML configuration to the in-memory volume. The application or
 migration container reads that generated file, while the template ConfigMap
-remains free of PostgreSQL, AMQP, and SMTP Secret values. AWS connector
-credentials remain the documented exception because they are currently
-rendered directly into the connector ConfigMap.
+remains free of PostgreSQL, AMQP, and SMTP Secret values. The remaining
+ConfigMap-rendered credential exceptions are AWS connector credentials,
+`services.kms.cryptoEngines.engines` values, and `services.va.fileStore.s3`
+values; protect their ConfigMaps with appropriate RBAC.
 
 ### Values-file trust boundary
 
@@ -183,8 +184,9 @@ The implementation has four parts:
    scalars so double quotes and backslashes in a Secret remain literal
    configuration data. Secret values containing Lamassu placeholder tokens
    are rejected to prevent a later substitution from rewriting the value.
-   AWS connector credentials are a known exception and are currently rendered
-   into the connector ConfigMap.
+   AWS connector credentials, KMS crypto-engine values, and VA S3 values are
+   known exceptions and are currently rendered into their respective
+   ConfigMaps.
 3. The `lamassu.configSecretInit` helper adds a BusyBox init container. It reads
    credentials through Kubernetes `secretKeyRef`, escapes backslashes for
    `sed` and doubles embedded YAML single quotes, replaces only exact
@@ -288,8 +290,10 @@ the Secret immediately through `secretKeyRef`. A typical order is:
 
 - PostgreSQL, AMQP, and SMTP Secret values are not copied into their
   chart-managed ConfigMap templates. AWS connector credentials configured
-  under `services.connectors.<id>.credentials` are still rendered into the
-  connector ConfigMap and should be protected with appropriate ConfigMap RBAC.
+  under `services.connectors.<id>.credentials`, KMS crypto-engine values under
+  `services.kms.cryptoEngines.engines`, and VA S3 values under
+  `services.va.fileStore.s3` are still rendered into ConfigMaps and should be
+  protected with appropriate ConfigMap RBAC.
 - Secret values are exposed to the init container as environment variables and
   exist in the generated configuration file inside the pod's memory-backed
   volume. Kubernetes administrators and users with access to the namespace can
@@ -326,6 +330,7 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | commonLabels | object | `{}` | Labels added to chart-managed resources |
 | commonAnnotations | object | `{}` | Annotations added to chart-managed resources |
 | configRender.image | string | `"docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"` | Digest-pinned image used to render Secret-backed configuration; mirror it for air-gapped or registry-restricted clusters |
+| configRender.resources | object | `{"limits":{"cpu":"100m","memory":"64Mi"},"requests":{"cpu":"10m","memory":"16Mi"}}` | CPU and memory resources for the Secret-backed configuration renderer |
 | serviceAccount.create | bool | `true` | Create a release-scoped ServiceAccount |
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods |
 | **TLS Configuration** | | | |
