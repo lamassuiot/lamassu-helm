@@ -62,7 +62,10 @@
         "port": { "$ref": "#/definitions/port" },
         "username": { "type": "string" },
         "password": { "type": "string" },
-        "existingSecret": { "type": "string" },
+        "existingSecret": {
+          "type": "string",
+          "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
+        },
         "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "logLevel": { "type": "string" }
@@ -76,7 +79,10 @@
         "port": { "$ref": "#/definitions/port" },
         "username": { "type": "string" },
         "password": { "type": "string" },
-        "existingSecret": { "type": "string" },
+        "existingSecret": {
+          "type": "string",
+          "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
+        },
         "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "tls": { "type": "boolean" },
@@ -240,7 +246,10 @@
                         { "type": "number" }
                       ]
                     },
-                    "existingSecret": { "type": "string" },
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
+                    },
                     "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
                     "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
                     "host": { "type": "string" },
