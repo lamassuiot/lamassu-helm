@@ -58,15 +58,10 @@ Kubernetes: `>=1.24.0-0`
 | global.imagePullSecrets | list | `[]` | Image pull secrets applied to every Lamassu pod. |
 | migrations.caToKms.enabled | bool | `false` | Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It uses the legacy unscoped `kms-config` ConfigMap while it still exists and falls back to the release-scoped `<chart fullname>-kms-config` (`lamassu-kms-config` when the release is named `lamassu`) once the legacy ConfigMap is gone. |
 | migrations.caToKms.image | string | `"ghcr.io/lamassuiot/lamassu-ca-to-kms-migration:dev-v4"` | Docker image for the CA-to-KMS migration tool |
-| migrations.db.databases[0] | string | `"kms"` |  |
-| migrations.db.databases[1] | string | `"ca"` |  |
-| migrations.db.databases[2] | string | `"va"` |  |
-| migrations.db.databases[3] | string | `"devicemanager"` |  |
-| migrations.db.databases[4] | string | `"dmsmanager"` |  |
-| migrations.db.databases[5] | string | `"alerts"` |  |
+| migrations.db.databases | list | `["kms","ca","va","devicemanager","dmsmanager","alerts"]` | Schemas to migrate, in order: one init container each. `kms` must come before `ca`, and `ca` before `va`: their migrations create foreign keys to the previous schema. |
 | migrations.db.image | string | `"ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4"` |  |
 | nameOverride | string | `""` | Partially override the name used for release-scoped resources. |
-| observability.enabled | bool | `false` | Enable OpenTelemetry instrumentation for Lamassu services that support it. AWS Connector, authz, wfx and the UI are not instrumented. |
+| observability.enabled | bool | `false` | Enable OpenTelemetry instrumentation for Lamassu services that support it. The chart does not configure OpenTelemetry for AWS Connector, wfx or the UI. |
 | observability.logs.basePath | string | `"/insert/opentelemetry/v1/logs"` | Base path for the Victoria Logs OTLP log ingestion endpoint |
 | observability.logs.hostname | string | `"victoria-logs"` |  |
 | observability.logs.port | int | `9428` | OTLP HTTP port exposed by Victoria Logs |
