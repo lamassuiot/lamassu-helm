@@ -301,10 +301,13 @@ the Secret immediately through `secretKeyRef`. A typical order is:
 - The chart does not validate that an external Secret exists or contains the
   configured keys. Kubernetes reports a pod start error when a required
   `secretKeyRef` key is missing.
-- Secret values used in generated YAML must not contain leading or trailing
-  whitespace, newline, carriage return, or Lamassu placeholder-token
-  characters. The rendering init container rejects them explicitly rather than
-  producing invalid or silently corrupted configuration.
+- Values read from `existingSecret` and used in generated YAML must not contain
+  leading or trailing whitespace, newline, carriage return, or Lamassu
+  placeholder-token characters. The rendering init container rejects them
+  explicitly rather than producing invalid or silently corrupted configuration.
+  Legacy `username`/`password` fallback values are only YAML-escaped, so their
+  leading or trailing whitespace remains supported for backwards compatibility;
+  use `existingSecret` for shared or production deployments.
 - The init image is only a rendering utility; it does not fetch secrets from
   external systems and does not need Kubernetes API permissions.
 - TLS certificate Secrets for AMQP and the downstream Gateway remain separate

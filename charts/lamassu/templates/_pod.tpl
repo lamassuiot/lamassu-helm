@@ -121,7 +121,7 @@ value fields remain only as a backwards-compatible fallback.
   args:
     - |
       set -eu
-      escape() {
+      validate_secret() {
         newline=$(printf '\n_')
         newline=${newline%_}
         carriage_return=$(printf '\r_')
@@ -132,18 +132,32 @@ value fields remain only as a backwards-compatible fallback.
             return 1
             ;;
         esac
+      }
+      escape() {
         printf '%s' "$1" |
           sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g'
       }
       {{- if $includePostgres }}
+      {{- if $root.Values.postgres.existingSecret }}
+      validate_secret "$LAMASSU_POSTGRES_USERNAME"
+      validate_secret "$LAMASSU_POSTGRES_PASSWORD"
+      {{- end }}
       pg_user=$(escape "$LAMASSU_POSTGRES_USERNAME")
       pg_password=$(escape "$LAMASSU_POSTGRES_PASSWORD")
       {{- end }}
       {{- if $includeAmqp }}
+      {{- if $root.Values.amqp.existingSecret }}
+      validate_secret "$LAMASSU_AMQP_USERNAME"
+      validate_secret "$LAMASSU_AMQP_PASSWORD"
+      {{- end }}
       amqp_user=$(escape "$LAMASSU_AMQP_USERNAME")
       amqp_password=$(escape "$LAMASSU_AMQP_PASSWORD")
       {{- end }}
       {{- if $includeSmtp }}
+      {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
+      validate_secret "$LAMASSU_SMTP_USERNAME"
+      validate_secret "$LAMASSU_SMTP_PASSWORD"
+      {{- end }}
       smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
       smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
       {{- end }}
