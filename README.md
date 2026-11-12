@@ -154,7 +154,8 @@ these controllers because they are cluster-level infrastructure and differ
 between kind, EKS, and on-premise deployments.
 
 See the [complete secret management guide](charts/lamassu/README.md#secret-management)
-for the decision rationale, alternatives, examples, rotation behavior, and
+for the decision rationale, alternatives, examples, manual kind-cluster
+validation procedure, troubleshooting findings, rotation behavior, and
 security limitations.
 
 ### External Dependencies

@@ -286,6 +286,180 @@ the Secret immediately through `secretKeyRef`. A typical order is:
    to contain the configured keys.
 3. Run Helm against the chart.
 
+### Manual kind-cluster validation
+
+The following procedure was used to validate the Secret-backed deployment
+manually. It is intended for development or test clusters, not as a
+production provisioning workflow.
+
+1. Select the kind context and recreate the test namespace:
+
+   ```bash
+   kubectl config use-context kind-lamassu
+   kubectl delete namespace lamassu-test --ignore-not-found --wait=true
+   kubectl create namespace lamassu-test
+   ```
+
+2. Install the cluster-level prerequisites used by the chart:
+
+   ```bash
+   kubectl apply \
+     -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml \
+     --wait
+
+   helm install eg oci://docker.io/envoyproxy/gateway-helm \
+     --version v1.8.0 \
+     --namespace envoy-gateway-system \
+     --create-namespace \
+     --values .github/ci/eg.yaml \
+     --wait --timeout 300s
+   ```
+
+   Create the `eg` `GatewayClass` and wait for the Envoy Gateway deployment
+   before installing Lamassu. These resources are cluster-scoped and normally
+   need to be installed only once per kind cluster.
+
+3. Create the three Lamassu Secrets before installing any chart. The
+   migration hook needs the PostgreSQL Secret during `helm install`:
+
+   ```bash
+   export MANUAL_DB_PASSWORD='Lamassu-Test-2026!'
+   export MANUAL_AMQP_PASSWORD='Lamassu-Test-2026!'
+   export MANUAL_SMTP_PASSWORD='Lamassu-Smtp-2026!'
+
+   kubectl create secret generic lamassu-postgres -n lamassu-test \
+     --from-literal=username=admin \
+     --from-literal=password="$MANUAL_DB_PASSWORD"
+   kubectl create secret generic lamassu-amqp -n lamassu-test \
+     --from-literal=username=admin \
+     --from-literal=password="$MANUAL_AMQP_PASSWORD"
+   kubectl create secret generic lamassu-smtp -n lamassu-test \
+     --from-literal=username=smtp-ci \
+     --from-literal=password="$MANUAL_SMTP_PASSWORD"
+   ```
+
+4. Install PostgreSQL, overriding the historical CI password in
+   `.github/ci/postgres.yaml` so it matches `lamassu-postgres`:
+
+   ```bash
+   helm install postgres oci://registry-1.docker.io/cloudpirates/postgres \
+     --version 0.19.5 -n lamassu-test \
+     --values .github/ci/postgres.yaml \
+     --set-string auth.password="$MANUAL_DB_PASSWORD" \
+     --wait --timeout 600s
+   ```
+
+   Verify the database accepts the Secret value before continuing:
+
+   ```bash
+   kubectl run pg-check \
+     --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 \
+     --rm -i --restart=Never -n lamassu-test \
+     --env="PGPASSWORD=$MANUAL_DB_PASSWORD" -- \
+     psql -h postgresql -U admin -d auth -c "SELECT 1"
+   ```
+
+5. Install Keycloak and RabbitMQ. Both must use the same credentials as the
+   corresponding dependencies:
+
+   ```bash
+   helm install auth oci://registry-1.docker.io/cloudpirates/keycloak \
+     --version 0.21.9 -n lamassu-test \
+     --values .github/ci/keycloak.yaml \
+     --set-string database.password="$MANUAL_DB_PASSWORD" \
+     --wait --timeout 600s
+
+   helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq \
+     --version 0.21.4 -n lamassu-test \
+     --values .github/ci/rabbitmq.yaml \
+     --set-string auth.password="$MANUAL_AMQP_PASSWORD" \
+     --wait --timeout 300s
+   ```
+
+6. Render the chart and verify that it contains `secretKeyRef` references,
+   placeholders, and no real password:
+
+   ```bash
+   helm template lamassu charts/lamassu -n lamassu-test \
+     --values charts/lamassu/ci/min-values.yaml \
+     > /tmp/lamassu-rendered.yaml
+
+   grep -n "secretKeyRef" /tmp/lamassu-rendered.yaml
+   grep -n "__LAMASSU_" /tmp/lamassu-rendered.yaml
+   ! grep -Fq "$MANUAL_DB_PASSWORD" /tmp/lamassu-rendered.yaml
+   ```
+
+7. Install Lamassu:
+
+   ```bash
+   helm install lamassu charts/lamassu -n lamassu-test \
+     --values charts/lamassu/ci/min-values.yaml \
+     --timeout 500s --wait
+   ```
+
+8. Confirm the release and all workloads:
+
+   ```bash
+   helm status lamassu -n lamassu-test
+   kubectl get pods -n lamassu-test
+   ```
+
+   The migration Job is a successful Helm hook with
+   `hook-succeeded` cleanup, so it may no longer be present after a
+   successful installation. Its absence is not a failure; the release status
+   and running workloads are the relevant checks.
+
+9. Inspect all ConfigMaps and verify that real credentials are absent:
+
+   ```bash
+   kubectl get configmaps -n lamassu-test -o yaml \
+     > /tmp/lamassu-configmaps.yaml
+   ! grep -Fq "$MANUAL_DB_PASSWORD" /tmp/lamassu-configmaps.yaml
+   ! grep -Fq "$MANUAL_AMQP_PASSWORD" /tmp/lamassu-configmaps.yaml
+   ! grep -Fq "$MANUAL_SMTP_PASSWORD" /tmp/lamassu-configmaps.yaml
+   ```
+
+   Remove temporary files and shell variables after the test:
+
+   ```bash
+   rm -f /tmp/lamassu-rendered.yaml /tmp/lamassu-configmaps.yaml
+   unset MANUAL_DB_PASSWORD MANUAL_AMQP_PASSWORD MANUAL_SMTP_PASSWORD
+   ```
+
+#### Problems encountered during the manual validation
+
+- The first PostgreSQL installation used a password different from the
+  `lamassu-postgres` Secret. PostgreSQL was running, but every migration
+  failed authentication. The dependency chart, the Kubernetes Secret, and
+  the Lamassu values must use the same credentials.
+- A Secret manifest entered directly with `kubectl apply` failed because the
+  apostrophe in the test password was not validly quoted in YAML. Creating
+  the Secret with `kubectl create secret generic --from-literal` avoids YAML
+  quoting errors. For reproducible tests, use a password without shell- or
+  YAML-sensitive characters unless the escaping behavior itself is being
+  tested.
+- The migration hook initially retried until its backoff limit because
+  `init-authz` could not authenticate. PostgreSQL and `render-config` were
+  healthy; the remaining issue was the Lamassu Authz application's raw
+  PostgreSQL DSN construction, which does not escape backslashes in
+  passwords. The application is outside this chart's scope, so the manual
+  deployment test used a password without `\`. A permanent fix belongs in
+  the application PostgreSQL connection code.
+- Keycloak initially failed for the same operational reason: its values file
+  retained the historical password while PostgreSQL had been installed with
+  the new test password. Passing
+  `--set-string database.password="$MANUAL_DB_PASSWORD"` resolved the
+  mismatch.
+- A failed Helm release cannot be installed again with the same release name
+  until it is removed or upgraded. Clean up with `helm uninstall` and delete
+  failed migration Jobs, or recreate the namespace before retrying.
+- The migration Job may be absent after success because Helm deletes
+  successful hooks. Use `helm status`, pod readiness, and ConfigMap checks
+  instead of treating a missing completed hook as a failure.
+- The `.github/ci/*.yaml` files are Helm values files for dependency charts,
+  not Kubernetes manifests. They must be passed with `helm install -f` and
+  must not be applied directly with `kubectl`.
+
 ### Rotation, security boundaries, and limitations
 
 - PostgreSQL, AMQP, and SMTP Secret values are not copied into their
