@@ -490,11 +490,13 @@ empty or contain leading or trailing whitespace, newline, carriage return,
 or Lamassu placeholder-token characters. The rendering init container rejects
 them explicitly rather than producing invalid or silently corrupted
 configuration.
-  Legacy `username`/`password` fallback values preserve the previous
-  double-quoted YAML escape semantics before being written to the generated
-  single-quoted configuration. Their leading or trailing whitespace remains
-  supported for backwards compatibility; use `existingSecret` for shared or
-  production deployments.
+  Legacy PostgreSQL and AMQP `username`/`password` fallback values are written
+  as safely escaped double-quoted YAML scalars, preserving the previous escape
+  semantics without placing decoded newlines into the `sed` replacement.
+  SMTP fallback values remain literal, matching their previous plain YAML
+  string behavior. Leading or trailing whitespace remains supported for
+  backwards compatibility; use `existingSecret` for shared or production
+  deployments.
 - The init image is only a rendering utility; it does not fetch secrets from
   external systems and does not need Kubernetes API permissions.
 - TLS certificate Secrets for AMQP and the downstream Gateway remain separate

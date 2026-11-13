@@ -147,13 +147,13 @@ value fields remain only as a backwards-compatible fallback.
             ;;
         esac
       }
-      unescape_fallback_secret() {
-        fallback_secret=$(printf '%b_' "$1")
-        fallback_secret=${fallback_secret%_}
-      }
       escape() {
         printf '%s' "$1" |
           sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g'
+      }
+      escape_yaml_double() {
+        printf '%s' "$1" |
+          sed -e 's/\\/\\\\/g' -e 's/"/\\\\"/g' -e 's/[&|]/\\&/g'
       }
       {{- if $includePostgres }}
       {{- if $root.Values.postgres.existingSecret }}
@@ -164,10 +164,8 @@ value fields remain only as a backwards-compatible fallback.
       {{- else }}
       validate_fallback_secret "$LAMASSU_POSTGRES_USERNAME"
       validate_fallback_secret "$LAMASSU_POSTGRES_PASSWORD"
-      unescape_fallback_secret "$LAMASSU_POSTGRES_USERNAME"
-      pg_user=$(escape "$fallback_secret")
-      unescape_fallback_secret "$LAMASSU_POSTGRES_PASSWORD"
-      pg_password=$(escape "$fallback_secret")
+      pg_user=$(escape_yaml_double "$LAMASSU_POSTGRES_USERNAME")
+      pg_password=$(escape_yaml_double "$LAMASSU_POSTGRES_PASSWORD")
       {{- end }}
       {{- end }}
       {{- if $includeAmqp }}
@@ -179,10 +177,8 @@ value fields remain only as a backwards-compatible fallback.
       {{- else }}
       validate_fallback_secret "$LAMASSU_AMQP_USERNAME"
       validate_fallback_secret "$LAMASSU_AMQP_PASSWORD"
-      unescape_fallback_secret "$LAMASSU_AMQP_USERNAME"
-      amqp_user=$(escape "$fallback_secret")
-      unescape_fallback_secret "$LAMASSU_AMQP_PASSWORD"
-      amqp_password=$(escape "$fallback_secret")
+      amqp_user=$(escape_yaml_double "$LAMASSU_AMQP_USERNAME")
+      amqp_password=$(escape_yaml_double "$LAMASSU_AMQP_PASSWORD")
       {{- end }}
       {{- end }}
       {{- if $includeSmtp }}
@@ -194,20 +190,28 @@ value fields remain only as a backwards-compatible fallback.
       {{- else }}
       validate_fallback_secret "$LAMASSU_SMTP_USERNAME"
       validate_fallback_secret "$LAMASSU_SMTP_PASSWORD"
-      unescape_fallback_secret "$LAMASSU_SMTP_USERNAME"
-      smtp_user=$(escape "$fallback_secret")
-      unescape_fallback_secret "$LAMASSU_SMTP_PASSWORD"
-      smtp_password=$(escape "$fallback_secret")
+      smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
+      smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
       {{- end }}
       {{- end }}
       sed \
         {{- if $includePostgres }}
+        {{- if $root.Values.postgres.existingSecret }}
         -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1'$pg_user'|g" \
         -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1'$pg_password'|g" \
+        {{- else }}
+        -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1\"$pg_user\"|g" \
+        -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1\"$pg_password\"|g" \
+        {{- end }}
         {{- end }}
         {{- if $includeAmqp }}
+        {{- if $root.Values.amqp.existingSecret }}
         -e "s|^\([[:space:]]*username: \)'__LAMASSU_AMQP_USERNAME__'\$|\1'$amqp_user'|g" \
         -e "s|^\([[:space:]]*password: \)'__LAMASSU_AMQP_PASSWORD__'\$|\1'$amqp_password'|g" \
+        {{- else }}
+        -e "s|^\([[:space:]]*username: \)'__LAMASSU_AMQP_USERNAME__'\$|\1\"$amqp_user\"|g" \
+        -e "s|^\([[:space:]]*password: \)'__LAMASSU_AMQP_PASSWORD__'\$|\1\"$amqp_password\"|g" \
+        {{- end }}
         {{- end }}
         {{- if $includeSmtp }}
         -e "s|^\([[:space:]]*username: \)'__LAMASSU_SMTP_USERNAME__'\$|\1'$smtp_user'|g" \
