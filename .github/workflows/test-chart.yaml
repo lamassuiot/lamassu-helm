@@ -484,7 +484,9 @@ jobs:
             --from-literal=username=smtp-ci \
             --from-literal=password="$ci_db_password" \
             -n lamassu-test
-          helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml --wait --timeout 600s
+          helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml \
+            --set-string auth.password="$ci_db_password" \
+            --wait --timeout 600s
 
           # CRITICAL: Wait for PostgreSQL to be fully ready before proceeding
           echo "Waiting for PostgreSQL to be fully operational..."
@@ -503,8 +505,12 @@ jobs:
 
           echo "PostgreSQL is ready and databases are accessible"
 
-          helm install auth oci://registry-1.docker.io/cloudpirates/keycloak --version 0.21.9 -n lamassu-test -f .github/ci/keycloak.yaml --wait --timeout 600s
-          helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq --version 0.21.4 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait --timeout 300s
+          helm install auth oci://registry-1.docker.io/cloudpirates/keycloak --version 0.21.9 -n lamassu-test -f .github/ci/keycloak.yaml \
+            --set-string database.password="$ci_db_password" \
+            --wait --timeout 600s
+          helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq --version 0.21.4 -n lamassu-test -f .github/ci/rabbitmq.yaml \
+            --set-string auth.password="$ci_db_password" \
+            --wait --timeout 300s
 
       - name: Prepare SoftHSM for PKCS11 CI test
         if: steps.list-changed.outputs.changed == 'true'
