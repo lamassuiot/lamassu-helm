@@ -471,17 +471,18 @@ jobs:
           kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
           kubectl create namespace lamassu-test
+          ci_db_password=$(openssl rand -hex 24)
           kubectl create secret generic lamassu-postgres \
             --from-literal=username=admin \
-            --from-literal='password=Lamassu-CI-2026!' \
+            --from-literal=password="$ci_db_password" \
             -n lamassu-test
           kubectl create secret generic lamassu-amqp \
             --from-literal=username=admin \
-            --from-literal='password=Lamassu-CI-2026!' \
+            --from-literal=password="$ci_db_password" \
             -n lamassu-test
           kubectl create secret generic lamassu-smtp \
             --from-literal=username=smtp-ci \
-            --from-literal='password=Lamassu-CI-2026!' \
+            --from-literal=password="$ci_db_password" \
             -n lamassu-test
           helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml --wait --timeout 600s
 
@@ -491,7 +492,7 @@ jobs:
 
           # Verify databases are created and PostgreSQL is accepting connections
           echo "Verifying PostgreSQL databases are initialized..."
-          pg_password='Lamassu-CI-2026!'
+          pg_password="$ci_db_password"
           kubectl run pg-check --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test \
             --env="PGPASSWORD=$pg_password" -- \
             psql -h postgresql -U admin -d auth -c "SELECT 1" || \
