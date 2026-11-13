@@ -496,9 +496,11 @@ configuration.
   newlines into the `sed` replacement.
   SMTP fallback values remain literal, matching their previous plain YAML
   string behavior. Leading or trailing whitespace remains supported for
-  backwards compatibility, but fallback values must not be empty or contain
-  newlines or carriage returns; use `existingSecret` for shared or production
-  deployments.
+  backwards compatibility, but PostgreSQL and AMQP fallback values must not be
+  empty or contain newlines or carriage returns. SMTP fallback values may be
+  empty when email is not configured, but still reject newlines, carriage
+  returns, and placeholder tokens. Use `existingSecret` for shared or
+  production deployments.
 - The init image is only a rendering utility; it does not fetch secrets from
   external systems and does not need Kubernetes API permissions.
 - TLS certificate Secrets for AMQP and the downstream Gateway remain separate

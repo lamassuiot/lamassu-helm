@@ -141,7 +141,7 @@ value fields remain only as a backwards-compatible fallback.
         newline=${newline%_}
         carriage_return=$(printf '\r_')
         carriage_return=${carriage_return%_}
-        if [ -z "$1" ]; then
+        if [ -z "$1" ] && [ "${2:-}" != "allow-empty" ]; then
           echo "Fallback secret values must not be empty, contain newlines, or contain carriage returns" >&2
           return 1
         fi
@@ -201,8 +201,8 @@ value fields remain only as a backwards-compatible fallback.
       smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
       smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
       {{- else }}
-      validate_fallback_secret "$LAMASSU_SMTP_USERNAME"
-      validate_fallback_secret "$LAMASSU_SMTP_PASSWORD"
+      validate_fallback_secret "$LAMASSU_SMTP_USERNAME" allow-empty
+      validate_fallback_secret "$LAMASSU_SMTP_PASSWORD" allow-empty
       smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
       smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
       {{- end }}
