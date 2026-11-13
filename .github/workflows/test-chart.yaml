@@ -256,6 +256,22 @@ jobs:
             grep -q "password: 'secret-value'"
           newline=$(printf '\n_'); newline=${newline%_}
           carriage_return=$(printf '\r_'); carriage_return=${carriage_return%_}
+          validate_secret() {
+            if [ -z "$1" ]; then
+              return 1
+            fi
+            case "$1" in
+              *"$newline"*|*"$carriage_return"*|[[:space:]]*|*[[:space:]]|*'__LAMASSU_'*)
+                return 1
+                ;;
+            esac
+          }
+          if validate_secret ' admin'; then
+            exit 1
+          fi
+          if validate_secret 'admin '; then
+            exit 1
+          fi
           case "line-one${newline}line-two" in
             *"$newline"*|*"$carriage_return"*) ;;
             *) exit 1 ;;
