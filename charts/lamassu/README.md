@@ -492,7 +492,8 @@ them explicitly rather than producing invalid or silently corrupted
 configuration.
   Legacy PostgreSQL and AMQP `username`/`password` fallback values are written
   as safely escaped double-quoted YAML scalars, preserving the previous escape
-  semantics without placing decoded newlines into the `sed` replacement.
+  semantics, including already escaped double quotes, without placing decoded
+  newlines into the `sed` replacement.
   SMTP fallback values remain literal, matching their previous plain YAML
   string behavior. Leading or trailing whitespace remains supported for
   backwards compatibility; use `existingSecret` for shared or production

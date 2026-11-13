@@ -153,7 +153,11 @@ value fields remain only as a backwards-compatible fallback.
       }
       escape_yaml_double() {
         printf '%s' "$1" |
-          sed -e 's/\\/\\\\/g' -e 's/"/\\\\"/g' -e 's/[&|]/\\&/g'
+          sed -e 's/\\"/__LAMASSU_ESCAPED_QUOTE__/g' \
+            -e 's/\\/\\\\/g' \
+            -e 's/"/\\\\"/g' \
+            -e 's/__LAMASSU_ESCAPED_QUOTE__/\\\\"/g' \
+            -e 's/[&|]/\\&/g'
       }
       {{- if $includePostgres }}
       {{- if $root.Values.postgres.existingSecret }}
