@@ -41,9 +41,6 @@ annotations:
 {{- end -}}
 {{- if .root.Values.amqp.client.secretName -}}
 {{- $preserveFsGroup := and (hasKey $securityContext "fsGroup") (ne (int $securityContext.fsGroup) 65532) -}}
-{{- if and (hasKey . "podSecurityContext") (hasKey .podSecurityContext "fsGroup") -}}
-{{- $preserveFsGroup = true -}}
-{{- end -}}
 {{- if not $preserveFsGroup -}}
 {{- $_ := set $securityContext "fsGroup" (dig "runAsGroup" 65532 (.svc.securityContext | default dict)) -}}
 {{- end -}}
@@ -140,7 +137,19 @@ value fields remain only as a backwards-compatible fallback.
         esac
       }
       validate_fallback_secret() {
+        newline=$(printf '\n_')
+        newline=${newline%_}
+        carriage_return=$(printf '\r_')
+        carriage_return=${carriage_return%_}
+        if [ -z "$1" ]; then
+          echo "Fallback secret values must not be empty, contain newlines, or contain carriage returns" >&2
+          return 1
+        fi
         case "$1" in
+          *"$newline"*|*"$carriage_return"*)
+            echo "Fallback secret values must not be empty, contain newlines, or contain carriage returns" >&2
+            return 1
+            ;;
           *'__LAMASSU_'*)
             echo "Fallback secret values must not contain Lamassu placeholder characters" >&2
             return 1
