@@ -485,11 +485,15 @@ production provisioning workflow.
 - The chart does not validate that an external Secret exists or contains the
   configured keys. Kubernetes reports a pod start error when a required
   `secretKeyRef` key is missing.
+- The current Lamassu Authz application builds its PostgreSQL DSN without
+  escaping backslashes in the password. Use a password without `\` for
+  PostgreSQL when the Authz migration hook is enabled; this limitation is in
+  the application and is outside the chart's scope.
 - Values read from `existingSecret` and used in generated YAML must not be
-empty or contain leading or trailing whitespace, newline, carriage return,
-or Lamassu placeholder-token characters. The rendering init container rejects
-them explicitly rather than producing invalid or silently corrupted
-configuration.
+empty or contain control characters, leading or trailing whitespace,
+newline, carriage return, or Lamassu placeholder-token characters. The
+rendering init container rejects them explicitly rather than producing
+invalid or silently corrupted configuration.
   Legacy PostgreSQL and AMQP `username`/`password` fallback values are written
   as safely escaped double-quoted YAML scalars, preserving the previous escape
   semantics, including already escaped double quotes, without placing decoded

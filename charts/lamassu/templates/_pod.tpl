@@ -120,7 +120,14 @@ value fields remain only as a backwards-compatible fallback.
   args:
     - |
       set -eu
+      reject_control_characters() {
+        if printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+          echo "Credential values for rendered configuration must not contain control characters" >&2
+          return 1
+        fi
+      }
       validate_secret() {
+        reject_control_characters "$1" || return 1
         if [ -z "$1" ]; then
           echo "Secret values for rendered configuration must not be empty" >&2
           return 1
@@ -130,13 +137,14 @@ value fields remain only as a backwards-compatible fallback.
         carriage_return=$(printf '\r_')
         carriage_return=${carriage_return%_}
         case "$1" in
-          *"$newline"*|*"$carriage_return"*|[[:space:]]*|*[[:space:]]|*'__LAMASSU_'*)
+          *"$newline"*|*"$carriage_return"*|[[:space:]]*|*[[:space:]]|*__LAMASSU_*)
             echo "Secret values for rendered configuration must not contain leading or trailing whitespace, newline, carriage return, or Lamassu placeholder characters" >&2
             return 1
             ;;
         esac
       }
       validate_fallback_secret() {
+        reject_control_characters "$1" || return 1
         newline=$(printf '\n_')
         newline=${newline%_}
         carriage_return=$(printf '\r_')
@@ -150,7 +158,7 @@ value fields remain only as a backwards-compatible fallback.
             echo "Fallback secret values must not be empty, contain newlines, or contain carriage returns" >&2
             return 1
             ;;
-          *'__LAMASSU_'*)
+          *__LAMASSU_*)
             echo "Fallback secret values must not contain Lamassu placeholder characters" >&2
             return 1
             ;;

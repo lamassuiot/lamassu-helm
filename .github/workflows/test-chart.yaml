@@ -256,7 +256,13 @@ jobs:
             grep -q "password: 'secret-value'"
           newline=$(printf '\n_'); newline=${newline%_}
           carriage_return=$(printf '\r_'); carriage_return=${carriage_return%_}
+          reject_control_characters() {
+            if printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+              return 1
+            fi
+          }
           validate_secret() {
+            reject_control_characters "$1" || return 1
             if [ -z "$1" ]; then
               return 1
             fi
@@ -270,6 +276,9 @@ jobs:
             exit 1
           fi
           if validate_secret 'admin '; then
+            exit 1
+          fi
+          if validate_secret "form$(printf '\f')feed"; then
             exit 1
           fi
           case "line-one${newline}line-two" in
@@ -464,15 +473,15 @@ jobs:
           kubectl create namespace lamassu-test
           kubectl create secret generic lamassu-postgres \
             --from-literal=username=admin \
-            --from-literal='password=a"b\c|d&e'\''f' \
+            --from-literal='password=Lamassu-CI-2026!' \
             -n lamassu-test
           kubectl create secret generic lamassu-amqp \
             --from-literal=username=admin \
-            --from-literal='password=a"b\c|d&e'\''f' \
+            --from-literal='password=Lamassu-CI-2026!' \
             -n lamassu-test
           kubectl create secret generic lamassu-smtp \
             --from-literal=username=smtp-ci \
-            --from-literal='password=a"b\c|d&e'\''f' \
+            --from-literal='password=Lamassu-CI-2026!' \
             -n lamassu-test
           helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml --wait --timeout 600s
 
@@ -482,7 +491,7 @@ jobs:
 
           # Verify databases are created and PostgreSQL is accepting connections
           echo "Verifying PostgreSQL databases are initialized..."
-          pg_password='a"b\c|d&e'\''f'
+          pg_password='Lamassu-CI-2026!'
           kubectl run pg-check --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test \
             --env="PGPASSWORD=$pg_password" -- \
             psql -h postgresql -U admin -d auth -c "SELECT 1" || \
