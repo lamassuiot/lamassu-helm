@@ -292,6 +292,113 @@ the Secret immediately through `secretKeyRef`. A typical order is:
    to contain the configured keys.
 3. Run Helm against the chart.
 
+### Fast-lane Fake provider
+
+For local integration testing, the fast lane supports:
+
+```bash
+./scripts/lamassu-fast-lane.sh --non-interactive --fake-secrets
+```
+
+This option installs External Secrets Operator in the `external-secrets`
+namespace, creates a cluster-scoped ESO Fake `ClusterSecretStore`, and
+provisions the Lamassu PostgreSQL and AMQP credentials through `ExternalSecret`
+resources. The generated Kubernetes Secrets are named `lamassu-postgres` and
+`lamassu-amqp`; the fast lane waits for them to become `Ready` before it
+installs Lamassu.
+
+The option changes the provisioning path, not the application contract:
+Lamassu still reads ordinary Kubernetes Secrets through `secretKeyRef`.
+External Secrets Operator owns and refreshes the target Secrets, while the
+Fake provider supplies static values for the test. It does not change the
+Kubernetes Secret type or encrypt its contents, and it must not be used as a
+production secret backend. It also does not configure a Lamassu KMS
+`CryptoEngine`; the fast lane continues to use the filesystem engine for KMS
+tests.
+
+#### Manual validation performed
+
+The following test was run on a dedicated kind cluster using the local chart:
+
+```bash
+kind create cluster --name lamassu-fake
+kubectl config use-context kind-lamassu-fake
+
+./scripts/lamassu-fast-lane.sh \
+  --context kind-lamassu-fake \
+  --namespace lamassu-fake \
+  --domain lamassu.fake.local \
+  --local-chart-path "$PWD/charts/lamassu" \
+  --non-interactive \
+  --fake-secrets
+```
+
+The installation was verified with:
+
+```bash
+kubectl get pods -n external-secrets
+kubectl get clustersecretstore lamassu-fastlane-fake
+kubectl get externalsecret -n lamassu-fake
+kubectl get secret lamassu-postgres -n lamassu-fake
+kubectl get secret lamassu-amqp -n lamassu-fake
+kubectl get pods -n lamassu-fake
+kubectl get deployments -n lamassu-fake
+kubectl get jobs -n lamassu-fake
+```
+
+The observed result was:
+
+- all External Secrets Operator pods were `Running`;
+- `lamassu-fastlane-fake` was `Valid` and `Ready=True`;
+- `lamassu-postgres` and `lamassu-amqp` were `SecretSynced` and `Ready=True`;
+- both generated Kubernetes Secrets were `Opaque` and contained `username` and
+  `password`;
+- PostgreSQL, RabbitMQ, Keycloak, and all Lamassu pods were running;
+- Lamassu workloads contained `secretKeyRef` references to the generated
+  Secrets.
+
+The reconciliation path was then tested by changing the Fake username and
+forcing a refresh:
+
+```bash
+kubectl patch clustersecretstore lamassu-fastlane-fake \
+  --type=json \
+  -p='[{"op":"replace","path":"/spec/provider/fake/data/0/value","value":"test-user"}]'
+
+kubectl annotate externalsecret lamassu-postgres \
+  -n lamassu-fake \
+  force-sync="$(date +%s)" \
+  --overwrite
+
+kubectl wait \
+  --for=condition=Ready \
+  externalsecret/lamassu-postgres \
+  -n lamassu-fake \
+  --timeout=120s
+
+kubectl get secret lamassu-postgres \
+  -n lamassu-fake \
+  -o jsonpath='{.data.username}' | base64 -d
+echo
+```
+
+The command returned `test-user` and the `ExternalSecret` reported a
+`SecretSynced` condition with an `Updated` event, proving that ESO propagated
+the Fake provider change into the Kubernetes Secret. The test value was then
+restored to `admin`. Do not restart Lamassu after changing only the Kubernetes
+Secret unless the backing PostgreSQL or RabbitMQ credentials have also been
+changed; environment variables loaded through `secretKeyRef` are read at pod
+startup, and a mismatch would break new connections.
+
+The `jq` command is optional and was not required for the validation. The Fake
+provider may report a `StoreUnmaintained` warning; this is expected for a
+test-only provider and is another reason not to use it in production. Delete
+the test cluster when finished:
+
+```bash
+kind delete cluster --name lamassu-fake
+```
+
 ### Manual kind-cluster validation
 
 The following procedure was used to validate the Secret-backed deployment

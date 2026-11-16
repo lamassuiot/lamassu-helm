@@ -153,6 +153,31 @@ valid alternatives for GitOps environments. The chart does not install any of
 these controllers because they are cluster-level infrastructure and differ
 between kind, EKS, and on-premise deployments.
 
+The fast lane can install ESO's static Fake provider for integration testing:
+
+```bash
+./scripts/lamassu-fast-lane.sh --non-interactive --fake-secrets
+```
+
+With `--fake-secrets`, the fast lane installs External Secrets Operator,
+creates a `ClusterSecretStore` backed by ESO Fake, and creates
+`lamassu-postgres` and `lamassu-amqp` through `ExternalSecret` resources. It
+waits for both generated Kubernetes Secrets before installing Lamassu, then
+configures the chart with `existingSecret`. The option is opt-in and testing
+only; the Fake provider stores static values in its Kubernetes custom resource
+and does not provide production-grade persistence, rotation, or an external
+secret manager. The KMS remains configured with the filesystem crypto engine;
+ESO Fake is not a Lamassu `CryptoEngine`.
+
+The manual fast-lane test was completed on a dedicated kind cluster with
+`--context kind-lamassu-fake`, `--namespace lamassu-fake`, and
+`--fake-secrets`. ESO became `Ready`, the Fake `ClusterSecretStore` became
+`Valid`, both `ExternalSecret` resources reported `SecretSynced`, and all
+Lamassu workloads started successfully. A forced reconciliation after changing
+the Fake username updated `lamassu-postgres` as expected. The complete command
+sequence and verification evidence are documented in the
+[fast-lane Fake provider validation guide](charts/lamassu/README.md#manual-validation-performed).
+
 See the [complete secret management guide](charts/lamassu/README.md#secret-management)
 for the decision rationale, alternatives, examples, manual kind-cluster
 validation procedure, troubleshooting findings, rotation behavior, and

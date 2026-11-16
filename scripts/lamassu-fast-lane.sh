@@ -20,6 +20,8 @@ GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 SAMPLE_DATA=false
+FAKE_SECRETS=false
+EXTERNAL_SECRETS_CHART_VERSION="${EXTERNAL_SECRETS_CHART_VERSION:-0.20.2}"
 # Development mode: provisions Keycloak for frictionless local use (fully
 # provisioned lamassu user, permissive frontend redirect URIs). Never use it for
 # anything exposed beyond a development machine. The lamassu/lamassu admin
@@ -103,6 +105,11 @@ function main() {
     fi
     echo -e "\n${BLUE}3) Create ${NAMESPACE} namespace${NOCOLOR}"
     create_kubernetes_namespace
+    if [ "$FAKE_SECRETS" = true ]; then
+        echo -e "\n${BLUE}3.1) Install External Secrets Operator with the Fake provider${NOCOLOR}"
+        install_fake_secrets
+        checkpoint "External Secrets Fake provider"
+    fi
     STEP_START_TIME=$(date +%s)
     echo -e "\n${BLUE}4) Install PostgreSQL${NOCOLOR}"
     install_postgresql
@@ -159,6 +166,7 @@ function usage() {
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in supported Lamassu services (AWS Connector, authz, wfx and the UI are not instrumented)"
     echo " --development               Development mode: Keycloak lamassu user is fully provisioned (FIXED lamassu/lamassu password that is never rotated, no first-login profile/password steps) and the frontend client accepts any redirect URI/web origin. NOT for production"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
+    echo " --fake-secrets               Install ESO's Fake provider and provision Lamassu credentials as Kubernetes Secrets (testing only)"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: charts/softhsm in this repository"
     echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
 }
@@ -309,6 +317,9 @@ function process_flags() {
             ;;
         --sample-data)
             SAMPLE_DATA=true
+            ;;
+        --fake-secrets)
+            FAKE_SECRETS=true
             ;;
         *)
             echo -e "\n${RED}Invalid option: $1${NOCOLOR}" >&2
@@ -547,6 +558,142 @@ cat >>"$target_file" <<EOF
 EOF
 }
 
+function install_fake_secrets() {
+    local external_secrets_namespace="external-secrets"
+
+    echo -e "${ORANGE}Installing External Secrets Operator ${EXTERNAL_SECRETS_CHART_VERSION}...${NOCOLOR}"
+    run_helm repo add external-secrets https://charts.external-secrets.io 2>/dev/null || true
+    run_helm repo update external-secrets 2>/dev/null || true
+    run_helm upgrade --install external-secrets external-secrets/external-secrets \
+        --version "$EXTERNAL_SECRETS_CHART_VERSION" \
+        -n "$external_secrets_namespace" \
+        --create-namespace \
+        --set installCRDs=true \
+        --wait \
+        --timeout "$HELM_INSTALL_TIMEOUT"
+    if [ $? -ne 0 ]; then
+        echo -e "\n${RED}Error installing External Secrets Operator${NOCOLOR}"
+        exit 1
+    fi
+
+    if ! run_kubectl wait \
+        --for=condition=Available \
+        deployment/external-secrets \
+        -n "$external_secrets_namespace" \
+        --timeout="$HELM_INSTALL_TIMEOUT"; then
+        echo -e "\n${RED}External Secrets Operator did not become available${NOCOLOR}"
+        exit 1
+    fi
+
+    local fake_secrets_manifest="fake-secrets.yaml"
+    cat >"$fake_secrets_manifest" <<EOF
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: lamassu-fastlane-fake
+spec:
+  provider:
+    fake:
+      data:
+        - key: /lamassu/postgres/username
+          value: ""
+        - key: /lamassu/postgres/password
+          value: ""
+        - key: /lamassu/amqp/username
+          value: ""
+        - key: /lamassu/amqp/password
+          value: ""
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: lamassu-postgres
+  namespace: ${NAMESPACE}
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: lamassu-fastlane-fake
+    kind: ClusterSecretStore
+  target:
+    name: lamassu-postgres
+    creationPolicy: Owner
+  data:
+    - secretKey: username
+      remoteRef:
+        key: /lamassu/postgres/username
+    - secretKey: password
+      remoteRef:
+        key: /lamassu/postgres/password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: lamassu-amqp
+  namespace: ${NAMESPACE}
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: lamassu-fastlane-fake
+    kind: ClusterSecretStore
+  target:
+    name: lamassu-amqp
+    creationPolicy: Owner
+  data:
+    - secretKey: username
+      remoteRef:
+        key: /lamassu/amqp/username
+    - secretKey: password
+      remoteRef:
+        key: /lamassu/amqp/password
+EOF
+    export FAKE_POSTGRES_USER="$POSTGRES_USER"
+    export FAKE_POSTGRES_PASSWORD="$POSTGRES_PWD"
+    export FAKE_AMQP_USER="$RABBIT_USER"
+    export FAKE_AMQP_PASSWORD="$RABBIT_PWD"
+    if ! yq -i '
+        if .kind == "ClusterSecretStore" then
+            .spec.provider.fake.data[0].value = strenv(FAKE_POSTGRES_USER) |
+            .spec.provider.fake.data[1].value = strenv(FAKE_POSTGRES_PASSWORD) |
+            .spec.provider.fake.data[2].value = strenv(FAKE_AMQP_USER) |
+            .spec.provider.fake.data[3].value = strenv(FAKE_AMQP_PASSWORD)
+        else
+            .
+        end
+    ' "$fake_secrets_manifest"; then
+        rm -f "$fake_secrets_manifest"
+        echo -e "\n${RED}Error rendering the Fake SecretStore values${NOCOLOR}"
+        exit 1
+    fi
+    unset FAKE_POSTGRES_USER FAKE_POSTGRES_PASSWORD FAKE_AMQP_USER FAKE_AMQP_PASSWORD
+
+    if ! run_kubectl apply -f "$fake_secrets_manifest"; then
+        rm -f "$fake_secrets_manifest"
+        echo -e "\n${RED}Error creating the Fake SecretStore and ExternalSecrets${NOCOLOR}"
+        exit 1
+    fi
+    rm -f "$fake_secrets_manifest"
+
+    for external_secret in lamassu-postgres lamassu-amqp; do
+        if ! run_kubectl wait \
+            --for=condition=Ready \
+            "externalsecret/${external_secret}" \
+            -n "$NAMESPACE" \
+            --timeout="$HELM_INSTALL_TIMEOUT"; then
+            echo -e "\n${RED}ExternalSecret ${external_secret} was not synchronized${NOCOLOR}"
+            exit 1
+        fi
+    done
+
+    for kubernetes_secret in lamassu-postgres lamassu-amqp; do
+        if ! run_kubectl get secret "$kubernetes_secret" -n "$NAMESPACE" >/dev/null; then
+            echo -e "\n${RED}Expected Kubernetes Secret ${kubernetes_secret} was not created${NOCOLOR}"
+            exit 1
+        fi
+    done
+
+    echo -e "${GREEN}Fake provider credentials are available as Kubernetes Secrets${NOCOLOR}"
+}
+
 
 function install_lamassu() {
 if [ "$HTTPS_PORT" -ne 443 ]; then
@@ -681,20 +828,33 @@ if [ "$WITH_HSM" = true ]; then
     rm softhsm-kms.yaml
 fi
 
-    export POSTGRES_USER=$POSTGRES_USER
-    export POSTGRES_PWD=$POSTGRES_PWD
-    export RABBIT_USER=$RABBIT_USER
-    export RABBIT_PWD=$RABBIT_PWD
+    if [ "$FAKE_SECRETS" = true ]; then
+        yq -i '
+            .postgres.existingSecret = "lamassu-postgres" |
+            .postgres.usernameKey = "username" |
+            .postgres.passwordKey = "password" |
+            del(.postgres.username, .postgres.password) |
+            .amqp.existingSecret = "lamassu-amqp" |
+            .amqp.usernameKey = "username" |
+            .amqp.passwordKey = "password" |
+            del(.amqp.username, .amqp.password)
+        ' lamassu.yaml
+    else
+        export POSTGRES_USER=$POSTGRES_USER
+        export POSTGRES_PWD=$POSTGRES_PWD
+        export RABBIT_USER=$RABBIT_USER
+        export RABBIT_PWD=$RABBIT_PWD
 
-    yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
-    yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
-    yq -i '.services.authz.credentials.pki.username = (env(POSTGRES_USER))' lamassu.yaml
-    yq -i '.services.authz.credentials.pki.password = (env(POSTGRES_PWD))' lamassu.yaml
-    yq -i '.services.authz.credentials.authz.username = (env(POSTGRES_USER))' lamassu.yaml
-    yq -i '.services.authz.credentials.authz.password = (env(POSTGRES_PWD))' lamassu.yaml
+        yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
+        yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
+        yq -i '.services.authz.credentials.pki.username = (env(POSTGRES_USER))' lamassu.yaml
+        yq -i '.services.authz.credentials.pki.password = (env(POSTGRES_PWD))' lamassu.yaml
+        yq -i '.services.authz.credentials.authz.username = (env(POSTGRES_USER))' lamassu.yaml
+        yq -i '.services.authz.credentials.authz.password = (env(POSTGRES_PWD))' lamassu.yaml
 
-    yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
-    yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
+        yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
+        yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
+    fi
 
     if [ "$OTEL" = true ]; then
         yq -i '.observability.enabled = true' lamassu.yaml
