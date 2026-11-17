@@ -292,7 +292,7 @@ value fields remain only as a backwards-compatible fallback.
           name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
           key: {{ $root.Values.services.alerts.smtp_server.usernameKey | quote }}
       {{- else }}
-      value: {{ $root.Values.services.alerts.smtp_server.username | quote }}
+      value: {{ $root.Values.services.alerts.smtp_server.username | default "" | quote }}
       {{- end }}
     - name: LAMASSU_SMTP_PASSWORD
       {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
@@ -301,7 +301,7 @@ value fields remain only as a backwards-compatible fallback.
           name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
           key: {{ $root.Values.services.alerts.smtp_server.passwordKey | quote }}
       {{- else }}
-      value: {{ $root.Values.services.alerts.smtp_server.password | quote }}
+      value: {{ $root.Values.services.alerts.smtp_server.password | default "" | quote }}
       {{- end }}
     {{- end }}
   volumeMounts:

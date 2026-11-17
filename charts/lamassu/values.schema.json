@@ -57,14 +57,13 @@
     },
     "postgres": {
       "type": "object",
+      "required": ["existingSecret"],
       "properties": {
         "hostname": { "type": "string" },
         "port": { "$ref": "#/definitions/port" },
-        "username": { "type": "string" },
-        "password": { "type": "string" },
         "existingSecret": {
           "type": "string",
-          "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
+          "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
         },
         "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
@@ -74,14 +73,13 @@
     },
     "amqp": {
       "type": "object",
+      "required": ["existingSecret"],
       "properties": {
         "hostname": { "type": "string" },
         "port": { "$ref": "#/definitions/port" },
-        "username": { "type": "string" },
-        "password": { "type": "string" },
         "existingSecret": {
           "type": "string",
-          "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
+          "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
         },
         "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
@@ -234,18 +232,6 @@
                     "from": { "type": "string" },
                     "insecure": { "type": "boolean" },
                     "enable_ssl": { "type": "boolean" },
-                    "username": {
-                      "oneOf": [
-                        { "type": "string" },
-                        { "type": "number" }
-                      ]
-                    },
-                    "password": {
-                      "oneOf": [
-                        { "type": "string" },
-                        { "type": "number" }
-                      ]
-                    },
                     "existingSecret": {
                       "type": "string",
                       "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
@@ -259,7 +245,8 @@
                         { "type": "string" }
                       ]
                     }
-                  }
+                  },
+                  "additionalProperties": false
                 }
               }
             }
