@@ -63,12 +63,20 @@ spec:
   headers:
     earlyRequestHeaders:
       remove:
+      # Internal principal identity must not be supplied by external clients.
       - x-principal-id
+      # Internal request source must not be supplied by external clients.
       - x-lms-source
+      # Remove client-supplied XFCC before Envoy adds the TLS client certificate.
       - x-forwarded-client-cert
+      # Do not forward an externally supplied certificate identity header.
       - x-forwarded-cert
+      # The backend accepts this Nginx certificate header; strip client-supplied values.
       - ssl-client-cert
+      # The backend accepts this AWS ALB certificate header; strip client-supplied values.
       - x-amzn-mtls-clientcert
+      # Traefik certificate header
+      - x-forwarded-tls-client-cert
     xForwardedClientCert:
       mode: AppendForward
       certDetailsToAdd: 
