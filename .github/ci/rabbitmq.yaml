@@ -8,4 +8,5 @@ image:
 
 auth:
   username: admin
-  password: 'a"b\c|d&e''f'
+  # CI supplies the password with --set-string in .github/workflows/test-chart.yaml.
+  password: ""

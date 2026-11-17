@@ -585,8 +585,20 @@ function install_fake_secrets() {
         exit 1
     fi
 
-    local fake_secrets_manifest="fake-secrets.yaml"
-    cat >"$fake_secrets_manifest" <<EOF
+    export FAKE_POSTGRES_USER="$POSTGRES_USER"
+    export FAKE_POSTGRES_PASSWORD="$POSTGRES_PWD"
+    export FAKE_AMQP_USER="$RABBIT_USER"
+    export FAKE_AMQP_PASSWORD="$RABBIT_PWD"
+    yq '
+        if .kind == "ClusterSecretStore" then
+            .spec.provider.fake.data[0].value = strenv(FAKE_POSTGRES_USER) |
+            .spec.provider.fake.data[1].value = strenv(FAKE_POSTGRES_PASSWORD) |
+            .spec.provider.fake.data[2].value = strenv(FAKE_AMQP_USER) |
+            .spec.provider.fake.data[3].value = strenv(FAKE_AMQP_PASSWORD)
+        else
+            .
+        end
+    ' <<EOF | run_kubectl apply -f -
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
@@ -646,32 +658,17 @@ spec:
       remoteRef:
         key: /lamassu/amqp/password
 EOF
-    export FAKE_POSTGRES_USER="$POSTGRES_USER"
-    export FAKE_POSTGRES_PASSWORD="$POSTGRES_PWD"
-    export FAKE_AMQP_USER="$RABBIT_USER"
-    export FAKE_AMQP_PASSWORD="$RABBIT_PWD"
-    if ! yq -i '
-        if .kind == "ClusterSecretStore" then
-            .spec.provider.fake.data[0].value = strenv(FAKE_POSTGRES_USER) |
-            .spec.provider.fake.data[1].value = strenv(FAKE_POSTGRES_PASSWORD) |
-            .spec.provider.fake.data[2].value = strenv(FAKE_AMQP_USER) |
-            .spec.provider.fake.data[3].value = strenv(FAKE_AMQP_PASSWORD)
-        else
-            .
-        end
-    ' "$fake_secrets_manifest"; then
-        rm -f "$fake_secrets_manifest"
+    local apply_status=("${PIPESTATUS[@]}")
+    unset FAKE_POSTGRES_USER FAKE_POSTGRES_PASSWORD FAKE_AMQP_USER FAKE_AMQP_PASSWORD
+
+    if [ "${apply_status[0]}" -ne 0 ]; then
         echo -e "\n${RED}Error rendering the Fake SecretStore values${NOCOLOR}"
         exit 1
     fi
-    unset FAKE_POSTGRES_USER FAKE_POSTGRES_PASSWORD FAKE_AMQP_USER FAKE_AMQP_PASSWORD
-
-    if ! run_kubectl apply -f "$fake_secrets_manifest"; then
-        rm -f "$fake_secrets_manifest"
+    if [ "${apply_status[1]}" -ne 0 ]; then
         echo -e "\n${RED}Error creating the Fake SecretStore and ExternalSecrets${NOCOLOR}"
         exit 1
     fi
-    rm -f "$fake_secrets_manifest"
 
     for external_secret in lamassu-postgres lamassu-amqp; do
         if ! run_kubectl wait \
