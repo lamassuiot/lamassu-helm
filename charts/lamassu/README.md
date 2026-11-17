@@ -610,10 +610,11 @@ invalid or silently corrupted configuration.
   string behavior. PostgreSQL and AMQP fallback values must not be empty or
   contain control characters. SMTP fallback values may be empty when email is
   not configured, but still reject control characters and placeholder tokens.
-  In PostgreSQL and AMQP fallback values, literal backslash sequences such as
-  `\t`, `\n`, and `\\` continue to be decoded by the YAML parser in the same
-  way as in 3.8.0, so values using them do not need to be changed for the
-  upgrade.
+  In PostgreSQL and AMQP fallback values, backslash sequences are still decoded
+  by the YAML parser as in 3.8.0. However, `\t` and `\n` in double-quoted YAML
+  scalars decode to control characters that 4.0.0 rejects; replace those
+  values or move them to `existingSecret` before upgrading. Sequences such as
+  `\\`, which decode to a non-control backslash, do not require a value change.
   Use `existingSecret` for shared or production deployments.
 - The init image is only a rendering utility; it does not fetch secrets from
   external systems and does not need Kubernetes API permissions.
