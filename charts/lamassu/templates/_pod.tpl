@@ -91,8 +91,8 @@ securityContext:
 
 {{/*
 Render credentials into the config file in an init container. Credentials are
-never written to a ConfigMap; existingSecret is the preferred source and the
-value fields remain only as a backwards-compatible fallback.
+never written to a ConfigMap and are read from Kubernetes Secrets. SMTP
+authentication is optional; without an SMTP Secret, empty credentials are used.
 */}}
 {{- define "lamassu.configSecretInitItem" -}}
 {{- $root := .root | default . -}}
@@ -143,64 +143,21 @@ value fields remain only as a backwards-compatible fallback.
             ;;
         esac
       }
-      validate_fallback_secret() {
-        reject_control_characters "$1" || return 1
-        newline=$(printf '\n_')
-        newline=${newline%_}
-        carriage_return=$(printf '\r_')
-        carriage_return=${carriage_return%_}
-        if [ -z "$1" ] && [ "${2:-}" != "allow-empty" ]; then
-          echo "Fallback secret values must not be empty, contain newlines, or contain carriage returns" >&2
-          return 1
-        fi
-        case "$1" in
-          *"$newline"*|*"$carriage_return"*)
-            echo "Fallback secret values must not be empty, contain newlines, or contain carriage returns" >&2
-            return 1
-            ;;
-          *__LAMASSU_*)
-            echo "Fallback secret values must not contain Lamassu placeholder characters" >&2
-            return 1
-            ;;
-        esac
-      }
       escape() {
         printf '%s' "$1" |
           sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g'
       }
-      escape_yaml_double() {
-        printf '%s' "$1" |
-          sed -e 's/\\"/__LAMASSU_ESCAPED_QUOTE__/g' \
-            -e 's/\\/\\\\/g' \
-            -e 's/"/\\\\"/g' \
-            -e 's/__LAMASSU_ESCAPED_QUOTE__/\\\\"/g' \
-            -e 's/[&|]/\\&/g'
-      }
       {{- if $includePostgres }}
-      {{- if $root.Values.postgres.existingSecret }}
       validate_secret "$LAMASSU_POSTGRES_USERNAME"
       validate_secret "$LAMASSU_POSTGRES_PASSWORD"
       pg_user=$(escape "$LAMASSU_POSTGRES_USERNAME")
       pg_password=$(escape "$LAMASSU_POSTGRES_PASSWORD")
-      {{- else }}
-      validate_fallback_secret "$LAMASSU_POSTGRES_USERNAME"
-      validate_fallback_secret "$LAMASSU_POSTGRES_PASSWORD"
-      pg_user=$(escape_yaml_double "$LAMASSU_POSTGRES_USERNAME")
-      pg_password=$(escape_yaml_double "$LAMASSU_POSTGRES_PASSWORD")
-      {{- end }}
       {{- end }}
       {{- if $includeAmqp }}
-      {{- if $root.Values.amqp.existingSecret }}
       validate_secret "$LAMASSU_AMQP_USERNAME"
       validate_secret "$LAMASSU_AMQP_PASSWORD"
       amqp_user=$(escape "$LAMASSU_AMQP_USERNAME")
       amqp_password=$(escape "$LAMASSU_AMQP_PASSWORD")
-      {{- else }}
-      validate_fallback_secret "$LAMASSU_AMQP_USERNAME"
-      validate_fallback_secret "$LAMASSU_AMQP_PASSWORD"
-      amqp_user=$(escape_yaml_double "$LAMASSU_AMQP_USERNAME")
-      amqp_password=$(escape_yaml_double "$LAMASSU_AMQP_PASSWORD")
-      {{- end }}
       {{- end }}
       {{- if $includeSmtp }}
       {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
@@ -209,30 +166,18 @@ value fields remain only as a backwards-compatible fallback.
       smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
       smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
       {{- else }}
-      validate_fallback_secret "$LAMASSU_SMTP_USERNAME" allow-empty
-      validate_fallback_secret "$LAMASSU_SMTP_PASSWORD" allow-empty
-      smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
-      smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
+      smtp_user=''
+      smtp_password=''
       {{- end }}
       {{- end }}
       sed \
         {{- if $includePostgres }}
-        {{- if $root.Values.postgres.existingSecret }}
         -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1'$pg_user'|g" \
         -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1'$pg_password'|g" \
-        {{- else }}
-        -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1\"$pg_user\"|g" \
-        -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1\"$pg_password\"|g" \
-        {{- end }}
         {{- end }}
         {{- if $includeAmqp }}
-        {{- if $root.Values.amqp.existingSecret }}
         -e "s|^\([[:space:]]*username: \)'__LAMASSU_AMQP_USERNAME__'\$|\1'$amqp_user'|g" \
         -e "s|^\([[:space:]]*password: \)'__LAMASSU_AMQP_PASSWORD__'\$|\1'$amqp_password'|g" \
-        {{- else }}
-        -e "s|^\([[:space:]]*username: \)'__LAMASSU_AMQP_USERNAME__'\$|\1\"$amqp_user\"|g" \
-        -e "s|^\([[:space:]]*password: \)'__LAMASSU_AMQP_PASSWORD__'\$|\1\"$amqp_password\"|g" \
-        {{- end }}
         {{- end }}
         {{- if $includeSmtp }}
         -e "s|^\([[:space:]]*username: \)'__LAMASSU_SMTP_USERNAME__'\$|\1'$smtp_user'|g" \
@@ -246,43 +191,27 @@ value fields remain only as a backwards-compatible fallback.
   env:
     {{- if $includePostgres }}
     - name: LAMASSU_POSTGRES_USERNAME
-      {{- if $root.Values.postgres.existingSecret }}
       valueFrom:
         secretKeyRef:
           name: {{ $root.Values.postgres.existingSecret | quote }}
           key: {{ $root.Values.postgres.usernameKey | quote }}
-      {{- else }}
-      value: {{ $root.Values.postgres.username | quote }}
-      {{- end }}
     - name: LAMASSU_POSTGRES_PASSWORD
-      {{- if $root.Values.postgres.existingSecret }}
       valueFrom:
         secretKeyRef:
           name: {{ $root.Values.postgres.existingSecret | quote }}
           key: {{ $root.Values.postgres.passwordKey | quote }}
-      {{- else }}
-      value: {{ $root.Values.postgres.password | quote }}
-      {{- end }}
     {{- end }}
     {{- if $includeAmqp }}
     - name: LAMASSU_AMQP_USERNAME
-      {{- if $root.Values.amqp.existingSecret }}
       valueFrom:
         secretKeyRef:
           name: {{ $root.Values.amqp.existingSecret | quote }}
           key: {{ $root.Values.amqp.usernameKey | quote }}
-      {{- else }}
-      value: {{ $root.Values.amqp.username | quote }}
-      {{- end }}
     - name: LAMASSU_AMQP_PASSWORD
-      {{- if $root.Values.amqp.existingSecret }}
       valueFrom:
         secretKeyRef:
           name: {{ $root.Values.amqp.existingSecret | quote }}
           key: {{ $root.Values.amqp.passwordKey | quote }}
-      {{- else }}
-      value: {{ $root.Values.amqp.password | quote }}
-      {{- end }}
     {{- end }}
     {{- if $includeSmtp }}
     - name: LAMASSU_SMTP_USERNAME
@@ -292,7 +221,7 @@ value fields remain only as a backwards-compatible fallback.
           name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
           key: {{ $root.Values.services.alerts.smtp_server.usernameKey | quote }}
       {{- else }}
-      value: {{ $root.Values.services.alerts.smtp_server.username | default "" | quote }}
+      value: ""
       {{- end }}
     - name: LAMASSU_SMTP_PASSWORD
       {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
@@ -301,7 +230,7 @@ value fields remain only as a backwards-compatible fallback.
           name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
           key: {{ $root.Values.services.alerts.smtp_server.passwordKey | quote }}
       {{- else }}
-      value: {{ $root.Values.services.alerts.smtp_server.password | default "" | quote }}
+      value: ""
       {{- end }}
     {{- end }}
   volumeMounts:

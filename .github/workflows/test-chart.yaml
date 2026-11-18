@@ -136,6 +136,33 @@ jobs:
           fi
           grep -Eq 'username|password' /tmp/lamassu-inline-credentials-error.txt
 
+          cat >/tmp/lamassu-inline-credentials-bypass.yaml <<'EOF'
+          postgres:
+            existingSecret: ""
+            username: INLINE_POSTGRES_USERNAME
+            password: INLINE_POSTGRES_PASSWORD
+          amqp:
+            existingSecret: ""
+            username: INLINE_AMQP_USERNAME
+            password: INLINE_AMQP_PASSWORD
+          services:
+            alerts:
+              smtp_server:
+                existingSecret: ""
+                username: INLINE_SMTP_USERNAME
+                password: INLINE_SMTP_PASSWORD
+          EOF
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --skip-schema-validation \
+            -f /tmp/lamassu-inline-credentials-bypass.yaml \
+            >/tmp/lamassu-inline-credentials-bypass-rendered.yaml
+          if grep -Eq 'INLINE_(POSTGRES|AMQP|SMTP)_(USERNAME|PASSWORD)' \
+            /tmp/lamassu-inline-credentials-bypass-rendered.yaml; then
+            echo "A template rendered an inline credential when schema validation was skipped"
+            exit 1
+          fi
+
           migration_job=$(awk '
             /^kind: Job$/ { in_job=1 }
             in_job && /^  name: lamassu-db-migration$/ { found=1 }

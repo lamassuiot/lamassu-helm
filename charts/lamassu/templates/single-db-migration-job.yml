@@ -81,23 +81,15 @@ spec:
               drop: ["ALL"]
           env:
             - name: POSTGRES_USER
-              {{- if .Values.postgres.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.postgres.existingSecret | quote }}
                   key: {{ .Values.postgres.usernameKey | quote }}
-              {{- else }}
-              value: "{{ .Values.postgres.username }}"
-              {{- end }}
             - name: POSTGRES_PASSWORD
-              {{- if .Values.postgres.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.postgres.existingSecret | quote }}
                   key: {{ .Values.postgres.passwordKey | quote }}
-              {{- else }}
-              value: "{{ .Values.postgres.password }}"
-              {{- end }}
             - name: POSTGRES_HOST
               value: "{{ .Values.postgres.hostname }}"
           command: ["bash", "-c"]
@@ -310,23 +302,15 @@ spec:
               drop: ["ALL"]
           env:
             - name: PGUSER
-              {{- if $.Values.postgres.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Values.postgres.existingSecret | quote }}
                   key: {{ $.Values.postgres.usernameKey | quote }}
-              {{- else }}
-              value: {{ $.Values.postgres.username | quote }}
-              {{- end }}
             - name: PGPASSWORD
-              {{- if $.Values.postgres.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Values.postgres.existingSecret | quote }}
                   key: {{ $.Values.postgres.passwordKey | quote }}
-              {{- else }}
-              value: {{ $.Values.postgres.password | quote }}
-              {{- end }}
           args:
             - >-
               host={{ $.Values.postgres.hostname }}
