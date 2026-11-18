@@ -103,7 +103,7 @@ amqp:
     # -- Secret data key containing the client private key in PEM format.
     privateKeyKey: tls.key
 observability:
-  # -- Enable OpenTelemetry instrumentation for Lamassu services that support it. AWS Connector, authz, wfx and the UI are not instrumented.
+  # -- Enable OpenTelemetry instrumentation for Lamassu services that support it. The chart does not configure OpenTelemetry for AWS Connector, wfx or the UI.
   enabled: false
   # -- HTTP routes for the observability UIs exposed through the API Gateway
   routes:
@@ -511,14 +511,14 @@ configRender:
 migrations:
   db:
     image: ghcr.io/lamassuiot/lamassu-lamassu-db-migration:dev-v4
+    # -- Schemas to migrate, in order: one init container each. `kms` must come before `ca`, and `ca` before `va`: their migrations create foreign keys to the previous schema.
     databases:
-      - alerts
-      # The CA migrations require the KMS schema to exist first.
       - kms
       - ca
       - va
       - devicemanager
       - dmsmanager
+      - alerts
   caToKms:
     # -- Enable the CA-to-KMS key migration pre-upgrade hook. Only needed when upgrading from a version prior to 3.7.0. It uses the legacy unscoped `kms-config` ConfigMap while it still exists and falls back to the release-scoped `<chart fullname>-kms-config` (`lamassu-kms-config` when the release is named `lamassu`) once the legacy ConfigMap is gone.
     enabled: false
