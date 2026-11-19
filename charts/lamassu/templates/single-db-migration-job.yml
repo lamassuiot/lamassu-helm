@@ -26,8 +26,6 @@ data:
       provider: "postgres"
       hostname: {{ .Values.postgres.hostname }}
       port: {{ .Values.postgres.port }}
-      username: '__LAMASSU_POSTGRES_USERNAME__'
-      password: '__LAMASSU_POSTGRES_PASSWORD__'
       database: {{ $authzDB }}
     jwks_url: {{ $authz.jwkUrl }}
     insecure_skip_jwt_verify: true
@@ -322,7 +320,6 @@ spec:
         {{- end }}
 
         {{- if $authzImage }}
-        {{- include "lamassu.configSecretInitItem" (dict "root" $ "includeAmqp" false) | nindent 8 }}
         # Step 3 — authz migrations, policy preload and bootstrap principals.
         # Same image as the authz Deployment, so the embedded migrations can
         # never drift from the service that reads them.
@@ -331,12 +328,15 @@ spec:
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           securityContext:
             {{- toYaml $authzSvc.securityContext | nindent 12 }}
+          env:
+            {{- include "lamassu.authzDatabaseCredentialEnv" $ | nindent 12 }}
+            {{- include "lamassu.authzCredentialEnv" $ | nindent 12 }}
           # The image declares the binary as CMD with no ENTRYPOINT, so args
           # alone would replace it instead of adding to it.
           command: ["/authz"]
           args: ["init"]
           volumeMounts:
-            - name: rendered-config
+            - name: authz-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
               readOnly: true
@@ -352,10 +352,7 @@ spec:
           command: ["bash", "-c", "echo 'Database upgrade completed.'"]
       {{- if $authzImage }}
       volumes:
-        - name: config-template
+        - name: authz-config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-init-config") }}
-        - name: rendered-config
-          emptyDir:
-            medium: Memory
       {{- end }}

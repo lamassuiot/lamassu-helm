@@ -34,10 +34,8 @@ operator.
 > **Upgrade notice:** this version changes chart-owned resource names to the
 > release-scoped form `<release>-lamassu-<component>`. StatefulSet PVCs are not
 > renamed by Kubernetes; plan a data migration or bind existing data before an
-> in-place upgrade. The default pod `fsGroup` is `65532` so the non-root
-> render-config init container and application share generated files; Kubernetes
-> may apply that group to mounted volumes such as VA CRL and KMS crypto-engine
-> storage.
+> in-place upgrade. The default pod `fsGroup` is `65532`; Kubernetes may apply
+> that group to mounted volumes such as VA CRL and KMS crypto-engine storage.
 > `fsGroupChangePolicy: OnRootMismatch` limits recursive ownership changes when
 > the volume root already has the expected group, but operators should still
 > verify access for backup helpers or jobs using a different GID. AWS connectors
@@ -136,19 +134,17 @@ flowchart LR
     end
 
     VALUES[Helm values<br/>existingSecret + key names] --> HELM[Lamassu Helm chart]
-    KS -->|secretKeyRef| INIT[render-config init container]
-    HELM -->|ConfigMap template<br/>non-sensitive placeholders| INIT
-    INIT -->|substitutes credentials| MEM[Memory-backed emptyDir<br/>generated config]
-    MEM --> APP[Lamassu application container]
-    MEM --> MIG[Migration hook container]
+    KS -->|secretKeyRef| ENV[application environment]
+    HELM -->|ConfigMap<br/>non-sensitive configuration| CFG[application config volume]
+    CFG --> APP[Lamassu application container]
+    ENV --> APP
+    CFG --> MIG[Migration hook container]
 ```
 
 The Secret is referenced by name and key; its value is not placed in the
-Helm values file. `render-config` receives the credentials through
-`secretKeyRef`, replaces the placeholders once during pod startup, and writes
-the final YAML configuration to the in-memory volume. The application or
-migration container reads that generated file, while the template ConfigMap
-remains free of PostgreSQL, AMQP, and SMTP Secret values. The remaining
+Helm values file. Application and migration containers receive credentials
+through `secretKeyRef` environment variables, while their ConfigMaps contain
+only non-secret configuration and are mounted directly. The remaining
 ConfigMap-rendered credential exceptions are AWS connector credentials,
 `services.kms.cryptoEngines.engines` values, and `services.va.fileStore.s3`
 values; protect their ConfigMaps with appropriate RBAC.
@@ -178,61 +174,35 @@ The implementation has four parts:
    `services.alerts.smtp_server.existingSecret` identify Secrets in the
    release namespace. `usernameKey` and `passwordKey` allow non-standard data
    keys.
-2. PostgreSQL, AMQP, and SMTP ConfigMap templates contain non-sensitive
-   placeholders such as `__LAMASSU_POSTGRES_PASSWORD__`, never the
-   corresponding Secret value. Credential fields use YAML single-quoted
-   scalars so double quotes and backslashes in a Secret remain literal
-   configuration data. Secret values containing Lamassu placeholder tokens
-   are rejected to prevent a later substitution from rewriting the value.
-   AWS connector credentials, KMS crypto-engine values, and VA S3 values are
-   known exceptions and are currently rendered into their respective
-   ConfigMaps.
-3. The `lamassu.configSecretInit` helper adds a BusyBox init container. It reads
-   credentials through Kubernetes `secretKeyRef`, escapes backslashes for
-   `sed` and doubles embedded YAML single quotes, replaces only exact
-   credential placeholder lines, and writes the completed configuration to a
-   memory-backed `emptyDir`. Any unresolved placeholder causes the init
-   container to fail rather than being left in the running configuration.
-4. The application container mounts the generated file, while the original
-   ConfigMap is mounted only as the init container's read-only template.
+2. PostgreSQL, AMQP, SMTP, Authz DB, and dynamic Authz credential fields are
+   omitted from ConfigMaps. The corresponding Secret values are exposed
+   directly to Lamassu containers as the `LAMASSU_*` variables consumed by the
+   `lamassuiot` configuration loader. AWS connector credentials, KMS
+   crypto-engine values, and VA S3 values are known exceptions and remain
+   rendered into their respective ConfigMaps.
+3. Regular workloads mount their non-secret ConfigMap directly at
+   `/etc/lamassuiot/config.yml`. The database migration hook mounts its Authz
+   ConfigMap directly for `authz init`; only migration and certificate
+   preparation init containers remain.
+   The same Secret references are exposed directly to the application as the
+   `LAMASSU_*` variables consumed by the `lamassuiot` configuration loader.
+   The Authz service additionally receives `LAMASSU_AUTHZ_DB_USERNAME` and
+   `LAMASSU_AUTHZ_DB_PASSWORD` for its `authz_db` configuration path, while
+   `LAMASSU_POSTGRES_USERNAME` and `LAMASSU_POSTGRES_PASSWORD` remain mapped to
+   the shared `storage` path.
+   Authz schema credentials use the loader's
+   `LAMASSU_AUTHZ_CREDENTIALS_<SCHEMA>_{USERNAME,PASSWORD}` convention and
+   fail rendering when two schemas would collide.
+The application and migration containers retain the chart's existing non-root,
+read-only-root-filesystem and dropped-capabilities settings. Regular services
+receive PostgreSQL and AMQP credentials, Alerts additionally receives SMTP
+credentials, Authz receives its database and schema credentials, and the
+database migration hook injects the credentials needed by `authz init`.
+A missing SMTP Secret therefore cannot block PostgreSQL preparation or
+unrelated services.
 
-The `render-config` container runs by default as UID/GID `65532`, with
-`runAsNonRoot`, privilege escalation disabled, a read-only root filesystem, and
-all Linux capabilities dropped. Operators that use a cluster-specific UID
-range can set `configRender.securityContext.runAsUser` and
-`configRender.securityContext.runAsGroup` (for example, OpenShift's restricted
-SCC range). The chart continues to enforce `runAsNonRoot`,
-`allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, and dropping
-all Linux capabilities. The pod uses filesystem group `65532` by default so
-the non-root init container can write the generated file to the shared
-memory-backed volume and the application container can read it; configure the
-workload pod security context as needed when changing the renderer identity.
-This protection also applies to the database and CA-to-KMS migration hooks.
-
-The helper is parameterized per workload so each init container receives only
-the credential families used by its configuration. Regular services receive
-PostgreSQL and AMQP credentials, Alerts additionally receives SMTP
-credentials, AWS Connector receives AMQP credentials, and the database
-migration Job receives only PostgreSQL credentials. The CA-to-KMS hook also
-receives AMQP credentials because its `kms-config` template includes the
-event-bus block. A missing SMTP Secret therefore cannot block PostgreSQL
-preparation or unrelated services.
-
-The same approach is used by the regular workloads, WFX, the database
-migration hook, and the optional CA-to-KMS pre-upgrade hook. The CA-to-KMS hook
-keeps its compatibility with both the release-scoped and legacy `kms-config`
-ConfigMaps, but renders the selected template through the Secret-aware init
-container before starting the migration binary. Therefore migration hooks do
-not need passwords in command arguments when an `existingSecret` is configured.
-
-The chart still accepts the old `username` and `password` values as a
-backwards-compatible fallback. They are intended for local, short-lived
-testing only and must not be committed to shared or Git-managed values files.
-Without `existingSecret`, these fallback credentials are also rendered as
-plaintext `value` entries in the render-config init container's Pod
-environment, so a principal that can read Pods may retrieve them from the Pod
-specification. When both a fallback value and `existingSecret` are supplied,
-the Secret reference takes precedence.
+Credential values should be supplied through `existingSecret`. Do not commit
+plaintext credentials to shared or Git-managed values files.
 
 ### Creating and referencing a Secret
 
@@ -490,7 +460,7 @@ production provisioning workflow.
    ```
 
 6. Render the chart and verify that it contains `secretKeyRef` references,
-   placeholders, and no real password:
+   no credential placeholders, and no real password:
 
    ```bash
    helm template lamassu charts/lamassu -n lamassu-test \
@@ -498,7 +468,7 @@ production provisioning workflow.
      > /tmp/lamassu-rendered.yaml
 
    grep -n "secretKeyRef" /tmp/lamassu-rendered.yaml
-   grep -n "__LAMASSU_" /tmp/lamassu-rendered.yaml
+   ! grep -n "__LAMASSU_" /tmp/lamassu-rendered.yaml
    ! grep -Fq "$MANUAL_DB_PASSWORD" /tmp/lamassu-rendered.yaml
    ```
 
@@ -552,8 +522,8 @@ production provisioning workflow.
   YAML-sensitive characters unless the escaping behavior itself is being
   tested.
 - The migration hook initially retried until its backoff limit because
-  `init-authz` could not authenticate. PostgreSQL and `render-config` were
-  healthy; the remaining issue was the Lamassu Authz application's raw
+  `init-authz` could not authenticate. PostgreSQL and the direct configuration
+  mount were healthy; the remaining issue was the Lamassu Authz application's raw
   PostgreSQL DSN construction, which does not escape backslashes in
   passwords. The application is outside this chart's scope, so the manual
   deployment test used a password without `\`. A permanent fix belongs in
@@ -575,20 +545,19 @@ production provisioning workflow.
 
 ### Rotation, security boundaries, and limitations
 
-- PostgreSQL, AMQP, and SMTP Secret values are not copied into their
+- PostgreSQL, AMQP, SMTP, Authz DB, and dynamic Authz Secret values are not copied into their
   chart-managed ConfigMap templates. AWS connector credentials configured
   under `services.connectors.<id>.credentials`, KMS crypto-engine values under
   `services.kms.cryptoEngines.engines`, and VA S3 values under
   `services.va.fileStore.s3` are still rendered into ConfigMaps and should be
   protected with appropriate ConfigMap RBAC.
-- Secret values are exposed to the init container as environment variables and
-  exist in the generated configuration file inside the pod's memory-backed
-  volume. Kubernetes administrators and users with access to the namespace can
-  still inspect pod Secrets or process state; this is not a replacement for
-  Kubernetes RBAC and encryption at rest.
-- Updating a Secret does not rewrite a file already generated in a running
-  pod. Restart the affected Lamassu workloads after rotation. A rollout
-  annotation or an operator can automate this restart if required.
+- Secret values are exposed to application containers through environment
+  variables. Kubernetes administrators and users with access to the namespace
+  can still inspect pod Secrets or process state; this is not a replacement
+  for Kubernetes RBAC and encryption at rest.
+- Updating a Secret does not change environment variables in a running pod.
+  Restart the affected Lamassu workloads after rotation. A rollout annotation
+  or an operator can automate this restart if required.
 - The chart does not validate that an external Secret exists or contains the
   configured keys. Kubernetes reports a pod start error when a required
   `secretKeyRef` key is missing.
@@ -596,28 +565,8 @@ production provisioning workflow.
   escaping backslashes in the password. Use a password without `\` for
   PostgreSQL when the Authz migration hook is enabled; this limitation is in
   the application and is outside the chart's scope.
-- Values read from `existingSecret` and used in generated YAML must not be
-empty or contain control characters, leading or trailing whitespace,
-newline, carriage return, or Lamassu placeholder-token characters. The
-rendering init container rejects them explicitly rather than producing
-invalid or silently corrupted configuration.
-  Legacy PostgreSQL and AMQP `username`/`password` fallback values are written
-  as safely escaped double-quoted YAML scalars. Fallback values containing any
-  control character (including tabs, form feeds, newlines, and carriage
-  returns) are rejected before rendering, without placing them into the `sed`
-  replacement.
-  SMTP fallback values remain literal, matching their previous plain YAML
-  string behavior. PostgreSQL and AMQP fallback values must not be empty or
-  contain control characters. SMTP fallback values may be empty when email is
-  not configured, but still reject control characters and placeholder tokens.
-  PostgreSQL and AMQP fallback values that contain a backslash after YAML
-  decoding are not safe in 4.0.0: init-container rendering and YAML parsing
-  can consume the escape level differently, producing an invalid escape or a
-  different credential byte. Replace those values or move them to
-  `existingSecret` before upgrading.
-  Use `existingSecret` for shared or production deployments.
-- The init image is only a rendering utility; it does not fetch secrets from
-  external systems and does not need Kubernetes API permissions.
+- Legacy inline credential values are not supported for Secret-backed runtime
+configuration. Use `existingSecret` for shared or production deployments.
 - TLS certificate Secrets for AMQP and the downstream Gateway remain separate
   existing-Secret settings and are mounted directly as files.
 
@@ -633,9 +582,6 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | fullnameOverride | string | `""` | Fully override the release-scoped name prefix |
 | commonLabels | object | `{}` | Labels added to chart-managed resources |
 | commonAnnotations | object | `{}` | Annotations added to chart-managed resources |
-| configRender.image | string | `"docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"` | Digest-pinned image used to render Secret-backed configuration; mirror it for air-gapped or registry-restricted clusters |
-| configRender.securityContext | object | `{}` | Optional security context override for the renderer identity; hardening settings remain enforced |
-| configRender.resources | object | `{"limits":{"cpu":"100m","memory":"64Mi"},"requests":{"cpu":"10m","memory":"16Mi"}}` | CPU and memory resources for the Secret-backed configuration renderer |
 | serviceAccount.create | bool | `true` | Create a release-scoped ServiceAccount |
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods |
 | **TLS Configuration** | | | |

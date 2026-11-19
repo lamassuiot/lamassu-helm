@@ -23,21 +23,21 @@ spec:
       securityContext:
         {{- toYaml .Values.serviceDefaults.podSecurityContext | nindent 8 }}
       restartPolicy: OnFailure
-      initContainers:
-        {{- include "lamassu.configSecretInitItem" (dict "root" $ "includeSmtp" false) | nindent 8 }}
       containers:
         - name: ca-to-kms-migration
           image: {{ .Values.migrations.caToKms.image }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           securityContext:
             {{- toYaml .Values.serviceDefaults.securityContext | nindent 12 }}
+          env:
+            {{- include "lamassu.configCredentialEnv" (dict "root" $ "includeSmtp" false) | nindent 12 }}
           volumeMounts:
-            - name: rendered-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
               readOnly: true
       volumes:
-        - name: config-template
+        - name: config
           projected:
             sources:
               # Optional because this hook runs before the release-scoped ConfigMap
@@ -53,7 +53,4 @@ spec:
               - configMap:
                   name: kms-config
                   optional: true
-        - name: rendered-config
-          emptyDir:
-            medium: Memory
 {{- end }}

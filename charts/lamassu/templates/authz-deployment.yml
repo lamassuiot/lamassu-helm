@@ -23,7 +23,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc) | nindent 6 }}
-      {{- include "lamassu.configSecretInit" $ | nindent 6 }}
       containers:
         - name: authz
           image: {{ $svc.image }}
@@ -40,8 +39,11 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $svc.extraEnv }}
           env:
+            {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
+            {{- include "lamassu.authzDatabaseCredentialEnv" $ | nindent 12 }}
+            {{- include "lamassu.authzCredentialEnv" $ | nindent 12 }}
+          {{- with $svc.extraEnv }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
@@ -52,7 +54,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: rendered-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
               readOnly: true
@@ -62,5 +64,7 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        {{- include "lamassu.configSecretVolumes" (dict "configName" (include "lamassu.componentName" (dict "root" $ "component" "authz-config"))) | nindent 8 }}
+        - name: config
+          configMap:
+            name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-config") }}
         {{- include "lamassu.amqpVolumes" $ | nindent 8 }}

@@ -44,7 +44,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- include "lamassu.podSecurityContext" (dict "root" $ "svc" $svc "podSecurityContext" $podSecurityContext) | nindent 6 }}
-      {{- include "lamassu.configSecretInit" $ | nindent 6 }}
       containers:
         - name: va
           image: {{ $svc.image }}
@@ -62,6 +61,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
+            {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
             - name: TMPDIR
               value: {{ $storageDir | quote }}
             {{- with $svc.extraEnv }}
@@ -75,7 +75,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: rendered-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
               readOnly: true
@@ -89,7 +89,9 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        {{- include "lamassu.configSecretVolumes" (dict "configName" (include "lamassu.componentName" (dict "root" $ "component" "va-config"))) | nindent 8 }}
+        - name: config
+          configMap:
+            name: {{ include "lamassu.componentName" (dict "root" $ "component" "va-config") }}
         {{- include "lamassu.amqpVolumes" $ | nindent 8 }}
   {{- if $isLocal }}
   # volumeClaimTemplates is immutable, so it only carries the selector labels:

@@ -132,9 +132,21 @@ jobs:
           grep -q 'name: "lamassu-postgres"' /tmp/lamassu-secret-rendered.yaml
           grep -q 'name: "lamassu-amqp"' /tmp/lamassu-secret-rendered.yaml
           grep -q 'name: "lamassu-smtp"' /tmp/lamassu-secret-rendered.yaml
-          grep -q '__LAMASSU_POSTGRES_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
-          grep -q '__LAMASSU_AMQP_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
-          grep -q '__LAMASSU_SMTP_PASSWORD__' /tmp/lamassu-secret-rendered.yaml
+          ! grep -q '__LAMASSU_' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: LAMASSU_POSTGRES_PASSWORD' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: LAMASSU_AMQP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: LAMASSU_SMTP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set services.authz.credentials.pki.database=pki \
+            >/tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_CREDENTIALS_PKI_USERNAME' \
+            /tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_CREDENTIALS_PKI_PASSWORD' \
+            /tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_DB_USERNAME' /tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_DB_PASSWORD' /tmp/lamassu-authz-credentials-rendered.yaml
 
           # Legacy inline credentials must be rejected by the values schema.
           cat >/tmp/lamassu-inline-credentials.yaml <<'EOF'
@@ -198,16 +210,6 @@ jobs:
             echo "Database migration received unrelated AMQP or SMTP credentials"
             exit 1
           fi
-
-          helm template lamassu charts/lamassu \
-            --namespace lamassu-test \
-            --set configRender.image=registry.example.invalid/mirror/busybox:1.36 \
-            --set global.imagePullPolicy=IfNotPresent \
-            >/tmp/lamassu-config-render-image.yaml
-          grep -q 'image: "registry.example.invalid/mirror/busybox:1.36"' \
-            /tmp/lamassu-config-render-image.yaml
-          grep -q 'imagePullPolicy: "IfNotPresent"' \
-            /tmp/lamassu-config-render-image.yaml
 
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'

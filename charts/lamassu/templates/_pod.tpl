@@ -90,11 +90,11 @@ securityContext:
 {{- end -}}
 
 {{/*
-Render credentials into the config file in an init container. Credentials are
-never written to a ConfigMap and are read from Kubernetes Secrets. SMTP
-authentication is optional; without an SMTP Secret, empty credentials are used.
+Expose the credential environment variables expected by lamassuiot's config
+loader. The application receives Secret-backed values directly; the ConfigMap
+contains only non-secret configuration.
 */}}
-{{- define "lamassu.configSecretInitItem" -}}
+{{- define "lamassu.configCredentialEnv" -}}
 {{- $root := .root | default . -}}
 {{- $includePostgres := true -}}
 {{- $includeAmqp := true -}}
@@ -102,157 +102,83 @@ authentication is optional; without an SMTP Secret, empty credentials are used.
 {{- if hasKey . "includePostgres" }}{{ $includePostgres = .includePostgres }}{{ end -}}
 {{- if hasKey . "includeAmqp" }}{{ $includeAmqp = .includeAmqp }}{{ end -}}
 {{- if hasKey . "includeSmtp" }}{{ $includeSmtp = .includeSmtp }}{{ end -}}
-{{- $renderSecurityContext := deepCopy ($root.Values.configRender.securityContext | default dict) -}}
-{{- if not (hasKey $renderSecurityContext "runAsUser") }}{{ $_ := set $renderSecurityContext "runAsUser" 65532 }}{{ end -}}
-{{- if not (hasKey $renderSecurityContext "runAsGroup") }}{{ $_ := set $renderSecurityContext "runAsGroup" 65532 }}{{ end -}}
-{{- $_ := set $renderSecurityContext "runAsNonRoot" true -}}
-{{- $_ := set $renderSecurityContext "allowPrivilegeEscalation" false -}}
-{{- $_ := set $renderSecurityContext "readOnlyRootFilesystem" true -}}
-{{- $_ := set $renderSecurityContext "capabilities" (dict "drop" (list "ALL")) -}}
-- name: render-config
-  image: {{ $root.Values.configRender.image | quote }}
-  imagePullPolicy: {{ $root.Values.global.imagePullPolicy | quote }}
-  securityContext:
-    {{- toYaml $renderSecurityContext | nindent 4 }}
-  resources:
-    {{- toYaml $root.Values.configRender.resources | nindent 4 }}
-  command: ["sh", "-c"]
-  args:
-    - |
-      set -eu
-      reject_control_characters() {
-        if printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; then
-          echo "Credential values for rendered configuration must not contain control characters" >&2
-          return 1
-        fi
-      }
-      validate_secret() {
-        reject_control_characters "$1" || return 1
-        if [ -z "$1" ]; then
-          echo "Secret values for rendered configuration must not be empty" >&2
-          return 1
-        fi
-        newline=$(printf '\n_')
-        newline=${newline%_}
-        carriage_return=$(printf '\r_')
-        carriage_return=${carriage_return%_}
-        case "$1" in
-          *"$newline"*|*"$carriage_return"*|[[:space:]]*|*[[:space:]]|*__LAMASSU_*)
-            echo "Secret values for rendered configuration must not contain leading or trailing whitespace, newline, carriage return, or Lamassu placeholder characters" >&2
-            return 1
-            ;;
-        esac
-      }
-      escape() {
-        printf '%s' "$1" |
-          sed -e 's/\\/\\\\/g' -e "s/'/''/g" -e 's/[&|]/\\&/g'
-      }
-      {{- if $includePostgres }}
-      validate_secret "$LAMASSU_POSTGRES_USERNAME"
-      validate_secret "$LAMASSU_POSTGRES_PASSWORD"
-      pg_user=$(escape "$LAMASSU_POSTGRES_USERNAME")
-      pg_password=$(escape "$LAMASSU_POSTGRES_PASSWORD")
-      {{- end }}
-      {{- if $includeAmqp }}
-      validate_secret "$LAMASSU_AMQP_USERNAME"
-      validate_secret "$LAMASSU_AMQP_PASSWORD"
-      amqp_user=$(escape "$LAMASSU_AMQP_USERNAME")
-      amqp_password=$(escape "$LAMASSU_AMQP_PASSWORD")
-      {{- end }}
-      {{- if $includeSmtp }}
-      {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
-      validate_secret "$LAMASSU_SMTP_USERNAME"
-      validate_secret "$LAMASSU_SMTP_PASSWORD"
-      smtp_user=$(escape "$LAMASSU_SMTP_USERNAME")
-      smtp_password=$(escape "$LAMASSU_SMTP_PASSWORD")
-      {{- else }}
-      smtp_user=''
-      smtp_password=''
-      {{- end }}
-      {{- end }}
-      sed \
-        {{- if $includePostgres }}
-        -e "s|^\([[:space:]]*username: \)'__LAMASSU_POSTGRES_USERNAME__'\$|\1'$pg_user'|g" \
-        -e "s|^\([[:space:]]*password: \)'__LAMASSU_POSTGRES_PASSWORD__'\$|\1'$pg_password'|g" \
-        {{- end }}
-        {{- if $includeAmqp }}
-        -e "s|^\([[:space:]]*username: \)'__LAMASSU_AMQP_USERNAME__'\$|\1'$amqp_user'|g" \
-        -e "s|^\([[:space:]]*password: \)'__LAMASSU_AMQP_PASSWORD__'\$|\1'$amqp_password'|g" \
-        {{- end }}
-        {{- if $includeSmtp }}
-        -e "s|^\([[:space:]]*username: \)'__LAMASSU_SMTP_USERNAME__'\$|\1'$smtp_user'|g" \
-        -e "s|^\([[:space:]]*password: \)'__LAMASSU_SMTP_PASSWORD__'\$|\1'$smtp_password'|g" \
-        {{- end }}
-        /config-template/config > /config/config
-      if grep -Eq "^[[:space:]]*(username|password): '__LAMASSU_(POSTGRES_USERNAME|POSTGRES_PASSWORD|AMQP_USERNAME|AMQP_PASSWORD|SMTP_USERNAME|SMTP_PASSWORD)__'\$" /config/config; then
-        echo "Unresolved Lamassu credential placeholder remains after Secret rendering" >&2
-        exit 1
-      fi
-  env:
-    {{- if $includePostgres }}
-    - name: LAMASSU_POSTGRES_USERNAME
-      valueFrom:
-        secretKeyRef:
-          name: {{ $root.Values.postgres.existingSecret | quote }}
-          key: {{ $root.Values.postgres.usernameKey | quote }}
-    - name: LAMASSU_POSTGRES_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: {{ $root.Values.postgres.existingSecret | quote }}
-          key: {{ $root.Values.postgres.passwordKey | quote }}
-    {{- end }}
-    {{- if $includeAmqp }}
-    - name: LAMASSU_AMQP_USERNAME
-      valueFrom:
-        secretKeyRef:
-          name: {{ $root.Values.amqp.existingSecret | quote }}
-          key: {{ $root.Values.amqp.usernameKey | quote }}
-    - name: LAMASSU_AMQP_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: {{ $root.Values.amqp.existingSecret | quote }}
-          key: {{ $root.Values.amqp.passwordKey | quote }}
-    {{- end }}
-    {{- if $includeSmtp }}
-    - name: LAMASSU_SMTP_USERNAME
-      {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
-      valueFrom:
-        secretKeyRef:
-          name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
-          key: {{ $root.Values.services.alerts.smtp_server.usernameKey | quote }}
-      {{- else }}
-      value: ""
-      {{- end }}
-    - name: LAMASSU_SMTP_PASSWORD
-      {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
-      valueFrom:
-        secretKeyRef:
-          name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
-          key: {{ $root.Values.services.alerts.smtp_server.passwordKey | quote }}
-      {{- else }}
-      value: ""
-      {{- end }}
-    {{- end }}
-  volumeMounts:
-    - name: config-template
-      mountPath: /config-template
-      readOnly: true
-    - name: rendered-config
-      mountPath: /config
+{{- if $includePostgres }}
+- name: LAMASSU_POSTGRES_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.usernameKey | quote }}
+- name: LAMASSU_POSTGRES_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.passwordKey | quote }}
+{{- end }}
+{{- if $includeAmqp }}
+- name: LAMASSU_AMQP_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.amqp.existingSecret | quote }}
+      key: {{ $root.Values.amqp.usernameKey | quote }}
+- name: LAMASSU_AMQP_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.amqp.existingSecret | quote }}
+      key: {{ $root.Values.amqp.passwordKey | quote }}
+{{- end }}
+{{- if $includeSmtp }}
+- name: LAMASSU_SMTP_USERNAME
+  {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
+      key: {{ $root.Values.services.alerts.smtp_server.usernameKey | quote }}
+  {{- else }}
+  value: ""
+  {{- end }}
+- name: LAMASSU_SMTP_PASSWORD
+  {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
+      key: {{ $root.Values.services.alerts.smtp_server.passwordKey | quote }}
+  {{- else }}
+  value: ""
+  {{- end }}
+{{- end }}
 {{- end -}}
 
-{{- define "lamassu.configSecretInit" -}}
-initContainers:
-  {{- include "lamassu.configSecretInitItem" . | nindent 2 }}
+{{- define "lamassu.authzDatabaseCredentialEnv" -}}
+{{- $root := .root | default . -}}
+- name: LAMASSU_AUTHZ_DB_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.usernameKey | quote }}
+- name: LAMASSU_AUTHZ_DB_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.passwordKey | quote }}
 {{- end -}}
 
-{{- define "lamassu.configSecretVolumes" -}}
-- name: config-template
-  configMap:
-    name: {{ .configName }}
-- name: rendered-config
-  emptyDir:
-    medium: Memory
+{{- define "lamassu.authzCredentialEnv" -}}
+{{- $root := .root | default . -}}
+{{- $names := dict -}}
+{{- range $schema, $_ := $root.Values.services.authz.credentials }}
+{{- $envPart := upper (regexReplaceAll "[^[:alnum:]]" $schema "_") -}}
+{{- if hasKey $names $envPart }}
+{{- fail (printf "authz credential schemas %q and %q produce the same environment variable name" (get $names $envPart) $schema) -}}
+{{- end }}
+{{- $_ := set $names $envPart $schema -}}
+{{- range $field := list "username" "password" }}
+- name: LAMASSU_AUTHZ_CREDENTIALS_{{ $envPart }}_{{ upper $field }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ if eq $field "username" }}{{ $root.Values.postgres.usernameKey | quote }}{{ else }}{{ $root.Values.postgres.passwordKey | quote }}{{ end }}
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{/* User-supplied pod placement policy. */}}

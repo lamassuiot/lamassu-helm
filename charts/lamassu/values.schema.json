@@ -335,16 +335,6 @@
       },
       "additionalProperties": false
     },
-    "configRender": {
-      "type": "object",
-      "required": ["image"],
-      "properties": {
-        "image": { "type": "string", "minLength": 1 },
-        "securityContext": { "$ref": "#/definitions/containerSecurityContext" },
-        "resources": { "type": "object" }
-      },
-      "additionalProperties": false
-    },
     "migrations": {
       "type": "object",
       "properties": {
@@ -371,7 +361,7 @@
       "additionalProperties": false
     }
   },
-  "required": ["global", "serviceAccount", "tls", "gateway", "postgres", "amqp", "auth", "serviceDefaults", "services", "connectivityTest", "configRender", "migrations"],
+  "required": ["global", "serviceAccount", "tls", "gateway", "postgres", "amqp", "auth", "serviceDefaults", "services", "connectivityTest", "migrations"],
   "additionalProperties": false,
   "definitions": {
     "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
