@@ -133,55 +133,23 @@ helm install lamassu lamassu/lamassu -f your-values.yaml -n lamassu --create-nam
 
 ### Secret management
 
-Do not commit database, AMQP, or SMTP passwords in Helm values files. The chart
-uses Kubernetes Secrets as its provider-neutral runtime interface:
-`postgres.existingSecret`, `amqp.existingSecret`, and
-`services.alerts.smtp_server.existingSecret` are consumed through
-`secretKeyRef`. PostgreSQL, AMQP, and SMTP configuration templates contain
-placeholders rather than those Secret values; an init container materializes
-the configuration into an in-memory volume before the application starts.
-AWS connector credentials remain a known exception and are currently rendered
-into the connector ConfigMap. KMS crypto-engine values under
-`services.kms.cryptoEngines.engines` and VA S3 values under
-`services.va.fileStore.s3` are also rendered into ConfigMaps and should be
-protected with appropriate ConfigMap RBAC.
+The Lamassu chart consumes Kubernetes Secrets through `existingSecret`; it
+does not install a secrets controller. With ESO, wait for the generated
+Secrets to be ready before installing or upgrading Lamassu because migration
+hooks need them at startup. The chart's ESO setup example is in the
+[chart README](charts/lamassu/README.md#secret-management).
 
-For production, External Secrets Operator is the recommended way to provision
-those Kubernetes Secrets from AWS Secrets Manager, Vault, Azure Key Vault,
-GCP Secret Manager, or another supported backend. Sealed Secrets and SOPS are
-valid alternatives for GitOps environments. The chart does not install any of
-these controllers because they are cluster-level infrastructure and differ
-between kind, EKS, and on-premise deployments.
-
-The fast lane always installs ESO's static Fake provider for integration
+The fast lane always installs ESO's Fake provider for local integration
 testing:
 
 ```bash
 ./scripts/lamassu-fast-lane.sh --non-interactive
 ```
 
-It installs External Secrets Operator, creates a `ClusterSecretStore` backed
-by ESO Fake, and provisions the PostgreSQL, AMQP, and Keycloak admin credentials
-as Kubernetes Secrets through `ExternalSecret` resources. The fast lane waits
-for those Secrets before installing the dependencies and Lamassu, then
-configures each chart with Secret references. Passwords are generated for each
-run; the Fake provider stores these test-only values in its Kubernetes custom
-resource and does not provide production-grade persistence, rotation, or an
-external secret manager. The demo realm account remains the fixed
-`lamassu/lamassu` login. The KMS remains configured with the filesystem crypto
-engine; ESO Fake is not a Lamassu `CryptoEngine`.
-
-An earlier manual fast-lane run verified ESO Fake provisioning for PostgreSQL
-and AMQP. The current flow also provisions the Keycloak admin Secret, so rerun
-the updated manual procedure on a dedicated kind cluster before relying on
-end-to-end validation. The procedure and previous verification evidence are
-documented in the
-[fast-lane Fake provider validation guide](charts/lamassu/README.md#manual-validation-procedure).
-
-See the [complete secret management guide](charts/lamassu/README.md#secret-management)
-for the decision rationale, alternatives, examples, manual kind-cluster
-validation procedure, troubleshooting findings, rotation behavior, and
-security limitations.
+Fake stores test-only credentials in a Kubernetes custom resource and is not
+a production secret backend. The fast lane keeps the demo
+`lamassu/lamassu` account. For production, configure ESO with your selected
+provider and follow the [ESO example](charts/lamassu/README.md#secret-management).
 
 ### External Dependencies
 

@@ -72,204 +72,154 @@ amqp:
 
 ## Secret management
 
-### Problem and goals
+The chart consumes Kubernetes Secrets in the Lamassu release namespace. Use
+`existingSecret` and key names in Helm values; do not put passwords in the
+values file. The database migration hook needs its Secrets before Helm starts,
+so wait for ESO synchronization before `helm install` or `helm upgrade`.
 
-Lamassu services need PostgreSQL, AMQP, and optionally SMTP credentials. The
-application reads one YAML configuration file, so putting a password directly
-in a Helm value would previously make it appear in rendered ConfigMaps and in
-the Helm release values. The goals of this implementation are:
+The chart does not install ESO or configure a provider. The example below uses
+ESO's Fake provider for local testing; the sample values are stored in the
+`ClusterSecretStore` and must not be used in production.
 
-1. Keep credentials out of Git-managed values files and ConfigMaps.
-2. Keep the chart usable on local kind clusters, EKS, and on-premise clusters.
-3. Avoid requiring one particular cloud provider or secret-management product.
-4. Preserve compatibility with existing installations during the transition.
-5. Make the ownership boundary clear: the chart consumes Secrets; the
-   operator or platform team provisions and rotates them.
+### Install ESO and create test Secrets
 
-### Options considered
-
-| Option | Advantages | Disadvantages | Fit for this chart |
-|---|---|---|---|
-| Kubernetes Secret | Native Kubernetes API; no extra controller; works on kind, EKS, and on-premise | Base64 is encoding, not encryption; provisioning and rotation are external responsibilities | Required runtime interface and lowest common denominator |
-| External Secrets Operator | Synchronizes AWS Secrets Manager, Vault, GCP Secret Manager, Azure Key Vault, and others; supports refresh and rotation; Git contains only references | Requires an operator and a provider `SecretStore`/`ClusterSecretStore`; provider IAM and availability must be operated separately | **Recommended provisioning mechanism for production** |
-| Sealed Secrets | Encrypted Kubernetes manifests can be stored in Git; convenient for GitOps | Requires a controller and backup of its key; rotation is not automatic; encryption is tied to the controller | Good alternative for clusters without a central secret manager |
-| Vault Agent Injector | Vault dynamic secrets, leases, revocation, and strong audit capabilities | Requires Vault, injector webhooks, policies, and pod mutation; more moving parts than this chart needs | Suitable for Vault-centric platforms, but too coupled for a portable application chart |
-| SOPS | Encrypts values with KMS, PGP, or age; works well with Git and CI/CD | Decryption must happen in a trusted deployment environment; does not itself refresh running Kubernetes Secrets | Good for GitOps pipelines when ESO is unavailable |
-| Helm Secrets plugin | Convenient SOPS integration with Helm commands | Client-side plugin rather than a runtime store; every CI/operator environment needs the plugin and keys | Useful workflow tooling, but not a chart runtime dependency |
-
-### Decision
-
-The chart implements **Kubernetes Secret consumption through `existingSecret`**.
-For production, those Secrets should normally be created and refreshed by
-**External Secrets Operator**. This gives Lamassu a stable, provider-neutral
-interface while allowing each environment to choose its backing store:
-
-- kind: a manually created Kubernetes Secret is sufficient for development.
-- EKS: ESO can read AWS Secrets Manager using IRSA or another approved IAM
-  integration.
-- on-premise: ESO can read Vault or another supported provider, or the
-  platform can use Sealed Secrets/SOPS.
-
-ESO, Vault, Sealed Secrets, SOPS, and their provider configuration are
-intentionally not installed by this chart. Installing them would make the
-application chart provider-specific and could create cluster-wide ownership
-conflicts.
-
-### Secret and password flow
-
-The chart uses the same runtime path regardless of where the Kubernetes Secret
-comes from. In production, ESO normally synchronizes the value from an
-external provider. For local development, the operator can create the
-Kubernetes Secret directly:
-
-```mermaid
-flowchart LR
-    subgraph Provisioning
-        SM[External secret manager]
-        ESO[External Secrets Operator]
-        LOCAL[Manual kubectl Secret]
-        SM -->|sync| ESO
-        ESO -->|creates or refreshes| KS[Kubernetes Secret]
-        LOCAL --> KS
-    end
-
-    VALUES[Helm values<br/>existingSecret + key names] --> HELM[Lamassu Helm chart]
-    KS -->|secretKeyRef| ENV[application environment]
-    HELM -->|ConfigMap<br/>non-sensitive configuration| CFG[application config volume]
-    CFG --> APP[Lamassu application container]
-    ENV --> APP
-    CFG --> MIG[Migration hook container]
-```
-
-The Secret is referenced by name and key; its value is not placed in the
-Helm values file. Application and migration containers receive credentials
-through `secretKeyRef` environment variables, while their ConfigMaps contain
-only non-secret configuration and are mounted directly. The remaining
-ConfigMap-rendered credential exceptions are AWS connector credentials,
-`services.kms.cryptoEngines.engines` values, and `services.va.fileStore.s3`
-values; protect their ConfigMaps with appropriate RBAC.
-
-### Values-file trust boundary
-
-`existingSecret`, `usernameKey`, and `passwordKey` are deployment inputs, not
-an authorization boundary. Anyone who can modify the values supplied to Helm
-or approve a Helm upgrade must be trusted with the Secrets in the release
-namespace: they can select a Secret and data key, and can also control
-configuration such as `postgres.hostname` or `amqp.hostname` that determines
-where the resulting credential is sent.
-
-This means a values-repository writer or GitOps principal without direct
-Secret `get` permission may still be able to route a referenced Secret value
-to a destination controlled by that principal. In multi-tenant namespaces,
-gate values changes with repository permissions, policy or admission controls,
-and keep Secret provisioning and Helm values approval under separate trusted
-roles. The chart cannot enforce this boundary because Helm resolves the
-values before Kubernetes applies the workload.
-
-### Implementation details
-
-The implementation has four parts:
-
-1. `postgres.existingSecret`, `amqp.existingSecret`, and
-   `services.alerts.smtp_server.existingSecret` identify Secrets in the
-   release namespace. `usernameKey` and `passwordKey` allow non-standard data
-   keys.
-2. PostgreSQL, AMQP, SMTP, Authz DB, and dynamic Authz credential fields are
-   omitted from ConfigMaps. The corresponding Secret values are exposed
-   directly to Lamassu containers as the `LAMASSU_*` variables consumed by the
-   `lamassuiot` configuration loader. AWS connector credentials, KMS
-   crypto-engine values, and VA S3 values are known exceptions and remain
-   rendered into their respective ConfigMaps.
-3. Regular workloads mount their non-secret ConfigMap directly at
-   `/etc/lamassuiot/config.yml`. The database migration hook mounts its Authz
-   ConfigMap directly for `authz init`; only migration and certificate
-   preparation init containers remain.
-   The same Secret references are exposed directly to the application as the
-   `LAMASSU_*` variables consumed by the `lamassuiot` configuration loader.
-   The Authz service additionally receives `LAMASSU_AUTHZ_DB_USERNAME` and
-   `LAMASSU_AUTHZ_DB_PASSWORD` for its `authz_db` configuration path, while
-   `LAMASSU_POSTGRES_USERNAME` and `LAMASSU_POSTGRES_PASSWORD` remain mapped to
-   the shared `storage` path.
-   Authz schema credentials use the loader's
-   `LAMASSU_AUTHZ_CREDENTIALS_<SCHEMA>_{USERNAME,PASSWORD}` convention and
-   fail rendering when two schemas would collide. Each schema can reference a
-   separate Secret; when omitted, it inherits the global PostgreSQL Secret and
-   its configured username/password keys.
-The application and migration containers retain the chart's existing non-root,
-read-only-root-filesystem and dropped-capabilities settings. Regular services
-receive PostgreSQL and AMQP credentials, Alerts additionally receives SMTP
-credentials, Authz receives its database and schema credentials, and the
-database migration hook injects the credentials needed by `authz init`.
-A missing SMTP Secret therefore cannot block PostgreSQL preparation or
-unrelated services.
-
-Credential values should be supplied through `existingSecret`. Do not commit
-plaintext credentials to shared or Git-managed values files.
-
-### Creating and referencing a Secret
-
-For a local kind cluster, create Secrets outside the values file:
+Install ESO and its CRDs:
 
 ```bash
-kubectl -n lamassu create secret generic lamassu-postgres \
-  --from-literal=username=lamassu \
-  --from-literal=password='change-me'
-
-kubectl -n lamassu create secret generic lamassu-amqp \
-  --from-literal=username=lamassu \
-  --from-literal=password='change-me'
-
-kubectl -n lamassu create secret generic lamassu-smtp \
-  --from-literal=username=alerts \
-  --from-literal=password='change-me'
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+helm upgrade --install external-secrets external-secrets/external-secrets \
+  --version 0.20.2 \
+  --namespace external-secrets --create-namespace \
+  --set installCRDs=true \
+  --wait --timeout 5m
 ```
 
-Create these Secrets before running `helm install` or `helm upgrade`. The
-database migration hooks consume the PostgreSQL and Authz schema credentials
-(and, where applicable, AMQP credentials) through `secretKeyRef` during the
-release operation itself. If a referenced Secret does not exist yet, the hook
-cannot start, retries are exhausted, and Helm fails the install or upgrade. Applying an
-`ExternalSecret` after starting Helm is therefore too late for these hooks;
-wait until the synchronized Kubernetes Secret exists in the release namespace.
+Create the release namespace:
 
-Then reference them from a non-sensitive values file:
+```bash
+kubectl create namespace lamassu --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Apply one Fake `ClusterSecretStore` and two `ExternalSecret` resources. Use
+sample credentials that match the PostgreSQL and RabbitMQ services in your test
+environment:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: lamassu-example-fake
+spec:
+  provider:
+    fake:
+      data:
+        - key: /lamassu/postgres/username
+          value: "admin"
+        - key: /lamassu/postgres/password
+          value: "test-postgres-password"
+        - key: /lamassu/amqp/username
+          value: "admin"
+        - key: /lamassu/amqp/password
+          value: "test-amqp-password"
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: lamassu-postgres
+  namespace: lamassu
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: lamassu-example-fake
+    kind: ClusterSecretStore
+  target:
+    name: lamassu-postgres
+    creationPolicy: Owner
+  data:
+    - secretKey: username
+      remoteRef:
+        key: /lamassu/postgres/username
+    - secretKey: password
+      remoteRef:
+        key: /lamassu/postgres/password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: lamassu-amqp
+  namespace: lamassu
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: lamassu-example-fake
+    kind: ClusterSecretStore
+  target:
+    name: lamassu-amqp
+    creationPolicy: Owner
+  data:
+    - secretKey: username
+      remoteRef:
+        key: /lamassu/amqp/username
+    - secretKey: password
+      remoteRef:
+        key: /lamassu/amqp/password
+EOF
+```
+
+Wait for ESO to create both Secrets before installing the chart:
+
+```bash
+for name in lamassu-postgres lamassu-amqp; do
+  kubectl wait --for=condition=Ready "externalsecret/$name" \
+    --namespace lamassu --timeout=2m
+  kubectl get secret "$name" --namespace lamassu
+done
+```
+
+Reference the generated Secrets in your values file. Set the service hostnames
+and ports to match your environment:
 
 ```yaml
 postgres:
-  hostname: postgres.database.svc
+  hostname: postgresql
   existingSecret: lamassu-postgres
   usernameKey: username
   passwordKey: password
+
 amqp:
-  hostname: rabbitmq.messaging.svc
+  hostname: rabbitmq
   existingSecret: lamassu-amqp
   usernameKey: username
   passwordKey: password
-services:
-  alerts:
-    smtp_server:
-      existingSecret: lamassu-smtp
 ```
 
-For ESO, create the provider-specific `SecretStore` and `ExternalSecret`
-outside this chart. The resulting Kubernetes Secret must contain the keys
-configured above and must be created in the same namespace as the Lamassu
-release. Reconcile and verify that the generated Kubernetes Secret exists
-before invoking `helm install` or `helm upgrade`; ESO provisioning is
-asynchronous, but the chart's pre-install and pre-upgrade migration hooks need
-the Secret immediately through `secretKeyRef`. A typical order is:
+Install or upgrade Lamassu after the Secrets are ready:
 
-1. Apply the `SecretStore`/`ClusterSecretStore` and `ExternalSecret`.
-2. Wait for the `ExternalSecret` to report `Ready` and for the target Secret
-   to contain the configured keys.
-3. Run Helm against the chart.
+```bash
+helm upgrade --install lamassu ./charts/lamassu \
+  --namespace lamassu \
+  --values lamassu-values.yaml
+```
 
-### Per-schema Authz database credentials
+This values file configures Lamassu; it does not create database users or
+configure PostgreSQL/RabbitMQ. Configure those services with matching
+credentials. SMTP can use the same pattern with
+`services.alerts.smtp_server.existingSecret`.
 
-Each Authz schema entry uses the global PostgreSQL Secret by default. To use a
-different database login for a schema, set its `existingSecret`; the key names
-default to `postgres.usernameKey` and `postgres.passwordKey` but can also be
-overridden per schema:
+For production, replace the Fake store's `provider.fake` block with the
+provider-specific configuration for your ESO `SecretStore` or
+`ClusterSecretStore`; adjust `remoteRef.key` to match that backend. The target
+Secret names and data keys, plus the Lamassu `existingSecret` values, can stay
+the same. See the [ESO provider documentation](https://external-secrets.io/latest/provider/)
+for provider setup. ESO synchronizes credentials; it does not create database
+accounts or configure the services that consume them.
+
+### Per-schema Authz credentials
+
+Authz schema credentials use the global PostgreSQL Secret and key names unless
+overridden. A schema can reference a separate Secret:
 
 ```yaml
 services:
@@ -284,326 +234,24 @@ services:
         database: authz
 ```
 
-In this example, the `pki` connection uses the `user` and `pass` keys from
-`lamassu-authz-pki`; the `authz` connection inherits the global PostgreSQL
-Secret and key names. These Secrets must exist in the release namespace before
-Helm starts its migration hook. The fast-lane Fake ESO setup leaves the
-per-schema overrides unset, so its Authz connections continue to use the
-Fake-provisioned global PostgreSQL Secret.
+In this example, `pki` uses the `user` and `pass` keys from
+`lamassu-authz-pki`; `authz` inherits the global PostgreSQL Secret. Every
+referenced Secret must exist before the migration hook starts.
 
-### Fast-lane Fake provider
+### Security and rotation
 
-For local integration testing, the fast lane always installs ESO's Fake
-provider:
+Kubernetes Secrets require appropriate RBAC and encryption-at-rest
+configuration; authorized namespace users can read them. Lamassu receives
+Secret values through environment variables, so restart affected pods after
+rotation. AWS connector credentials, KMS crypto-engine values, and VA S3
+settings remain ConfigMap-backed and should have appropriate access controls.
 
-```bash
-./scripts/lamassu-fast-lane.sh --non-interactive
-```
+### Fast-lane testing
 
-The fast lane installs External Secrets Operator in the `external-secrets`
-namespace, creates a cluster-scoped ESO Fake `ClusterSecretStore`, and
-provisions the PostgreSQL, AMQP, and Keycloak admin passwords through
-`ExternalSecret` resources. Their Kubernetes Secrets are named
-`lamassu-postgres`, `lamassu-amqp`, and `lamassu-keycloak-admin`. The fast lane
-waits for them to become `Ready` before installing the dependencies and
-Lamassu. Passwords are generated per run and passed to the test-only Fake
-provider; they are not requested from the user or written to generated Helm
-values. The fixed `lamassu/lamassu` realm demo login is retained.
-
-This changes the provisioning path, not the application contract: Lamassu
-still reads ordinary Kubernetes Secrets through `secretKeyRef`. External
-Secrets Operator owns and refreshes the target Secrets, while the Fake
-provider supplies static values for the test. It does not change the
-Kubernetes Secret type or encrypt its contents, and it must not be used as a
-production secret backend. It also does not configure a Lamassu KMS
-`CryptoEngine`; the fast lane continues to use the filesystem engine for KMS
-tests.
-
-#### Manual validation procedure
-
-Run this procedure on a dedicated kind cluster using the local chart:
-
-```bash
-kind create cluster --name lamassu-fake
-kubectl config use-context kind-lamassu-fake
-
-./scripts/lamassu-fast-lane.sh \
-  --context kind-lamassu-fake \
-  --namespace lamassu-fake \
-  --domain lamassu.fake.local \
-  --local-chart-path "$PWD/charts/lamassu" \
-  --non-interactive
-```
-
-The installation was verified with:
-
-```bash
-kubectl get pods -n external-secrets
-kubectl get clustersecretstore lamassu-fastlane-fake
-kubectl get externalsecret -n lamassu-fake
-kubectl get secret lamassu-postgres -n lamassu-fake
-kubectl get secret lamassu-amqp -n lamassu-fake
-kubectl get secret lamassu-keycloak-admin -n lamassu-fake
-kubectl get pods -n lamassu-fake
-kubectl get deployments -n lamassu-fake
-kubectl get jobs -n lamassu-fake
-```
-
-For the current fast-lane flow, verify the following expected states:
-
-- all External Secrets Operator pods were `Running`;
-- `lamassu-fastlane-fake` was `Valid` and `Ready=True`;
-- `lamassu-postgres`, `lamassu-amqp`, and `lamassu-keycloak-admin` were
-  `SecretSynced` and `Ready=True`;
-- the generated PostgreSQL and AMQP Kubernetes Secrets were `Opaque` and
-  contained `username` and `password`; the Keycloak admin Secret contained
-  `admin-password`;
-- PostgreSQL, RabbitMQ, Keycloak, and all Lamassu pods were running;
-- Lamassu workloads contained `secretKeyRef` references to the generated
-  Secrets.
-
-An earlier run also verified reconciliation by changing the Fake username and
-forcing a refresh:
-
-```bash
-kubectl patch clustersecretstore lamassu-fastlane-fake \
-  --type=json \
-  -p='[{"op":"replace","path":"/spec/provider/fake/data/0/value","value":"test-user"}]'
-
-kubectl annotate externalsecret lamassu-postgres \
-  -n lamassu-fake \
-  force-sync="$(date +%s)" \
-  --overwrite
-
-kubectl wait \
-  --for=condition=Ready \
-  externalsecret/lamassu-postgres \
-  -n lamassu-fake \
-  --timeout=120s
-
-kubectl get secret lamassu-postgres \
-  -n lamassu-fake \
-  -o jsonpath='{.data.username}' | base64 -d
-echo
-```
-
-The command returned `test-user` and the `ExternalSecret` reported a
-`SecretSynced` condition with an `Updated` event, proving that ESO propagated
-the Fake provider change into the Kubernetes Secret. The test value was then
-restored to `admin`. Do not restart Lamassu after changing only the Kubernetes
-Secret unless the backing PostgreSQL or RabbitMQ credentials have also been
-changed; environment variables loaded through `secretKeyRef` are read at pod
-startup, and a mismatch would break new connections.
-
-The `jq` command is optional and was not required for the validation. The Fake
-provider may report a `StoreUnmaintained` warning; this is expected for a
-test-only provider and is another reason not to use it in production. Delete
-the test cluster when finished:
-
-```bash
-kind delete cluster --name lamassu-fake
-```
-
-### Manual kind-cluster validation
-
-The following procedure was used to validate the Secret-backed deployment
-manually. It is intended for development or test clusters, not as a
-production provisioning workflow.
-
-1. Select the kind context and recreate the test namespace:
-
-   ```bash
-   kubectl config use-context kind-lamassu
-   kubectl delete namespace lamassu-test --ignore-not-found --wait=true
-   kubectl create namespace lamassu-test
-   ```
-
-2. Install the cluster-level prerequisites used by the chart:
-
-   ```bash
-   kubectl apply \
-     -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml \
-     --wait
-
-   helm install eg oci://docker.io/envoyproxy/gateway-helm \
-     --version v1.8.0 \
-     --namespace envoy-gateway-system \
-     --create-namespace \
-     --values .github/ci/eg.yaml \
-     --wait --timeout 300s
-   ```
-
-   Create the `eg` `GatewayClass` and wait for the Envoy Gateway deployment
-   before installing Lamassu. These resources are cluster-scoped and normally
-   need to be installed only once per kind cluster.
-
-3. Create the three Lamassu Secrets before installing any chart. The
-   migration hook needs the PostgreSQL Secret during `helm install`:
-
-   ```bash
-   export MANUAL_DB_PASSWORD='Lamassu-Test-2026!'
-   export MANUAL_AMQP_PASSWORD='Lamassu-Test-2026!'
-   export MANUAL_SMTP_PASSWORD='Lamassu-Smtp-2026!'
-
-   kubectl create secret generic lamassu-postgres -n lamassu-test \
-     --from-literal=username=admin \
-     --from-literal=password="$MANUAL_DB_PASSWORD"
-   kubectl create secret generic lamassu-amqp -n lamassu-test \
-     --from-literal=username=admin \
-     --from-literal=password="$MANUAL_AMQP_PASSWORD"
-   kubectl create secret generic lamassu-smtp -n lamassu-test \
-     --from-literal=username=smtp-ci \
-     --from-literal=password="$MANUAL_SMTP_PASSWORD"
-   ```
-
-4. Install PostgreSQL, overriding the historical CI password in
-   `.github/ci/postgres.yaml` so it matches `lamassu-postgres`:
-
-   ```bash
-   helm install postgres oci://registry-1.docker.io/cloudpirates/postgres \
-     --version 0.19.5 -n lamassu-test \
-     --values .github/ci/postgres.yaml \
-     --set-string auth.password="$MANUAL_DB_PASSWORD" \
-     --wait --timeout 600s
-   ```
-
-   Verify the database accepts the Secret value before continuing:
-
-   ```bash
-   kubectl run pg-check \
-     --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 \
-     --rm -i --restart=Never -n lamassu-test \
-     --env="PGPASSWORD=$MANUAL_DB_PASSWORD" -- \
-     psql -h postgresql -U admin -d auth -c "SELECT 1"
-   ```
-
-5. Install Keycloak and RabbitMQ. Both must use the same credentials as the
-   corresponding dependencies:
-
-   ```bash
-   helm install auth oci://registry-1.docker.io/cloudpirates/keycloak \
-     --version 0.21.9 -n lamassu-test \
-     --values .github/ci/keycloak.yaml \
-     --set-string database.password="$MANUAL_DB_PASSWORD" \
-     --wait --timeout 600s
-
-   helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq \
-     --version 0.21.4 -n lamassu-test \
-     --values .github/ci/rabbitmq.yaml \
-     --set-string auth.password="$MANUAL_AMQP_PASSWORD" \
-     --wait --timeout 300s
-   ```
-
-6. Render the chart and verify that it contains `secretKeyRef` references,
-   no credential placeholders, and no real password:
-
-   ```bash
-   helm template lamassu charts/lamassu -n lamassu-test \
-     --values charts/lamassu/ci/min-values.yaml \
-     > /tmp/lamassu-rendered.yaml
-
-   grep -n "secretKeyRef" /tmp/lamassu-rendered.yaml
-   ! grep -n "__LAMASSU_" /tmp/lamassu-rendered.yaml
-   ! grep -Fq "$MANUAL_DB_PASSWORD" /tmp/lamassu-rendered.yaml
-   ```
-
-7. Install Lamassu:
-
-   ```bash
-   helm install lamassu charts/lamassu -n lamassu-test \
-     --values charts/lamassu/ci/min-values.yaml \
-     --timeout 500s --wait
-   ```
-
-8. Confirm the release and all workloads:
-
-   ```bash
-   helm status lamassu -n lamassu-test
-   kubectl get pods -n lamassu-test
-   ```
-
-   The migration Job is a successful Helm hook with
-   `hook-succeeded` cleanup, so it may no longer be present after a
-   successful installation. Its absence is not a failure; the release status
-   and running workloads are the relevant checks.
-
-9. Inspect all ConfigMaps and verify that real credentials are absent:
-
-   ```bash
-   kubectl get configmaps -n lamassu-test -o yaml \
-     > /tmp/lamassu-configmaps.yaml
-   ! grep -Fq "$MANUAL_DB_PASSWORD" /tmp/lamassu-configmaps.yaml
-   ! grep -Fq "$MANUAL_AMQP_PASSWORD" /tmp/lamassu-configmaps.yaml
-   ! grep -Fq "$MANUAL_SMTP_PASSWORD" /tmp/lamassu-configmaps.yaml
-   ```
-
-   Remove temporary files and shell variables after the test:
-
-   ```bash
-   rm -f /tmp/lamassu-rendered.yaml /tmp/lamassu-configmaps.yaml
-   unset MANUAL_DB_PASSWORD MANUAL_AMQP_PASSWORD MANUAL_SMTP_PASSWORD
-   ```
-
-#### Problems encountered during the manual validation
-
-- The first PostgreSQL installation used a password different from the
-  `lamassu-postgres` Secret. PostgreSQL was running, but every migration
-  failed authentication. The dependency chart, the Kubernetes Secret, and
-  the Lamassu values must use the same credentials.
-- A Secret manifest entered directly with `kubectl apply` failed because the
-  apostrophe in the test password was not validly quoted in YAML. Creating
-  the Secret with `kubectl create secret generic --from-literal` avoids YAML
-  quoting errors. For reproducible tests, use a password without shell- or
-  YAML-sensitive characters unless the escaping behavior itself is being
-  tested.
-- The migration hook initially retried until its backoff limit because
-  `init-authz` could not authenticate. PostgreSQL and the direct configuration
-  mount were healthy; the remaining issue was the Lamassu Authz application's raw
-  PostgreSQL DSN construction, which does not escape backslashes in
-  passwords. The application is outside this chart's scope, so the manual
-  deployment test used a password without `\`. A permanent fix belongs in
-  the application PostgreSQL connection code.
-- Keycloak initially failed for the same operational reason: its values file
-  retained the historical password while PostgreSQL had been installed with
-  the new test password. Passing
-  `--set-string database.password="$MANUAL_DB_PASSWORD"` resolved the
-  mismatch.
-- A failed Helm release cannot be installed again with the same release name
-  until it is removed or upgraded. Clean up with `helm uninstall` and delete
-  failed migration Jobs, or recreate the namespace before retrying.
-- The migration Job may be absent after success because Helm deletes
-  successful hooks. Use `helm status`, pod readiness, and ConfigMap checks
-  instead of treating a missing completed hook as a failure.
-- The `.github/ci/*.yaml` files are Helm values files for dependency charts,
-  not Kubernetes manifests. They must be passed with `helm install -f` and
-  must not be applied directly with `kubectl`.
-
-### Rotation, security boundaries, and limitations
-
-- PostgreSQL, AMQP, SMTP, Authz DB, and dynamic Authz Secret values are not copied into their
-  chart-managed ConfigMap templates. AWS connector credentials configured
-  under `services.connectors.<id>.credentials`, KMS crypto-engine values under
-  `services.kms.cryptoEngines.engines`, and VA S3 values under
-  `services.va.fileStore.s3` are still rendered into ConfigMaps and should be
-  protected with appropriate ConfigMap RBAC.
-- Secret values are exposed to application containers through environment
-  variables. Kubernetes administrators and users with access to the namespace
-  can still inspect pod Secrets or process state; this is not a replacement
-  for Kubernetes RBAC and encryption at rest.
-- Updating a Secret does not change environment variables in a running pod.
-  Restart the affected Lamassu workloads after rotation. A rollout annotation
-  or an operator can automate this restart if required.
-- The chart does not validate that an external Secret exists or contains the
-  configured keys. Kubernetes reports a pod start error when a required
-  `secretKeyRef` key is missing.
-- The current Lamassu Authz application builds its PostgreSQL DSN without
-  escaping backslashes in the password. Use a password without `\` for
-  PostgreSQL when the Authz migration hook is enabled; this limitation is in
-  the application and is outside the chart's scope.
-- Legacy inline credential values are not supported for Secret-backed runtime
-configuration. Use `existingSecret` for shared or production deployments.
-- TLS certificate Secrets for AMQP and the downstream Gateway remain separate
-  existing-Secret settings and are mounted directly as files.
+The fast-lane script installs ESO Fake by default and creates test-only
+credentials for its dependencies. Do not use that Fake store in production;
+see the repository
+[fast-lane instructions](../../README.md#option-2-fast-lane-installation).
 
 ## Values
 
