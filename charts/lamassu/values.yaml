@@ -448,8 +448,9 @@ services:
     insecureSkipJwtVerify: false
     # -- PostgreSQL database name for authz principals, grants, and policies
     database: authz
-    # -- Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials.
-      # e.g. credentials: { pki: { database: pki_db } }
+    # -- Map of schema names to database names and optional per-schema PostgreSQL credential Secret references.
+    #    Omit existingSecret to use postgres.existingSecret and its configured keys.
+    #    e.g. credentials: { pki: { database: pki, existingSecret: authz-pki-db } }
     credentials: {}
     # -- Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids}
     # Seeded by the pre-install/pre-upgrade database Job, after the policies are

@@ -844,10 +844,6 @@ fi
 
         yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
         yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
-        yq -i '.services.authz.credentials.pki.username = (env(POSTGRES_USER))' lamassu.yaml
-        yq -i '.services.authz.credentials.pki.password = (env(POSTGRES_PWD))' lamassu.yaml
-        yq -i '.services.authz.credentials.authz.username = (env(POSTGRES_USER))' lamassu.yaml
-        yq -i '.services.authz.credentials.authz.password = (env(POSTGRES_PWD))' lamassu.yaml
 
         yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
         yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml

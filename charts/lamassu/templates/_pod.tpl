@@ -165,18 +165,21 @@ contains only non-secret configuration.
 {{- define "lamassu.authzCredentialEnv" -}}
 {{- $root := .root | default . -}}
 {{- $names := dict -}}
-{{- range $schema, $_ := $root.Values.services.authz.credentials }}
+{{- range $schema, $credential := $root.Values.services.authz.credentials }}
 {{- $envPart := upper (regexReplaceAll "[^[:alnum:]]" $schema "_") -}}
 {{- if hasKey $names $envPart }}
 {{- fail (printf "authz credential schemas %q and %q produce the same environment variable name" (get $names $envPart) $schema) -}}
 {{- end }}
 {{- $_ := set $names $envPart $schema -}}
+{{- $secretName := $credential.existingSecret | default $root.Values.postgres.existingSecret -}}
+{{- $usernameKey := $credential.usernameKey | default $root.Values.postgres.usernameKey -}}
+{{- $passwordKey := $credential.passwordKey | default $root.Values.postgres.passwordKey -}}
 {{- range $field := list "username" "password" }}
 - name: LAMASSU_AUTHZ_CREDENTIALS_{{ $envPart }}_{{ upper $field }}
   valueFrom:
     secretKeyRef:
-      name: {{ $root.Values.postgres.existingSecret | quote }}
-      key: {{ if eq $field "username" }}{{ $root.Values.postgres.usernameKey | quote }}{{ else }}{{ $root.Values.postgres.passwordKey | quote }}{{ end }}
+      name: {{ $secretName | quote }}
+      key: {{ if eq $field "username" }}{{ $usernameKey | quote }}{{ else }}{{ $passwordKey | quote }}{{ end }}
 {{- end }}
 {{- end }}
 {{- end -}}

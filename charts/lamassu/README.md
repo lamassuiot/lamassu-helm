@@ -192,7 +192,9 @@ The implementation has four parts:
    the shared `storage` path.
    Authz schema credentials use the loader's
    `LAMASSU_AUTHZ_CREDENTIALS_<SCHEMA>_{USERNAME,PASSWORD}` convention and
-   fail rendering when two schemas would collide.
+   fail rendering when two schemas would collide. Each schema can reference a
+   separate Secret; when omitted, it inherits the global PostgreSQL Secret and
+   its configured username/password keys.
 The application and migration containers retain the chart's existing non-root,
 read-only-root-filesystem and dropped-capabilities settings. Regular services
 receive PostgreSQL and AMQP credentials, Alerts additionally receives SMTP
@@ -223,10 +225,10 @@ kubectl -n lamassu create secret generic lamassu-smtp \
 ```
 
 Create these Secrets before running `helm install` or `helm upgrade`. The
-database migration hooks consume the PostgreSQL (and, where applicable, AMQP)
-credentials through `secretKeyRef` during the release operation itself. If an
-`existingSecret` does not exist yet, the hook cannot start, retries are
-exhausted, and Helm fails the install or upgrade. Applying an
+database migration hooks consume the PostgreSQL and Authz schema credentials
+(and, where applicable, AMQP credentials) through `secretKeyRef` during the
+release operation itself. If a referenced Secret does not exist yet, the hook
+cannot start, retries are exhausted, and Helm fails the install or upgrade. Applying an
 `ExternalSecret` after starting Helm is therefore too late for these hooks;
 wait until the synchronized Kubernetes Secret exists in the release namespace.
 
@@ -261,6 +263,33 @@ the Secret immediately through `secretKeyRef`. A typical order is:
 2. Wait for the `ExternalSecret` to report `Ready` and for the target Secret
    to contain the configured keys.
 3. Run Helm against the chart.
+
+### Per-schema Authz database credentials
+
+Each Authz schema entry uses the global PostgreSQL Secret by default. To use a
+different database login for a schema, set its `existingSecret`; the key names
+default to `postgres.usernameKey` and `postgres.passwordKey` but can also be
+overridden per schema:
+
+```yaml
+services:
+  authz:
+    credentials:
+      pki:
+        database: pki
+        existingSecret: lamassu-authz-pki
+        usernameKey: user
+        passwordKey: pass
+      authz:
+        database: authz
+```
+
+In this example, the `pki` connection uses the `user` and `pass` keys from
+`lamassu-authz-pki`; the `authz` connection inherits the global PostgreSQL
+Secret and key names. These Secrets must exist in the release namespace before
+Helm starts its migration hook. The fast-lane Fake ESO setup leaves the
+per-schema overrides unset, so its Authz connections continue to use the
+Fake-provisioned global PostgreSQL Secret.
 
 ### Fast-lane Fake provider
 

@@ -148,6 +148,41 @@ jobs:
           grep -q 'name: LAMASSU_AUTHZ_DB_USERNAME' /tmp/lamassu-authz-credentials-rendered.yaml
           grep -q 'name: LAMASSU_AUTHZ_DB_PASSWORD' /tmp/lamassu-authz-credentials-rendered.yaml
 
+          cat >/tmp/lamassu-authz-schema-secret-values.yaml <<'EOF'
+          postgres:
+            existingSecret: lamassu-postgres
+            usernameKey: db-user
+            passwordKey: db-password
+          services:
+            authz:
+              credentials:
+                pki:
+                  database: pki
+                  existingSecret: lamassu-authz-pki
+                  usernameKey: login
+                  passwordKey: secret
+                authz:
+                  database: authz
+          EOF
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-authz-schema-secret-values.yaml \
+            >/tmp/lamassu-authz-schema-secret-rendered.yaml
+
+          assert_authz_secret_ref() {
+            local env_name="$1" secret_name="$2" secret_key="$3"
+            local env_block
+            env_block=$(grep -F -A5 -- "- name: $env_name" /tmp/lamassu-authz-schema-secret-rendered.yaml)
+            test "$(grep -Fc "name: \"$secret_name\"" <<<"$env_block")" -eq 2
+            test "$(grep -Fc "key: \"$secret_key\"" <<<"$env_block")" -eq 2
+          }
+
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_PKI_USERNAME lamassu-authz-pki login
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_PKI_PASSWORD lamassu-authz-pki secret
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_AUTHZ_USERNAME lamassu-postgres db-user
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_AUTHZ_PASSWORD lamassu-postgres db-password
+
           # Legacy inline credentials must be rejected by the values schema.
           cat >/tmp/lamassu-inline-credentials.yaml <<'EOF'
           postgres:
@@ -172,6 +207,24 @@ jobs:
             exit 1
           fi
           grep -Eq 'username|password' /tmp/lamassu-inline-credentials-error.txt
+
+          cat >/tmp/lamassu-authz-inline-credentials.yaml <<'EOF'
+          services:
+            authz:
+              credentials:
+                pki:
+                  database: pki
+                  username: inline-user
+                  password: inline-password
+          EOF
+          if helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-authz-inline-credentials.yaml \
+            >/tmp/lamassu-authz-inline-credentials-rendered.yaml 2>/tmp/lamassu-authz-inline-credentials-error.txt; then
+            echo "The chart accepted inline Authz schema credentials"
+            exit 1
+          fi
+          grep -Eq 'username|password' /tmp/lamassu-authz-inline-credentials-error.txt
 
           cat >/tmp/lamassu-inline-credentials-bypass.yaml <<'EOF'
           postgres:
