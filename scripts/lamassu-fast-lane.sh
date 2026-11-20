@@ -20,7 +20,6 @@ GATEWAY_IP=""
 LAMASSU_CHART_PATH="lamassuiot/lamassu"
 LAMASSU_USE_LOCAL_PATH=false
 SAMPLE_DATA=false
-FAKE_SECRETS=false
 EXTERNAL_SECRETS_CHART_VERSION="${EXTERNAL_SECRETS_CHART_VERSION:-0.20.2}"
 # Development mode: provisions Keycloak for frictionless local use (fully
 # provisioned lamassu user, permissive frontend redirect URIs). Never use it for
@@ -105,11 +104,9 @@ function main() {
     fi
     echo -e "\n${BLUE}3) Create ${NAMESPACE} namespace${NOCOLOR}"
     create_kubernetes_namespace
-    if [ "$FAKE_SECRETS" = true ]; then
-        echo -e "\n${BLUE}3.1) Install External Secrets Operator with the Fake provider${NOCOLOR}"
-        install_fake_secrets
-        checkpoint "External Secrets Fake provider"
-    fi
+    echo -e "\n${BLUE}3.1) Install External Secrets Operator with the Fake provider${NOCOLOR}"
+    install_fake_secrets
+    checkpoint "External Secrets Fake provider"
     STEP_START_TIME=$(date +%s)
     echo -e "\n${BLUE}4) Install PostgreSQL${NOCOLOR}"
     install_postgresql
@@ -166,7 +163,6 @@ function usage() {
     echo " --otel                       Deploy Victoria Logs, VictoriaTraces, Jaeger & an OTel Collector (fan-out) and configure OpenTelemetry in supported Lamassu services (AWS Connector, authz, wfx and the UI are not instrumented)"
     echo " --development               Development mode: Keycloak lamassu user is fully provisioned (FIXED lamassu/lamassu password that is never rotated, no first-login profile/password steps) and the frontend client accepts any redirect URI/web origin. NOT for production"
     echo " --sample-data                Populate Lamassu with sample data (CAs, profiles, certificates, DMS, devices) after installation"
-    echo " --fake-secrets               Install ESO's Fake provider and provision Lamassu credentials as Kubernetes Secrets (testing only)"
     echo " --softhsm-chart-path         Path to the local SoftHSM chart folder. Default: charts/softhsm in this repository"
     echo " --with-hsm                   Install SoftHSM and NetHSM, and configure Lamassu KMS to use PKCS#11 (NetHSM is skipped on ARM clusters, amd64-only image)"
 }
@@ -318,9 +314,6 @@ function process_flags() {
         --sample-data)
             SAMPLE_DATA=true
             ;;
-        --fake-secrets)
-            FAKE_SECRETS=true
-            ;;
         *)
             echo -e "\n${RED}Invalid option: $1${NOCOLOR}" >&2
             usage
@@ -342,7 +335,13 @@ function final_instructions() {
         echo -e "${BLUE}You will be required to change the password on the first connection${NOCOLOR}"
     fi
     echo -e "${BLUE}If more users are needed connect to  https://${DOMAIN}/auth/admin${NOCOLOR}"
-    echo -e "${BLUE}Use the provided Keycloak credentials ${KEYCLOAK_USER}/${KEYCLOAK_PWD}${NOCOLOR}"
+    echo -e "${BLUE}Keycloak admin username: ${KEYCLOAK_USER}${NOCOLOR}"
+    echo -e "${BLUE}Retrieve the generated admin password when needed with:${NOCOLOR}"
+    if [ -n "$KUBE_CONTEXT" ]; then
+        echo "kubectl --context \"$KUBE_CONTEXT\" -n $NAMESPACE get secret lamassu-keycloak-admin -o jsonpath='{.data.admin-password}' | base64 --decode"
+    else
+        echo "kubectl -n $NAMESPACE get secret lamassu-keycloak-admin -o jsonpath='{.data.admin-password}' | base64 --decode"
+    fi
     if [ "$WITH_HSM" = true ]; then
                 echo -e "${BLUE}SoftHSM endpoint configured for PKCS#11 via p11-kit socket forwarding${NOCOLOR}"
     fi
@@ -589,12 +588,14 @@ function install_fake_secrets() {
     export FAKE_POSTGRES_PASSWORD="$POSTGRES_PWD"
     export FAKE_AMQP_USER="$RABBIT_USER"
     export FAKE_AMQP_PASSWORD="$RABBIT_PWD"
+    export FAKE_KEYCLOAK_ADMIN_PASSWORD="$KEYCLOAK_PWD"
     yq '
         if .kind == "ClusterSecretStore" then
             .spec.provider.fake.data[0].value = strenv(FAKE_POSTGRES_USER) |
             .spec.provider.fake.data[1].value = strenv(FAKE_POSTGRES_PASSWORD) |
             .spec.provider.fake.data[2].value = strenv(FAKE_AMQP_USER) |
-            .spec.provider.fake.data[3].value = strenv(FAKE_AMQP_PASSWORD)
+            .spec.provider.fake.data[3].value = strenv(FAKE_AMQP_PASSWORD) |
+            .spec.provider.fake.data[4].value = strenv(FAKE_KEYCLOAK_ADMIN_PASSWORD)
         else
             .
         end
@@ -614,6 +615,8 @@ spec:
         - key: /lamassu/amqp/username
           value: ""
         - key: /lamassu/amqp/password
+          value: ""
+        - key: /lamassu/keycloak/admin-password
           value: ""
 ---
 apiVersion: external-secrets.io/v1
@@ -657,9 +660,28 @@ spec:
     - secretKey: password
       remoteRef:
         key: /lamassu/amqp/password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: lamassu-keycloak-admin
+  namespace: ${NAMESPACE}
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: lamassu-fastlane-fake
+    kind: ClusterSecretStore
+  target:
+    name: lamassu-keycloak-admin
+    creationPolicy: Owner
+  data:
+    - secretKey: admin-password
+      remoteRef:
+        key: /lamassu/keycloak/admin-password
 EOF
     local apply_status=("${PIPESTATUS[@]}")
-    unset FAKE_POSTGRES_USER FAKE_POSTGRES_PASSWORD FAKE_AMQP_USER FAKE_AMQP_PASSWORD
+    unset POSTGRES_PWD RABBIT_PWD KEYCLOAK_PWD
+    unset FAKE_POSTGRES_USER FAKE_POSTGRES_PASSWORD FAKE_AMQP_USER FAKE_AMQP_PASSWORD FAKE_KEYCLOAK_ADMIN_PASSWORD
 
     if [ "${apply_status[0]}" -ne 0 ]; then
         echo -e "\n${RED}Error rendering the Fake SecretStore values${NOCOLOR}"
@@ -670,7 +692,7 @@ EOF
         exit 1
     fi
 
-    for external_secret in lamassu-postgres lamassu-amqp; do
+    for external_secret in lamassu-postgres lamassu-amqp lamassu-keycloak-admin; do
         if ! run_kubectl wait \
             --for=condition=Ready \
             "externalsecret/${external_secret}" \
@@ -681,7 +703,7 @@ EOF
         fi
     done
 
-    for kubernetes_secret in lamassu-postgres lamassu-amqp; do
+    for kubernetes_secret in lamassu-postgres lamassu-amqp lamassu-keycloak-admin; do
         if ! run_kubectl get secret "$kubernetes_secret" -n "$NAMESPACE" >/dev/null; then
             echo -e "\n${RED}Expected Kubernetes Secret ${kubernetes_secret} was not created${NOCOLOR}"
             exit 1
@@ -701,14 +723,10 @@ fi
 postgres:
   hostname: "postgresql"
   port: 5432
-  username: ""
-  password: ""
 
 amqp:
   hostname: "rabbitmq"
   port: 5672
-  username: ""
-  password: ""
   tls: false
 
 services:
@@ -726,14 +744,16 @@ services:
         database: pki
         hostname: "postgresql"
         port: 5432
-        username: ""
-        password: ""
+        existingSecret: lamassu-postgres
+        usernameKey: username
+        passwordKey: password
       authz:  
         database: authz
         hostname: "postgresql"
         port: 5432
-        username: ""
-        password: ""
+        existingSecret: lamassu-postgres
+        usernameKey: username
+        passwordKey: password
     bootstrap:
     - principal_id: "oidc:lamassu"
       principal_name: "lamassu"
@@ -825,29 +845,14 @@ if [ "$WITH_HSM" = true ]; then
     rm softhsm-kms.yaml
 fi
 
-    if [ "$FAKE_SECRETS" = true ]; then
-        yq -i '
-            .postgres.existingSecret = "lamassu-postgres" |
-            .postgres.usernameKey = "username" |
-            .postgres.passwordKey = "password" |
-            del(.postgres.username, .postgres.password) |
-            .amqp.existingSecret = "lamassu-amqp" |
-            .amqp.usernameKey = "username" |
-            .amqp.passwordKey = "password" |
-            del(.amqp.username, .amqp.password)
-        ' lamassu.yaml
-    else
-        export POSTGRES_USER=$POSTGRES_USER
-        export POSTGRES_PWD=$POSTGRES_PWD
-        export RABBIT_USER=$RABBIT_USER
-        export RABBIT_PWD=$RABBIT_PWD
-
-        yq -i '.postgres.username = (env(POSTGRES_USER))' lamassu.yaml
-        yq -i '.postgres.password = (env(POSTGRES_PWD))' lamassu.yaml
-
-        yq -i '.amqp.username = (env(RABBIT_USER))' lamassu.yaml
-        yq -i '.amqp.password = (env(RABBIT_PWD))' lamassu.yaml
-    fi
+    yq -i '
+        .postgres.existingSecret = "lamassu-postgres" |
+        .postgres.usernameKey = "username" |
+        .postgres.passwordKey = "password" |
+        .amqp.existingSecret = "lamassu-amqp" |
+        .amqp.usernameKey = "username" |
+        .amqp.passwordKey = "password"
+    ' lamassu.yaml
 
     if [ "$OTEL" = true ]; then
         yq -i '.observability.enabled = true' lamassu.yaml
@@ -901,14 +906,13 @@ image:
 
 auth:
   username:
-  password:
+  existingSecret: lamassu-amqp
+  existingPasswordKey: password
 EOF
 
    export RABBIT_USER=$RABBIT_USER
-   export RABBIT_PWD=$RABBIT_PWD
 
    yq -i '.auth.username = env(RABBIT_USER)' rabbitmq.yaml
-   yq -i '.auth.password = env(RABBIT_PWD)' rabbitmq.yaml
 
     helm_path=oci://registry-1.docker.io/cloudpirates/rabbitmq
 
@@ -933,7 +937,9 @@ service:
 
 keycloak:
   adminUser: ""
-  adminPassword: ""
+  existingSecret: lamassu-keycloak-admin
+  secretKeys:
+    adminPasswordKey: admin-password
   httpRelativePath: /auth
   proxyHeaders: xforwarded
 
@@ -942,8 +948,10 @@ database:
   host: "postgresql"
   port: "5432"
   name: "auth"
-  username: ""
-  password: ""
+  existingSecret: lamassu-postgres
+  secretKeys:
+    usernameKey: username
+    passwordKey: password
 
 postgres:
   enabled: false
@@ -1097,15 +1105,8 @@ extraInitContainers:
     name: keycloak-providers
 EOF
 
-    export POSTGRES_USER=$POSTGRES_USER
-    export POSTGRES_PWD=$POSTGRES_PWD
-    yq -i '.database.username = env(POSTGRES_USER)' keycloak.yaml
-    yq -i '.database.password = env(POSTGRES_PWD)' keycloak.yaml
-
     export KEYCLOAK_USER=$KEYCLOAK_USER
-    export KEYCLOAK_PWD=$KEYCLOAK_PWD
     yq -i '.keycloak.adminUser = env(KEYCLOAK_USER)' keycloak.yaml
-    yq -i '.keycloak.adminPassword = env(KEYCLOAK_PWD)' keycloak.yaml
 
 
     helm_path=oci://registry-1.docker.io/cloudpirates/keycloak
@@ -1128,7 +1129,9 @@ image:
   tag: "18.4"
 auth:
   username: ""
-  password: ""
+  existingSecret: lamassu-postgres
+  secretKeys:
+    adminPasswordKey: password
 initdb:
   scripts:
     init.sql: |
@@ -1148,9 +1151,7 @@ initdb:
 EOF
 
     export POSTGRES_USER=$POSTGRES_USER
-    export POSTGRES_PWD=$POSTGRES_PWD
     yq -i '.auth.username = env(POSTGRES_USER)' postgres.yaml
-    yq -i '.auth.password = env(POSTGRES_PWD)' postgres.yaml
 
     helm_path=oci://registry-1.docker.io/cloudpirates/postgres
 
@@ -1217,11 +1218,8 @@ function request_config_data() {
     if [ "$NON_INTERACTIVE" = false ]; then
         request_domain
         request_postgres_user
-        request_postgres_pwd
         request_rabbit_user
-        request_rabbit_pwd
         request_keycloak_user
-        request_keycloak_pwd
         request_namespace
     else
         echo -e "${ORANGE}Non-interactive mode enabled. Credentials will be auto generated${NOCOLOR}"
@@ -1250,14 +1248,6 @@ function request_postgres_user() {
     fi
 }
 
-function request_postgres_pwd() {
-    echo -n "PostgreSQL admin password ($POSTGRES_PWD): "
-    read req
-    if [ "$req" != "" ]; then
-        POSTGRES_PWD=$req
-    fi
-}
-
 function request_rabbit_user() {
     echo -n "RabbitMQ admin user ($RABBIT_USER): "
     read req
@@ -1266,27 +1256,11 @@ function request_rabbit_user() {
     fi
 }
 
-function request_rabbit_pwd() {
-    echo -n "RabbitMQ admin password ($RABBIT_PWD): "
-    read req
-    if [ "$req" != "" ]; then
-        RABBIT_PWD=$req
-    fi
-}
-
 function request_keycloak_user() {
     echo -n "Keycloak admin user ($KEYCLOAK_USER): "
     read req
     if [ "$req" != "" ]; then
         KEYCLOAK_USER=$req
-    fi
-}
-
-function request_keycloak_pwd() {
-    echo -n "Keycloak admin password ($KEYCLOAK_PWD): "
-    read req
-    if [ "$req" != "" ]; then
-        KEYCLOAK_PWD=$req
     fi
 }
 

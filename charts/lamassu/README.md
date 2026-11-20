@@ -293,31 +293,35 @@ Fake-provisioned global PostgreSQL Secret.
 
 ### Fast-lane Fake provider
 
-For local integration testing, the fast lane supports:
+For local integration testing, the fast lane always installs ESO's Fake
+provider:
 
 ```bash
-./scripts/lamassu-fast-lane.sh --non-interactive --fake-secrets
+./scripts/lamassu-fast-lane.sh --non-interactive
 ```
 
-This option installs External Secrets Operator in the `external-secrets`
+The fast lane installs External Secrets Operator in the `external-secrets`
 namespace, creates a cluster-scoped ESO Fake `ClusterSecretStore`, and
-provisions the Lamassu PostgreSQL and AMQP credentials through `ExternalSecret`
-resources. The generated Kubernetes Secrets are named `lamassu-postgres` and
-`lamassu-amqp`; the fast lane waits for them to become `Ready` before it
-installs Lamassu.
+provisions the PostgreSQL, AMQP, and Keycloak admin passwords through
+`ExternalSecret` resources. Their Kubernetes Secrets are named
+`lamassu-postgres`, `lamassu-amqp`, and `lamassu-keycloak-admin`. The fast lane
+waits for them to become `Ready` before installing the dependencies and
+Lamassu. Passwords are generated per run and passed to the test-only Fake
+provider; they are not requested from the user or written to generated Helm
+values. The fixed `lamassu/lamassu` realm demo login is retained.
 
-The option changes the provisioning path, not the application contract:
-Lamassu still reads ordinary Kubernetes Secrets through `secretKeyRef`.
-External Secrets Operator owns and refreshes the target Secrets, while the
-Fake provider supplies static values for the test. It does not change the
+This changes the provisioning path, not the application contract: Lamassu
+still reads ordinary Kubernetes Secrets through `secretKeyRef`. External
+Secrets Operator owns and refreshes the target Secrets, while the Fake
+provider supplies static values for the test. It does not change the
 Kubernetes Secret type or encrypt its contents, and it must not be used as a
 production secret backend. It also does not configure a Lamassu KMS
 `CryptoEngine`; the fast lane continues to use the filesystem engine for KMS
 tests.
 
-#### Manual validation performed
+#### Manual validation procedure
 
-The following test was run on a dedicated kind cluster using the local chart:
+Run this procedure on a dedicated kind cluster using the local chart:
 
 ```bash
 kind create cluster --name lamassu-fake
@@ -328,8 +332,7 @@ kubectl config use-context kind-lamassu-fake
   --namespace lamassu-fake \
   --domain lamassu.fake.local \
   --local-chart-path "$PWD/charts/lamassu" \
-  --non-interactive \
-  --fake-secrets
+  --non-interactive
 ```
 
 The installation was verified with:
@@ -340,23 +343,26 @@ kubectl get clustersecretstore lamassu-fastlane-fake
 kubectl get externalsecret -n lamassu-fake
 kubectl get secret lamassu-postgres -n lamassu-fake
 kubectl get secret lamassu-amqp -n lamassu-fake
+kubectl get secret lamassu-keycloak-admin -n lamassu-fake
 kubectl get pods -n lamassu-fake
 kubectl get deployments -n lamassu-fake
 kubectl get jobs -n lamassu-fake
 ```
 
-The observed result was:
+For the current fast-lane flow, verify the following expected states:
 
 - all External Secrets Operator pods were `Running`;
 - `lamassu-fastlane-fake` was `Valid` and `Ready=True`;
-- `lamassu-postgres` and `lamassu-amqp` were `SecretSynced` and `Ready=True`;
-- both generated Kubernetes Secrets were `Opaque` and contained `username` and
-  `password`;
+- `lamassu-postgres`, `lamassu-amqp`, and `lamassu-keycloak-admin` were
+  `SecretSynced` and `Ready=True`;
+- the generated PostgreSQL and AMQP Kubernetes Secrets were `Opaque` and
+  contained `username` and `password`; the Keycloak admin Secret contained
+  `admin-password`;
 - PostgreSQL, RabbitMQ, Keycloak, and all Lamassu pods were running;
 - Lamassu workloads contained `secretKeyRef` references to the generated
   Secrets.
 
-The reconciliation path was then tested by changing the Fake username and
+An earlier run also verified reconciliation by changing the Fake username and
 forcing a refresh:
 
 ```bash
