@@ -59,9 +59,15 @@ spec:
             - name: PGPORT
               value: {{ .Values.postgres.port | quote }}
             - name: PGUSER
-              value: {{ .Values.postgres.username | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | quote }}
+                  key: {{ .Values.postgres.usernameKey | quote }}
             - name: PGPASSWORD
-              value: {{ .Values.postgres.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | quote }}
+                  key: {{ .Values.postgres.passwordKey | quote }}
             - name: PGDATABASE
               value: {{ $svc.postgres.database | quote }}
             - name: PGSSLMODE

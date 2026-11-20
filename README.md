@@ -131,6 +131,26 @@ The main configuration file for Lamassu is `lamassu.yaml`. You can create your o
 helm install lamassu lamassu/lamassu -f your-values.yaml -n lamassu --create-namespace
 ```
 
+### Secret management
+
+The Lamassu chart consumes Kubernetes Secrets through `existingSecret`; it
+does not install a secrets controller. With ESO, wait for the generated
+Secrets to be ready before installing or upgrading Lamassu because migration
+hooks need them at startup. The chart's ESO setup example is in the
+[chart README](charts/lamassu/README.md#secret-management).
+
+The fast lane always installs ESO's Fake provider for local integration
+testing:
+
+```bash
+./scripts/lamassu-fast-lane.sh --non-interactive
+```
+
+Fake stores test-only credentials in a Kubernetes custom resource and is not
+a production secret backend. The fast lane keeps the demo
+`lamassu/lamassu` account. For production, configure ESO with your selected
+provider and follow the [ESO example](charts/lamassu/README.md#secret-management).
+
 ### External Dependencies
 
 Lamassu requires the following external services:

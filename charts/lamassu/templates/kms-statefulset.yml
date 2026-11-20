@@ -130,6 +130,7 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- else }}
         {{- end }}
       {{- end }}
       containers:
@@ -148,14 +149,8 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- $hasEngineEnv := false -}}
-          {{- range $engine := $svc.cryptoEngines.engines }}
-          {{- if and (eq $engine.type "pkcs11") (dig "module_extra_options" "env" dict $engine) }}
-          {{- $hasEngineEnv = true -}}
-          {{- end }}
-          {{- end }}
-          {{- if or $hasEngineEnv $svc.extraEnv }}
           env:
+            {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
             {{- range $engine := $svc.cryptoEngines.engines }}
             {{- if eq $engine.type "pkcs11" }}
             {{- range $key, $value := (dig "module_extra_options" "env" dict $engine) }}
@@ -167,7 +162,6 @@ spec:
             {{- with $svc.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- end }}
           {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
           {{- include "lamassu.httpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.port) | nindent 10 }}
           {{- include "lamassu.httpProbe" (dict "name" "startupProbe" "probe" $svc.startupProbe "port" $svc.port) | nindent 10 }}
@@ -176,9 +170,10 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: api-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             {{- if $svc.pkcs11Sidecar.enabled }}
             - name: pkcs11-socket
               mountPath: {{ $svc.pkcs11Sidecar.socketDir | quote }}
@@ -196,7 +191,7 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        - name: api-config
+        - name: config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "kms-config") }}
         {{- if $svc.pkcs11Sidecar.enabled }}

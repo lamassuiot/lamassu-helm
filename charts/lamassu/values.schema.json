@@ -57,22 +57,32 @@
     },
     "postgres": {
       "type": "object",
+      "required": ["existingSecret"],
       "properties": {
         "hostname": { "type": "string" },
         "port": { "$ref": "#/definitions/port" },
-        "username": { "type": "string" },
-        "password": { "type": "string" },
+        "existingSecret": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+        },
+        "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "logLevel": { "type": "string" }
       },
       "additionalProperties": false
     },
     "amqp": {
       "type": "object",
+      "required": ["existingSecret"],
       "properties": {
         "hostname": { "type": "string" },
         "port": { "$ref": "#/definitions/port" },
-        "username": { "type": "string" },
-        "password": { "type": "string" },
+        "existingSecret": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+        },
+        "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "tls": { "type": "boolean" },
         "ca": {
           "type": "object",
@@ -210,7 +220,38 @@
             }
           ]
         },
-        "alerts": { "$ref": "#/definitions/service" },
+        "alerts": {
+          "allOf": [
+            { "$ref": "#/definitions/service" },
+            {
+              "type": "object",
+              "properties": {
+                "smtp_server": {
+                  "type": "object",
+                  "properties": {
+                    "from": { "type": "string" },
+                    "insecure": { "type": "boolean" },
+                    "enable_ssl": { "type": "boolean" },
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
+                    },
+                    "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+                    "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+                    "host": { "type": "string" },
+                    "port": {
+                      "oneOf": [
+                        { "$ref": "#/definitions/port" },
+                        { "type": "string" }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          ]
+        },
         "authz": {
           "allOf": [
             { "$ref": "#/definitions/service" },
@@ -232,7 +273,28 @@
                 },
                 "credentials": {
                   "type": "object",
-                  "description": "Map of schema name to database name for per-schema Postgres credentials"
+                  "description": "Map of schema names to database names and optional per-schema PostgreSQL credential Secret references",
+                  "additionalProperties": {
+                    "type": "object",
+                    "required": ["database"],
+                    "properties": {
+                      "database": { "type": "string", "minLength": 1 },
+                      "hostname": { "type": "string" },
+                      "port": {
+                        "oneOf": [
+                          { "type": "integer" },
+                          { "type": "string" }
+                        ]
+                      },
+                      "existingSecret": {
+                        "type": "string",
+                        "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$"
+                      },
+                      "usernameKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+                      "passwordKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
+                    },
+                    "additionalProperties": false
+                  }
                 },
                 "bootstrap": {
                   "type": "array",
