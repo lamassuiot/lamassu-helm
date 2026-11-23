@@ -66,6 +66,10 @@ RABBIT_PWD=$(
     shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
     echo
 )
+RABBIT_ERLANG_COOKIE=$(
+    shuf -er -n30  {A..Z} {a..z} {0..9} | tr -d '\n'
+    echo
+)
 
 KEYCLOAK_USER=admin
 KEYCLOAK_PWD=$(
@@ -557,6 +561,17 @@ cat >>"$target_file" <<EOF
 EOF
 }
 
+function render_fake_secret_values() {
+    yq '
+        (select(.kind == "ClusterSecretStore") | .spec.provider.fake.data[0].value) = strenv(FAKE_POSTGRES_USER) |
+        (select(.kind == "ClusterSecretStore") | .spec.provider.fake.data[1].value) = strenv(FAKE_POSTGRES_PASSWORD) |
+        (select(.kind == "ClusterSecretStore") | .spec.provider.fake.data[2].value) = strenv(FAKE_AMQP_USER) |
+        (select(.kind == "ClusterSecretStore") | .spec.provider.fake.data[3].value) = strenv(FAKE_AMQP_PASSWORD) |
+        (select(.kind == "ClusterSecretStore") | .spec.provider.fake.data[4].value) = strenv(FAKE_AMQP_ERLANG_COOKIE) |
+        (select(.kind == "ClusterSecretStore") | .spec.provider.fake.data[5].value) = strenv(FAKE_KEYCLOAK_ADMIN_PASSWORD)
+    '
+}
+
 function install_fake_secrets() {
     local external_secrets_namespace="external-secrets"
 
@@ -588,18 +603,9 @@ function install_fake_secrets() {
     export FAKE_POSTGRES_PASSWORD="$POSTGRES_PWD"
     export FAKE_AMQP_USER="$RABBIT_USER"
     export FAKE_AMQP_PASSWORD="$RABBIT_PWD"
+    export FAKE_AMQP_ERLANG_COOKIE="$RABBIT_ERLANG_COOKIE"
     export FAKE_KEYCLOAK_ADMIN_PASSWORD="$KEYCLOAK_PWD"
-    yq '
-        if .kind == "ClusterSecretStore" then
-            .spec.provider.fake.data[0].value = strenv(FAKE_POSTGRES_USER) |
-            .spec.provider.fake.data[1].value = strenv(FAKE_POSTGRES_PASSWORD) |
-            .spec.provider.fake.data[2].value = strenv(FAKE_AMQP_USER) |
-            .spec.provider.fake.data[3].value = strenv(FAKE_AMQP_PASSWORD) |
-            .spec.provider.fake.data[4].value = strenv(FAKE_KEYCLOAK_ADMIN_PASSWORD)
-        else
-            .
-        end
-    ' <<EOF | run_kubectl apply -f -
+    render_fake_secret_values <<EOF | run_kubectl apply -f -
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
@@ -615,6 +621,8 @@ spec:
         - key: /lamassu/amqp/username
           value: ""
         - key: /lamassu/amqp/password
+          value: ""
+        - key: /lamassu/amqp/erlang-cookie
           value: ""
         - key: /lamassu/keycloak/admin-password
           value: ""
@@ -660,6 +668,9 @@ spec:
     - secretKey: password
       remoteRef:
         key: /lamassu/amqp/password
+    - secretKey: erlang-cookie
+      remoteRef:
+        key: /lamassu/amqp/erlang-cookie
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -680,8 +691,8 @@ spec:
         key: /lamassu/keycloak/admin-password
 EOF
     local apply_status=("${PIPESTATUS[@]}")
-    unset POSTGRES_PWD RABBIT_PWD KEYCLOAK_PWD
-    unset FAKE_POSTGRES_USER FAKE_POSTGRES_PASSWORD FAKE_AMQP_USER FAKE_AMQP_PASSWORD FAKE_KEYCLOAK_ADMIN_PASSWORD
+    unset POSTGRES_PWD RABBIT_PWD RABBIT_ERLANG_COOKIE KEYCLOAK_PWD
+    unset FAKE_POSTGRES_USER FAKE_POSTGRES_PASSWORD FAKE_AMQP_USER FAKE_AMQP_PASSWORD FAKE_AMQP_ERLANG_COOKIE FAKE_KEYCLOAK_ADMIN_PASSWORD
 
     if [ "${apply_status[0]}" -ne 0 ]; then
         echo -e "\n${RED}Error rendering the Fake SecretStore values${NOCOLOR}"
@@ -908,6 +919,7 @@ auth:
   username:
   existingSecret: lamassu-amqp
   existingPasswordKey: password
+  existingErlangCookieKey: erlang-cookie
 EOF
 
    export RABBIT_USER=$RABBIT_USER
@@ -1899,4 +1911,6 @@ EOF
     fi
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
