@@ -67,19 +67,27 @@ postgres:
   port: 5432
   # -- Log level used by components that connect to PostgreSQL for their storage layer
   logLevel: "info"
-  # -- Username to be used to authenticate with the PostgreSQL server
-  username: ""
-  # -- Password to be used to authenticate with the PostgreSQL server
-  password: ""
+  # -- Existing Secret containing PostgreSQL credentials. Must exist in the release namespace.
+  #    Values-file authors must be trusted for namespace Secrets because this reference
+  #    can cause the selected key to be injected into the workload configuration.
+  existingSecret: "lamassu-postgres"
+  # -- Secret data key containing the PostgreSQL username.
+  usernameKey: username
+  # -- Secret data key containing the PostgreSQL password.
+  passwordKey: password
 amqp:
   # -- Hostname for the AMQP server
   hostname: ""
   # -- Port for the AMQP server
   port: 5672
-  # -- Username to be used to authenticate with the AMQP server
-  username: ""
-  # -- Password to be used to authenticate with the AMQP server
-  password: ""
+  # -- Existing Secret containing AMQP credentials. Must exist in the release namespace.
+  #    Values-file authors must be trusted for namespace Secrets because this reference
+  #    can cause the selected key to be injected into the workload configuration.
+  existingSecret: "lamassu-amqp"
+  # -- Secret data key containing the AMQP username.
+  usernameKey: username
+  # -- Secret data key containing the AMQP password.
+  passwordKey: password
   # -- Enable AMQP over TLS (AMQPS). Set `port` to the broker's TLS listener port if it differs from `5672`.
   tls: false
   ca:
@@ -192,6 +200,10 @@ serviceDefaults:
   imagePullSecrets: []
   # -- Pod-level security context.
   podSecurityContext:
+    # -- Filesystem group used by non-root init containers and workloads to share generated files.
+    fsGroup: 65532
+    # -- Avoid recursively changing existing volume ownership when the root directory already matches fsGroup.
+    fsGroupChangePolicy: OnRootMismatch
     seccompProfile:
       type: RuntimeDefault
   # -- Container-level security context. Owned distroless images run with their
@@ -413,10 +425,14 @@ services:
       insecure: false
       # -- use TLS for the SMTP connection
       enable_ssl: true
-      # -- SMTP server username
-      username: ""
-      # -- SMTP server password
-      password: ""
+      # -- Existing Secret containing SMTP credentials. Leave empty when SMTP authentication is not used.
+      #    Values-file authors must be trusted for namespace Secrets because this reference
+      #    can cause the selected key to be injected into the Alerts configuration.
+      existingSecret: ""
+      # -- Secret data key containing the SMTP username.
+      usernameKey: username
+      # -- Secret data key containing the SMTP password.
+      passwordKey: password
       # -- SMTP server hostname
       host: ""
       # -- SMTP server port
@@ -432,8 +448,9 @@ services:
     insecureSkipJwtVerify: false
     # -- PostgreSQL database name for authz principals, grants, and policies
     database: authz
-    # -- Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials.
-      # e.g. credentials: { pki: { database: pki_db } }
+    # -- Map of schema names to database names and optional per-schema PostgreSQL credential Secret references.
+    #    Omit existingSecret to use postgres.existingSecret and its configured keys.
+    #    e.g. credentials: { pki: { database: pki, existingSecret: authz-pki-db } }
     credentials: {}
     # -- Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids}
     # Seeded by the pre-install/pre-upgrade database Job, after the policies are

@@ -29,13 +29,15 @@ spec:
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           securityContext:
             {{- toYaml .Values.serviceDefaults.securityContext | nindent 12 }}
+          env:
+            {{- include "lamassu.configCredentialEnv" (dict "root" $ "includeSmtp" false) | nindent 12 }}
           volumeMounts:
-            - name: kms-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
               readOnly: true
       volumes:
-        - name: kms-config
+        - name: config
           projected:
             sources:
               # Optional because this hook runs before the release-scoped ConfigMap

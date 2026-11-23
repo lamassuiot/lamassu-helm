@@ -26,8 +26,6 @@ data:
       provider: "postgres"
       hostname: {{ .Values.postgres.hostname }}
       port: {{ .Values.postgres.port }}
-      username: "{{ .Values.postgres.username }}"
-      password: "{{ .Values.postgres.password }}"
       database: {{ $authzDB }}
     jwks_url: {{ $authz.jwkUrl }}
     insecure_skip_jwt_verify: true
@@ -81,9 +79,15 @@ spec:
               drop: ["ALL"]
           env:
             - name: POSTGRES_USER
-              value: "{{ .Values.postgres.username }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | quote }}
+                  key: {{ .Values.postgres.usernameKey | quote }}
             - name: POSTGRES_PASSWORD
-              value: "{{ .Values.postgres.password }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | quote }}
+                  key: {{ .Values.postgres.passwordKey | quote }}
             - name: POSTGRES_HOST
               value: "{{ .Values.postgres.hostname }}"
           command: ["bash", "-c"]
@@ -294,11 +298,20 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          env:
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.existingSecret | quote }}
+                  key: {{ $.Values.postgres.usernameKey | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgres.existingSecret | quote }}
+                  key: {{ $.Values.postgres.passwordKey | quote }}
           args:
             - >-
               host={{ $.Values.postgres.hostname }}
-              user={{ $.Values.postgres.username }}
-              password={{ $.Values.postgres.password }}
               dbname=pki
               search_path={{ $schema }}
               port={{ $.Values.postgres.port }}
@@ -315,14 +328,18 @@ spec:
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           securityContext:
             {{- toYaml $authzSvc.securityContext | nindent 12 }}
+          env:
+            {{- include "lamassu.authzDatabaseCredentialEnv" $ | nindent 12 }}
+            {{- include "lamassu.authzCredentialEnv" $ | nindent 12 }}
           # The image declares the binary as CMD with no ENTRYPOINT, so args
           # alone would replace it instead of adding to it.
           command: ["/authz"]
           args: ["init"]
           volumeMounts:
-            - name: authz-init-config
+            - name: authz-config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
         {{- end }}
 
       containers:
@@ -335,7 +352,7 @@ spec:
           command: ["bash", "-c", "echo 'Database upgrade completed.'"]
       {{- if $authzImage }}
       volumes:
-        - name: authz-init-config
+        - name: authz-config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "authz-init-config") }}
       {{- end }}

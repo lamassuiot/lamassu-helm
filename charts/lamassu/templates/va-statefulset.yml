@@ -61,6 +61,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
+            {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
             - name: TMPDIR
               value: {{ $storageDir | quote }}
             {{- with $svc.extraEnv }}
@@ -74,9 +75,10 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: api-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             {{- if $isLocal }}
             - name: local-crl-file-storage
               mountPath: {{ $storageDir }}
@@ -87,7 +89,7 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        - name: api-config
+        - name: config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "va-config") }}
         {{- include "lamassu.amqpVolumes" $ | nindent 8 }}

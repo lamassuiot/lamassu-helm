@@ -39,8 +39,11 @@ annotations:
 {{- if hasKey . "podSecurityContext" -}}
 {{- $securityContext = deepCopy .podSecurityContext -}}
 {{- end -}}
-{{- if and .root.Values.amqp.client.secretName (not (hasKey $securityContext "fsGroup")) -}}
+{{- if .root.Values.amqp.client.secretName -}}
+{{- $preserveFsGroup := and (hasKey $securityContext "fsGroup") (ne (int $securityContext.fsGroup) 65532) -}}
+{{- if not $preserveFsGroup -}}
 {{- $_ := set $securityContext "fsGroup" (dig "runAsGroup" 65532 (.svc.securityContext | default dict)) -}}
+{{- end -}}
 {{- end -}}
 {{- with $securityContext }}
 securityContext:
@@ -83,6 +86,101 @@ securityContext:
         path: tls.crt
       - key: {{ $.Values.amqp.client.privateKeyKey | quote }}
         path: tls.key
+{{- end }}
+{{- end -}}
+
+{{/*
+Expose the credential environment variables expected by lamassuiot's config
+loader. The application receives Secret-backed values directly; the ConfigMap
+contains only non-secret configuration.
+*/}}
+{{- define "lamassu.configCredentialEnv" -}}
+{{- $root := .root | default . -}}
+{{- $includePostgres := true -}}
+{{- $includeAmqp := true -}}
+{{- $includeSmtp := false -}}
+{{- if hasKey . "includePostgres" }}{{ $includePostgres = .includePostgres }}{{ end -}}
+{{- if hasKey . "includeAmqp" }}{{ $includeAmqp = .includeAmqp }}{{ end -}}
+{{- if hasKey . "includeSmtp" }}{{ $includeSmtp = .includeSmtp }}{{ end -}}
+{{- if $includePostgres }}
+- name: LAMASSU_POSTGRES_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.usernameKey | quote }}
+- name: LAMASSU_POSTGRES_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.passwordKey | quote }}
+{{- end }}
+{{- if $includeAmqp }}
+- name: LAMASSU_AMQP_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.amqp.existingSecret | quote }}
+      key: {{ $root.Values.amqp.usernameKey | quote }}
+- name: LAMASSU_AMQP_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.amqp.existingSecret | quote }}
+      key: {{ $root.Values.amqp.passwordKey | quote }}
+{{- end }}
+{{- if $includeSmtp }}
+- name: LAMASSU_SMTP_USERNAME
+  {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
+      key: {{ $root.Values.services.alerts.smtp_server.usernameKey | quote }}
+  {{- else }}
+  value: ""
+  {{- end }}
+- name: LAMASSU_SMTP_PASSWORD
+  {{- if $root.Values.services.alerts.smtp_server.existingSecret }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.services.alerts.smtp_server.existingSecret | quote }}
+      key: {{ $root.Values.services.alerts.smtp_server.passwordKey | quote }}
+  {{- else }}
+  value: ""
+  {{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "lamassu.authzDatabaseCredentialEnv" -}}
+{{- $root := .root | default . -}}
+- name: LAMASSU_AUTHZ_DB_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.usernameKey | quote }}
+- name: LAMASSU_AUTHZ_DB_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.postgres.existingSecret | quote }}
+      key: {{ $root.Values.postgres.passwordKey | quote }}
+{{- end -}}
+
+{{- define "lamassu.authzCredentialEnv" -}}
+{{- $root := .root | default . -}}
+{{- $names := dict -}}
+{{- range $schema, $credential := $root.Values.services.authz.credentials }}
+{{- $envPart := upper (regexReplaceAll "[^[:alnum:]]" $schema "_") -}}
+{{- if hasKey $names $envPart }}
+{{- fail (printf "authz credential schemas %q and %q produce the same environment variable name" (get $names $envPart) $schema) -}}
+{{- end }}
+{{- $_ := set $names $envPart $schema -}}
+{{- $secretName := $credential.existingSecret | default $root.Values.postgres.existingSecret -}}
+{{- $usernameKey := $credential.usernameKey | default $root.Values.postgres.usernameKey -}}
+{{- $passwordKey := $credential.passwordKey | default $root.Values.postgres.passwordKey -}}
+{{- range $field := list "username" "password" }}
+- name: LAMASSU_AUTHZ_CREDENTIALS_{{ $envPart }}_{{ upper $field }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName | quote }}
+      key: {{ if eq $field "username" }}{{ $usernameKey | quote }}{{ else }}{{ $passwordKey | quote }}{{ end }}
+{{- end }}
 {{- end }}
 {{- end -}}
 

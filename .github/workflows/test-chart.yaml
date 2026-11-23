@@ -97,6 +97,173 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify Secret-backed credentials
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            >/tmp/lamassu-default-rendered.yaml
+          for smtp_variable in LAMASSU_SMTP_USERNAME LAMASSU_SMTP_PASSWORD; do
+            if ! grep -A1 -F "name: $smtp_variable" /tmp/lamassu-default-rendered.yaml |
+              grep -Fq 'value: ""'; then
+              echo "Unauthenticated SMTP must render an empty string for $smtp_variable"
+              exit 1
+            fi
+          done
+
+          cat >/tmp/lamassu-secret-values.yaml <<'EOF'
+          postgres:
+            existingSecret: lamassu-postgres
+          amqp:
+            existingSecret: lamassu-amqp
+          services:
+            alerts:
+              smtp_server:
+                existingSecret: lamassu-smtp
+          EOF
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-secret-values.yaml \
+            >/tmp/lamassu-secret-rendered.yaml
+
+          grep -q 'name: "lamassu-postgres"' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: "lamassu-amqp"' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: "lamassu-smtp"' /tmp/lamassu-secret-rendered.yaml
+          ! grep -q '__LAMASSU_' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: LAMASSU_POSTGRES_PASSWORD' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: LAMASSU_AMQP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
+          grep -q 'name: LAMASSU_SMTP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --set services.authz.credentials.pki.database=pki \
+            >/tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_CREDENTIALS_PKI_USERNAME' \
+            /tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_CREDENTIALS_PKI_PASSWORD' \
+            /tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_DB_USERNAME' /tmp/lamassu-authz-credentials-rendered.yaml
+          grep -q 'name: LAMASSU_AUTHZ_DB_PASSWORD' /tmp/lamassu-authz-credentials-rendered.yaml
+
+          cat >/tmp/lamassu-authz-schema-secret-values.yaml <<'EOF'
+          postgres:
+            existingSecret: lamassu-postgres
+            usernameKey: db-user
+            passwordKey: db-password
+          services:
+            authz:
+              credentials:
+                pki:
+                  database: pki
+                  existingSecret: lamassu-authz-pki
+                  usernameKey: login
+                  passwordKey: secret
+                authz:
+                  database: authz
+          EOF
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-authz-schema-secret-values.yaml \
+            >/tmp/lamassu-authz-schema-secret-rendered.yaml
+
+          assert_authz_secret_ref() {
+            local env_name="$1" secret_name="$2" secret_key="$3"
+            local env_block
+            env_block=$(grep -F -A5 -- "- name: $env_name" /tmp/lamassu-authz-schema-secret-rendered.yaml)
+            test "$(grep -Fc "name: \"$secret_name\"" <<<"$env_block")" -eq 2
+            test "$(grep -Fc "key: \"$secret_key\"" <<<"$env_block")" -eq 2
+          }
+
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_PKI_USERNAME lamassu-authz-pki login
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_PKI_PASSWORD lamassu-authz-pki secret
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_AUTHZ_USERNAME lamassu-postgres db-user
+          assert_authz_secret_ref LAMASSU_AUTHZ_CREDENTIALS_AUTHZ_PASSWORD lamassu-postgres db-password
+
+          # Legacy inline credentials must be rejected by the values schema.
+          cat >/tmp/lamassu-inline-credentials.yaml <<'EOF'
+          postgres:
+            hostname: postgresql
+            username: fallback-postgres-user
+            password: fallback-postgres-password
+          amqp:
+            hostname: rabbitmq
+            username: fallback-amqp-user
+            password: fallback-amqp-password
+          services:
+            alerts:
+              smtp_server:
+                username: fallback-smtp-user
+                password: fallback-smtp-password
+          EOF
+          if helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-inline-credentials.yaml \
+            >/tmp/lamassu-inline-credentials-rendered.yaml 2>/tmp/lamassu-inline-credentials-error.txt; then
+            echo "The chart accepted legacy inline credentials"
+            exit 1
+          fi
+          grep -Eq 'username|password' /tmp/lamassu-inline-credentials-error.txt
+
+          cat >/tmp/lamassu-authz-inline-credentials.yaml <<'EOF'
+          services:
+            authz:
+              credentials:
+                pki:
+                  database: pki
+                  username: inline-user
+                  password: inline-password
+          EOF
+          if helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-authz-inline-credentials.yaml \
+            >/tmp/lamassu-authz-inline-credentials-rendered.yaml 2>/tmp/lamassu-authz-inline-credentials-error.txt; then
+            echo "The chart accepted inline Authz schema credentials"
+            exit 1
+          fi
+          grep -Eq 'username|password' /tmp/lamassu-authz-inline-credentials-error.txt
+
+          cat >/tmp/lamassu-inline-credentials-bypass.yaml <<'EOF'
+          postgres:
+            existingSecret: ""
+            username: INLINE_POSTGRES_USERNAME
+            password: INLINE_POSTGRES_PASSWORD
+          amqp:
+            existingSecret: ""
+            username: INLINE_AMQP_USERNAME
+            password: INLINE_AMQP_PASSWORD
+          services:
+            alerts:
+              smtp_server:
+                existingSecret: ""
+                username: INLINE_SMTP_USERNAME
+                password: INLINE_SMTP_PASSWORD
+          EOF
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            --skip-schema-validation \
+            -f /tmp/lamassu-inline-credentials-bypass.yaml \
+            >/tmp/lamassu-inline-credentials-bypass-rendered.yaml
+          if grep -Eq 'INLINE_(POSTGRES|AMQP|SMTP)_(USERNAME|PASSWORD)' \
+            /tmp/lamassu-inline-credentials-bypass-rendered.yaml; then
+            echo "A template rendered an inline credential when schema validation was skipped"
+            exit 1
+          fi
+
+          migration_job=$(awk '
+            /^kind: Job$/ { in_job=1 }
+            in_job && /^  name: lamassu-db-migration$/ { found=1 }
+            found { print }
+            found && /^---$/ { exit }
+          ' /tmp/lamassu-secret-rendered.yaml)
+          if grep -Eq '^[[:space:]]*- name: LAMASSU_(AMQP|SMTP)_(USERNAME|PASSWORD)$' <<<"$migration_job"; then
+            echo "Database migration received unrelated AMQP or SMTP credentials"
+            exit 1
+          fi
+
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
         run: |
@@ -255,7 +422,22 @@ jobs:
           kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
           kubectl create namespace lamassu-test
-          helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml --wait --timeout 600s
+          ci_db_password=$(openssl rand -hex 24)
+          kubectl create secret generic lamassu-postgres \
+            --from-literal=username=admin \
+            --from-literal=password="$ci_db_password" \
+            -n lamassu-test
+          kubectl create secret generic lamassu-amqp \
+            --from-literal=username=admin \
+            --from-literal=password="$ci_db_password" \
+            -n lamassu-test
+          kubectl create secret generic lamassu-smtp \
+            --from-literal=username=smtp-ci \
+            --from-literal=password="$ci_db_password" \
+            -n lamassu-test
+          helm install postgres oci://registry-1.docker.io/cloudpirates/postgres --version 0.19.5 -n lamassu-test -f .github/ci/postgres.yaml \
+            --set-string auth.password="$ci_db_password" \
+            --wait --timeout 600s
 
           # CRITICAL: Wait for PostgreSQL to be fully ready before proceeding
           echo "Waiting for PostgreSQL to be fully operational..."
@@ -263,16 +445,23 @@ jobs:
 
           # Verify databases are created and PostgreSQL is accepting connections
           echo "Verifying PostgreSQL databases are initialized..."
-          kubectl run pg-check --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test -- \
-            psql "postgresql://admin:admin@postgresql:5432/auth" -c "SELECT 1" || \
+          pg_password="$ci_db_password"
+          kubectl run pg-check --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test \
+            --env="PGPASSWORD=$pg_password" -- \
+            psql -h postgresql -U admin -d auth -c "SELECT 1" || \
             (echo "Database not ready, waiting longer..." && sleep 30 && \
-             kubectl run pg-check-retry --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test -- \
-             psql "postgresql://admin:admin@postgresql:5432/auth" -c "SELECT 1")
+             kubectl run pg-check-retry --image=docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4 --rm -i --restart=Never -n lamassu-test \
+             --env="PGPASSWORD=$pg_password" -- \
+             psql -h postgresql -U admin -d auth -c "SELECT 1")
 
           echo "PostgreSQL is ready and databases are accessible"
 
-          helm install auth oci://registry-1.docker.io/cloudpirates/keycloak --version 0.21.9 -n lamassu-test -f .github/ci/keycloak.yaml --wait --timeout 600s
-          helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq --version 0.21.4 -n lamassu-test -f .github/ci/rabbitmq.yaml --wait --timeout 300s
+          helm install auth oci://registry-1.docker.io/cloudpirates/keycloak --version 0.21.9 -n lamassu-test -f .github/ci/keycloak.yaml \
+            --set-string database.password="$ci_db_password" \
+            --wait --timeout 600s
+          helm install rabbitmq oci://registry-1.docker.io/cloudpirates/rabbitmq --version 0.21.4 -n lamassu-test -f .github/ci/rabbitmq.yaml \
+            --set-string auth.password="$ci_db_password" \
+            --wait --timeout 300s
 
       - name: Prepare SoftHSM for PKCS11 CI test
         if: steps.list-changed.outputs.changed == 'true'

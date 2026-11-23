@@ -39,8 +39,9 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $svc.extraEnv }}
           env:
+            {{- include "lamassu.configCredentialEnv" (dict "root" $ "includeSmtp" true) | nindent 12 }}
+          {{- with $svc.extraEnv }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
@@ -51,16 +52,17 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: api-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
           ports:
             - containerPort: {{ $svc.port }}
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        - name: api-config
+        - name: config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "alerts-config") }}
         {{- include "lamassu.amqpVolumes" $ | nindent 8 }}

@@ -30,11 +30,12 @@ Kubernetes: `>=1.24.0-0`
 | amqp.client.certificateKey | string | `"tls.crt"` | Secret data key containing the client certificate in PEM format. |
 | amqp.client.privateKeyKey | string | `"tls.key"` | Secret data key containing the client private key in PEM format. |
 | amqp.client.secretName | string | `""` | Existing Secret in the release namespace containing the client certificate and private key for AMQP mutual TLS. Leave empty when the broker does not require a client certificate. |
+| amqp.existingSecret | string | `"lamassu-amqp"` | Existing Secret containing AMQP credentials. Must exist in the release namespace.    Values-file authors must be trusted for namespace Secrets because this reference    can cause the selected key to be injected into the workload configuration. |
 | amqp.hostname | string | `""` | Hostname for the AMQP server |
-| amqp.password | string | `""` | Password to be used to authenticate with the AMQP server |
+| amqp.passwordKey | string | `"password"` | Secret data key containing the AMQP password. |
 | amqp.port | int | `5672` | Port for the AMQP server |
 | amqp.tls | bool | `false` | Enable AMQP over TLS (AMQPS). Set `port` to the broker's TLS listener port if it differs from `5672`. |
-| amqp.username | string | `""` | Username to be used to authenticate with the AMQP server |
+| amqp.usernameKey | string | `"username"` | Secret data key containing the AMQP username. |
 | auth.externalAuthorization.enabled | bool | `true` | Protect routes labeled auth=external with Envoy Gateway external authorization. |
 | auth.externalAuthorization.failOpen | bool | `false` | Allow traffic when the external authorization service cannot be reached. |
 | auth.externalAuthorization.path | string | `"/v1/ext_authz/check"` | HTTP path that replaces the original request path for the external authorization check. Requires Envoy Gateway v1.8.0+. |
@@ -80,16 +81,17 @@ Kubernetes: `>=1.24.0-0`
 | observability.traces.hostname | string | `"otel-collector"` |  |
 | observability.traces.port | int | `4318` | OTLP HTTP port exposed by the OTel Collector |
 | observability.traces.scheme | string | `"http"` | Scheme for the OTLP traces endpoint (http | https) |
+| postgres.existingSecret | string | `"lamassu-postgres"` | Existing Secret containing PostgreSQL credentials. Must exist in the release namespace.    Values-file authors must be trusted for namespace Secrets because this reference    can cause the selected key to be injected into the workload configuration. |
 | postgres.hostname | string | `""` | Hostname for the PostgreSQL server |
 | postgres.logLevel | string | `"info"` | Log level used by components that connect to PostgreSQL for their storage layer |
-| postgres.password | string | `""` | Password to be used to authenticate with the PostgreSQL server |
+| postgres.passwordKey | string | `"password"` | Secret data key containing the PostgreSQL password. |
 | postgres.port | int | `5432` | Port for the PostgreSQL server |
-| postgres.username | string | `""` | Username to be used to authenticate with the PostgreSQL server |
+| postgres.usernameKey | string | `"username"` | Secret data key containing the PostgreSQL username. |
 | serviceAccount.annotations | object | `{}` | Annotations added to the generated ServiceAccount. |
 | serviceAccount.automountServiceAccountToken | bool | `false` | Mount the Kubernetes API token into Lamassu pods. |
 | serviceAccount.create | bool | `true` | Create a dedicated ServiceAccount for Lamassu workloads. |
 | serviceAccount.name | string | `""` | ServiceAccount name. Defaults to the release-scoped chart name when create=true, otherwise default. |
-| serviceDefaults | object | `{"affinity":{},"annotations":{},"autoscaling":{"enabled":false,"maxReplicas":5,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":80},"extraEnv":[],"imagePullSecrets":[],"labels":{},"livenessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":10,"path":"/health","periodSeconds":10,"successThreshold":1,"timeoutSeconds":5},"nodeSelector":{},"pdb":{"minAvailable":1},"podAnnotations":{},"podLabels":{},"podSecurityContext":{"seccompProfile":{"type":"RuntimeDefault"}},"port":8085,"readinessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":3,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"replicaCount":1,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532},"startupProbe":{"enabled":true,"failureThreshold":60,"initialDelaySeconds":0,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"tolerations":[],"topologySpreadConstraints":[]}` | Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts, deviceManager, dmsManager, authz, wfx and aws connector instances). Any key here can be overridden per service under `services.<name>` — the per-service block is deep-merged on top of these defaults. Maps are merged key by key; lists (tolerations, topologySpreadConstraints, extraEnv, ...) replace the default wholesale. |
+| serviceDefaults | object | `{"affinity":{},"annotations":{},"autoscaling":{"enabled":false,"maxReplicas":5,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":80},"extraEnv":[],"imagePullSecrets":[],"labels":{},"livenessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":10,"path":"/health","periodSeconds":10,"successThreshold":1,"timeoutSeconds":5},"nodeSelector":{},"pdb":{"minAvailable":1},"podAnnotations":{},"podLabels":{},"podSecurityContext":{"fsGroup":65532,"fsGroupChangePolicy":"OnRootMismatch","seccompProfile":{"type":"RuntimeDefault"}},"port":8085,"readinessProbe":{"enabled":true,"failureThreshold":3,"initialDelaySeconds":3,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"replicaCount":1,"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":false,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532},"startupProbe":{"enabled":true,"failureThreshold":60,"initialDelaySeconds":0,"path":"/health","periodSeconds":5,"successThreshold":1,"timeoutSeconds":5},"tolerations":[],"topologySpreadConstraints":[]}` | Generic defaults applied to every Lamassu service (ca, kms, va, ui, alerts, deviceManager, dmsManager, authz, wfx and aws connector instances). Any key here can be overridden per service under `services.<name>` — the per-service block is deep-merged on top of these defaults. Maps are merged key by key; lists (tolerations, topologySpreadConstraints, extraEnv, ...) replace the default wholesale. |
 | serviceDefaults.affinity | object | `{}` | Pod affinity configuration. |
 | serviceDefaults.annotations | object | `{}` | Extra annotations for the Deployment/StatefulSet |
 | serviceDefaults.autoscaling.enabled | bool | `false` | Enable a HorizontalPodAutoscaler for the service |
@@ -101,7 +103,9 @@ Kubernetes: `>=1.24.0-0`
 | serviceDefaults.pdb.minAvailable | int | `1` | minAvailable for PodDisruptionBudget. Only active when effective replica count > 1. |
 | serviceDefaults.podAnnotations | object | `{}` | Extra annotations for the pods |
 | serviceDefaults.podLabels | object | `{}` | Extra labels for the pods only |
-| serviceDefaults.podSecurityContext | object | `{"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level security context. |
+| serviceDefaults.podSecurityContext | object | `{"fsGroup":65532,"fsGroupChangePolicy":"OnRootMismatch","seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level security context. |
+| serviceDefaults.podSecurityContext.fsGroup | int | `65532` | Filesystem group used by non-root init containers and workloads to share generated files. |
+| serviceDefaults.podSecurityContext.fsGroupChangePolicy | string | `"OnRootMismatch"` | Avoid recursively changing existing volume ownership when the root directory already matches fsGroup. |
 | serviceDefaults.port | int | `8085` | HTTP port the service listens on (also used for Service, probes and gateway routes) |
 | serviceDefaults.readinessProbe.enabled | bool | `true` | Enable the readiness probe. |
 | serviceDefaults.replicaCount | int | `1` | Number of replicas. Ignored when autoscaling is enabled. |
@@ -113,14 +117,15 @@ Kubernetes: `>=1.24.0-0`
 | services.alerts.autoscaling.maxReplicas | int | `3` |  |
 | services.alerts.image | string | `"ghcr.io/lamassuiot/lamassu-alerts:dev-v4"` | Docker image for the Alerts component |
 | services.alerts.smtp_server.enable_ssl | bool | `true` | use TLS for the SMTP connection |
+| services.alerts.smtp_server.existingSecret | string | `""` | Existing Secret containing SMTP credentials. Leave empty when SMTP authentication is not used.    Values-file authors must be trusted for namespace Secrets because this reference    can cause the selected key to be injected into the Alerts configuration. |
 | services.alerts.smtp_server.from | string | `""` | email address to use as the sender of the alerts |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
 | services.alerts.smtp_server.insecure | bool | `false` | skip TLS verification |
-| services.alerts.smtp_server.password | string | `""` | SMTP server password |
+| services.alerts.smtp_server.passwordKey | string | `"password"` | Secret data key containing the SMTP password. |
 | services.alerts.smtp_server.port | int | `25` | SMTP server port |
-| services.alerts.smtp_server.username | string | `""` | SMTP server username |
+| services.alerts.smtp_server.usernameKey | string | `"username"` | Secret data key containing the SMTP username. |
 | services.authz.bootstrap | list | `[{"auth_config":{"claims":[{"claim":"realm_access.roles","operator":"contains","value":"pki-admin"}]},"policy_ids":["lamassu.a6811b60-5f89-4ce7-badb-78ea234794d3","lamassu.7df018c1-3140-4a35-9067-2e7d6cec3ed2"],"principal_id":"oidc:pki-admin","principal_name":"PKI Admin","principal_type":"oidc"}]` | Bootstrap entries: list of {principal_id, principal_name, principal_type, auth_config, policy_ids} Seeded by the pre-install/pre-upgrade database Job, after the policies are preloaded. Creating a principal that already exists is a no-op, so these entries are safe to leave in place across upgrades.  The default grants full access to anyone whose OIDC token carries the "pki-admin" realm role. Without it a fresh install — and an upgrade from 3.8.0, where authz did not exist — comes up with no principals at all and nobody able to administer the PKI. Assign that role deliberately in the identity provider, or replace this entry with your own matching rule. |
-| services.authz.credentials | object | `{}` | Map of schema name to database name for per-schema Postgres credentials. Uses global postgres credentials. e.g. credentials: { pki: { database: pki_db } } |
+| services.authz.credentials | object | `{}` | Map of schema names to database names and optional per-schema PostgreSQL credential Secret references.    Omit existingSecret to use postgres.existingSecret and its configured keys.    e.g. credentials: { pki: { database: pki, existingSecret: authz-pki-db } } |
 | services.authz.database | string | `"authz"` | PostgreSQL database name for authz principals, grants, and policies |
 | services.authz.image | string | `"ghcr.io/lamassuiot/lamassu-authz:dev-v4"` | Docker image for the Authz connector component |
 | services.authz.insecureSkipJwtVerify | bool | `false` | Skip OIDC JWT signature verification in authz. Unset/false keeps verification ON against services.authz.jwkUrl (production). true is for development/testing only: tokens are parsed without checking signatures. |

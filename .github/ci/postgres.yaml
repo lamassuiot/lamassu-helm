@@ -7,7 +7,8 @@ image:
 
 auth:
   username: admin
-  password: admin
+  # CI supplies the password with --set-string in .github/workflows/test-chart.yaml.
+  password: ""
 
 
 initdb:

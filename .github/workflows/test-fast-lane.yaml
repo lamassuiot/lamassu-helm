@@ -47,6 +47,15 @@ jobs:
       - name: Run fast lane
         run: |
           ./scripts/lamassu-fast-lane.sh -n -ns lamassu-ci -d ci.lamassu.io -l ./charts/lamassu
+          for external_secret in lamassu-postgres lamassu-amqp lamassu-keycloak-admin; do
+            kubectl wait --for=condition=Ready "externalsecret/$external_secret" \
+              -n lamassu-ci --timeout=2m
+            kubectl get secret "$external_secret" -n lamassu-ci >/dev/null
+          done
+          yq -e '.postgres.existingSecret == "lamassu-postgres" and .postgres.username == null and .postgres.password == null and .amqp.existingSecret == "lamassu-amqp" and .amqp.username == null and .amqp.password == null and .services.authz.credentials.pki.existingSecret == "lamassu-postgres" and .services.authz.credentials.pki.username == null and .services.authz.credentials.pki.password == null and .services.authz.credentials.authz.existingSecret == "lamassu-postgres" and .services.authz.credentials.authz.username == null and .services.authz.credentials.authz.password == null' lamassu.yaml >/dev/null
+          yq -e '.auth.existingSecret == "lamassu-postgres" and .auth.secretKeys.adminPasswordKey == "password" and .auth.password == null' postgres.yaml >/dev/null
+          yq -e '.auth.existingSecret == "lamassu-amqp" and .auth.existingPasswordKey == "password" and .auth.password == null' rabbitmq.yaml >/dev/null
+          yq -e '.database.existingSecret == "lamassu-postgres" and .database.secretKeys.usernameKey == "username" and .database.secretKeys.passwordKey == "password" and .database.username == null and .database.password == null and .keycloak.existingSecret == "lamassu-keycloak-admin" and .keycloak.secretKeys.adminPasswordKey == "admin-password" and .keycloak.adminPassword == null' keycloak.yaml >/dev/null
       - name: Show info
         run: |
           kubectl get pods -A

@@ -78,8 +78,9 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $svc.extraEnv }}
           env:
+            {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
+          {{- with $svc.extraEnv }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
@@ -90,9 +91,10 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: api-config
+            - name: config
               mountPath: /etc/lamassuiot/config.yml
               subPath: config
+              readOnly: true
             - name: cert-output
               mountPath: /shared
             {{- include "lamassu.amqpVolumeMounts" $ | nindent 12 }}
@@ -101,7 +103,7 @@ spec:
       restartPolicy: Always
       {{- include "lamassu.podPlacement" (dict "svc" $svc) | nindent 6 }}
       volumes:
-        - name: api-config
+        - name: config
           configMap:
             name: {{ include "lamassu.componentName" (dict "root" $ "component" "dms-manager-config") }}
         - name: cert-input

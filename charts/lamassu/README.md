@@ -34,8 +34,13 @@ operator.
 > **Upgrade notice:** this version changes chart-owned resource names to the
 > release-scoped form `<release>-lamassu-<component>`. StatefulSet PVCs are not
 > renamed by Kubernetes; plan a data migration or bind existing data before an
-> in-place upgrade. AWS connectors are now configured as a map keyed by their
-> stable connector ID instead of a list containing `id` fields.
+> in-place upgrade. The default pod `fsGroup` is `65532`; Kubernetes may apply
+> that group to mounted volumes such as VA CRL and KMS crypto-engine storage.
+> `fsGroupChangePolicy: OnRootMismatch` limits recursive ownership changes when
+> the volume root already has the expected group, but operators should still
+> verify access for backup helpers or jobs using a different GID. AWS connectors
+> are now configured as a map keyed by their stable connector ID instead of a
+> list containing `id` fields.
 
 ## AMQP TLS
 
@@ -64,6 +69,189 @@ amqp:
   client:
     secretName: lamassu-amqp-client
 ```
+
+## Secret management
+
+The chart consumes Kubernetes Secrets in the Lamassu release namespace. Use
+`existingSecret` and key names in Helm values; do not put passwords in the
+values file. The database migration hook needs its Secrets before Helm starts,
+so wait for ESO synchronization before `helm install` or `helm upgrade`.
+
+The chart does not install ESO or configure a provider. The example below uses
+ESO's Fake provider for local testing; the sample values are stored in the
+`ClusterSecretStore` and must not be used in production.
+
+### Install ESO and create test Secrets
+
+Install ESO and its CRDs:
+
+```bash
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+helm upgrade --install external-secrets external-secrets/external-secrets \
+  --version 0.20.2 \
+  --namespace external-secrets --create-namespace \
+  --set installCRDs=true \
+  --wait --timeout 5m
+```
+
+Create the release namespace:
+
+```bash
+kubectl create namespace lamassu --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Apply one Fake `ClusterSecretStore` and two `ExternalSecret` resources. Use
+sample credentials that match the PostgreSQL and RabbitMQ services in your test
+environment:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: lamassu-example-fake
+spec:
+  provider:
+    fake:
+      data:
+        - key: /lamassu/postgres/username
+          value: "admin"
+        - key: /lamassu/postgres/password
+          value: "test-postgres-password"
+        - key: /lamassu/amqp/username
+          value: "admin"
+        - key: /lamassu/amqp/password
+          value: "test-amqp-password"
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: lamassu-postgres
+  namespace: lamassu
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: lamassu-example-fake
+    kind: ClusterSecretStore
+  target:
+    name: lamassu-postgres
+    creationPolicy: Owner
+  data:
+    - secretKey: username
+      remoteRef:
+        key: /lamassu/postgres/username
+    - secretKey: password
+      remoteRef:
+        key: /lamassu/postgres/password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: lamassu-amqp
+  namespace: lamassu
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: lamassu-example-fake
+    kind: ClusterSecretStore
+  target:
+    name: lamassu-amqp
+    creationPolicy: Owner
+  data:
+    - secretKey: username
+      remoteRef:
+        key: /lamassu/amqp/username
+    - secretKey: password
+      remoteRef:
+        key: /lamassu/amqp/password
+EOF
+```
+
+Wait for ESO to create both Secrets before installing the chart:
+
+```bash
+for name in lamassu-postgres lamassu-amqp; do
+  kubectl wait --for=condition=Ready "externalsecret/$name" \
+    --namespace lamassu --timeout=2m
+  kubectl get secret "$name" --namespace lamassu
+done
+```
+
+Reference the generated Secrets in your values file. Set the service hostnames
+and ports to match your environment:
+
+```yaml
+postgres:
+  hostname: postgresql
+  existingSecret: lamassu-postgres
+  usernameKey: username
+  passwordKey: password
+
+amqp:
+  hostname: rabbitmq
+  existingSecret: lamassu-amqp
+  usernameKey: username
+  passwordKey: password
+```
+
+Install or upgrade Lamassu after the Secrets are ready:
+
+```bash
+helm upgrade --install lamassu ./charts/lamassu \
+  --namespace lamassu \
+  --values lamassu-values.yaml
+```
+
+This values file configures Lamassu; it does not create database users or
+configure PostgreSQL/RabbitMQ. Configure those services with matching
+credentials. SMTP can use the same pattern with
+`services.alerts.smtp_server.existingSecret`.
+
+For production, replace the Fake store's `provider.fake` block with the
+provider-specific configuration for your ESO `SecretStore` or
+`ClusterSecretStore`; adjust `remoteRef.key` to match that backend. The target
+Secret names and data keys, plus the Lamassu `existingSecret` values, can stay
+the same. See the [ESO provider documentation](https://external-secrets.io/latest/provider/)
+for provider setup. ESO synchronizes credentials; it does not create database
+accounts or configure the services that consume them.
+
+### Per-schema Authz credentials
+
+Authz schema credentials use the global PostgreSQL Secret and key names unless
+overridden. A schema can reference a separate Secret:
+
+```yaml
+services:
+  authz:
+    credentials:
+      pki:
+        database: pki
+        existingSecret: lamassu-authz-pki
+        usernameKey: user
+        passwordKey: pass
+      authz:
+        database: authz
+```
+
+In this example, `pki` uses the `user` and `pass` keys from
+`lamassu-authz-pki`; `authz` inherits the global PostgreSQL Secret. Every
+referenced Secret must exist before the migration hook starts.
+
+### Security and rotation
+
+Kubernetes Secrets require appropriate RBAC and encryption-at-rest
+configuration; authorized namespace users can read them. Lamassu receives
+Secret values through environment variables, so restart affected pods after
+rotation. AWS connector credentials, KMS crypto-engine values, and VA S3
+settings remain ConfigMap-backed and should have appropriate access controls.
+
+### Fast-lane testing
+
+The fast-lane script installs ESO Fake by default and creates test-only
+credentials for its dependencies. Do not use that Fake store in production;
+see the repository
+[fast-lane instructions](../../README.md#option-2-fast-lane-installation).
 
 ## Values
 
@@ -99,13 +287,19 @@ The complete generated values reference is maintained in [VALUES.md](VALUES.md).
 | **Database Configuration** | | | |
 | postgres.hostname | string | `""` | PostgreSQL server hostname |
 | postgres.port | int | `5432` | PostgreSQL server port |
-| postgres.username | string | `""` | PostgreSQL username |
-| postgres.password | string | `""` | PostgreSQL password |
+| postgres.existingSecret | string | `""` | Existing Secret containing PostgreSQL credentials. Prefer this over username/password. |
+| postgres.username | string | `""` | PostgreSQL username fallback for local testing. Prefer existingSecret in shared or production values. |
+| postgres.usernameKey | string | `"username"` | Secret data key containing the PostgreSQL username. |
+| postgres.password | string | `""` | PostgreSQL password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| postgres.passwordKey | string | `"password"` | Secret data key containing the PostgreSQL password. |
 | **Message Queue Configuration** | | | |
 | amqp.hostname | string | `""` | AMQP server hostname |
 | amqp.port | int | `5672` | AMQP server port |
-| amqp.username | string | `""` | AMQP username |
-| amqp.password | string | `""` | AMQP password |
+| amqp.existingSecret | string | `""` | Existing Secret containing AMQP credentials. Prefer this over username/password. |
+| amqp.username | string | `""` | AMQP username fallback for local testing. Prefer existingSecret in shared or production values. |
+| amqp.usernameKey | string | `"username"` | Secret data key containing the AMQP username. |
+| amqp.password | string | `""` | AMQP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| amqp.passwordKey | string | `"password"` | Secret data key containing the AMQP password. |
 | amqp.tls | bool | `false` | Enable AMQP over TLS (AMQPS). Set `port` to the broker's TLS listener port if it differs from `5672`. |
 | amqp.ca.secretName | string | `""` | Existing Secret in the release namespace containing the private CA certificate trusted for the AMQP broker. Leave empty to use system-trusted CAs. |
 | amqp.ca.certificateKey | string | `"ca.crt"` | Secret data key containing the CA certificate in PEM format. |
@@ -225,8 +419,11 @@ This keeps token state, socket ownership, and failure domains isolated.
 | services.alerts.smtp_server.from | string | `""` | Email address for alert sender |
 | services.alerts.smtp_server.host | string | `""` | SMTP server hostname |
 | services.alerts.smtp_server.port | int | `25` | SMTP server port |
-| services.alerts.smtp_server.username | string | `""` | SMTP username |
-| services.alerts.smtp_server.password | string | `""` | SMTP password |
+| services.alerts.smtp_server.existingSecret | string | `""` | Existing Secret containing SMTP credentials. Prefer this over username/password. |
+| services.alerts.smtp_server.username | string | `""` | SMTP username fallback for local testing. Prefer existingSecret in shared or production values. |
+| services.alerts.smtp_server.usernameKey | string | `"username"` | Secret data key containing the SMTP username. |
+| services.alerts.smtp_server.password | string | `""` | SMTP password fallback for local testing. Do not commit plaintext credentials; prefer existingSecret. |
+| services.alerts.smtp_server.passwordKey | string | `"password"` | Secret data key containing the SMTP password. |
 | services.alerts.smtp_server.enable_ssl | bool | `true` | Enable TLS for SMTP connection |
 | services.alerts.smtp_server.insecure | bool | `false` | Skip TLS certificate verification |
 | **Connectivity Test & Migrations** | | | |

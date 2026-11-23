@@ -21,7 +21,8 @@ database:
   host: "postgresql"
   port: "5432"
   username: "admin"
-  password: "admin"
+  # CI supplies the password with --set-string in .github/workflows/test-chart.yaml.
+  password: ""
   name: auth
 
 extraInitContainers:
