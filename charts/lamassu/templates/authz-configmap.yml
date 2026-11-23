@@ -59,7 +59,12 @@ data:
       pki: /etc/lamassuiot/authz/schemas/pki.json
       authz: /etc/lamassuiot/authz/schemas/authz.json
 
-    {{- if .Values.services.wfx.enabled }}
+    {{- if or .Values.services.wfx.enabled .Values.services.ui.terminal.enabled }}
     http_schemas:
+    {{- if .Values.services.wfx.enabled }}
     - /etc/lamassuiot/authz/schemas/http-wfx.json
+    {{- end }}
+    {{- if .Values.services.ui.terminal.enabled }}
+    - /etc/lamassuiot/authz/schemas/http-terminal.json
+    {{- end }}
     {{- end }}
