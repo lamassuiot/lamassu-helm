@@ -16,7 +16,7 @@ data:
 
     crypto_engines:
       migrate_keys_format: false
-      log_level: "trace"
+      log_level: "debug"
       default_id: {{ .Values.services.kms.cryptoEngines.defaultEngineID }}
       engines:
         {{ .Values.services.kms.cryptoEngines.engines | toYaml | indent 4 | nindent 4 | trim  }}
