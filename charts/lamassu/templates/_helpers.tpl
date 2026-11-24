@@ -168,3 +168,18 @@ Check if KMS has a filesystem crypto engine configured
 {{- $id := upper (regexReplaceAll "[^A-Za-z0-9]" .id "_") -}}
 {{- printf "LAMASSU_AWS_%s_%s_%s" $scope $id .credential -}}
 {{- end -}}
+
+{{/*
+Validate that AWS credential IDs produce unique environment variable names.
+*/}}
+{{- define "lamassu.validateAwsCredentialEnvIDs" -}}
+{{- $scope := .scope -}}
+{{- $names := dict -}}
+{{- range $id := .ids -}}
+  {{- $envPart := upper (regexReplaceAll "[^A-Za-z0-9]" $id "_") -}}
+  {{- if hasKey $names $envPart -}}
+    {{- fail (printf "AWS credential IDs %q and %q in scope %q produce the same environment variable name" (get $names $envPart) $id $scope) -}}
+  {{- end -}}
+  {{- $_ := set $names $envPart $id -}}
+{{- end -}}
+{{- end -}}

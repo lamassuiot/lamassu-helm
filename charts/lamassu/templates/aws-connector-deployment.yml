@@ -46,6 +46,7 @@ spec:
           {{- end }}
           env:
             {{- include "lamassu.configCredentialEnv" (dict "root" $ "includePostgres" false) | nindent 12 }}
+            {{- if (dig "credentialsSecret" "name" "" $svc) }}
             {{- with $svc.credentialsSecret }}
             - name: {{ include "lamassu.awsCredentialEnvName" (dict "scope" "CONNECTOR" "id" $connectorID "credential" "ACCESS_KEY_ID") }}
               valueFrom:
@@ -58,9 +59,10 @@ spec:
                   name: {{ .name | quote }}
                   key: {{ .secretAccessKeyKey | default "secret_access_key" | quote }}
             {{- end }}
-          {{- with $svc.extraEnv }}
+            {{- end }}
+            {{- with $svc.extraEnv }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           # The connector only consumes events and calls the Lamassu APIs: it
           # listens on no port, so it has no Service, containerPort or HTTP
           # probes. A fatal error exits the process and the pod restarts.

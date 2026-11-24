@@ -35,9 +35,11 @@ ca_client:
 connector_id: {{ .connectorID }}
 aws_config:
   {{- $credentials := deepCopy (.instance.credentials | default dict) -}}
-  {{- with .instance.credentialsSecret -}}
-  {{- $_ := set $credentials "access_key_id_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CONNECTOR" "id" $.connectorID "credential" "ACCESS_KEY_ID")) -}}
-  {{- $_ := set $credentials "secret_access_key_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CONNECTOR" "id" $.connectorID "credential" "SECRET_ACCESS_KEY")) -}}
-  {{- end -}}
+  {{- if (dig "credentialsSecret" "name" "" .instance) -}}
+    {{- $_ := unset $credentials "access_key_id" -}}
+    {{- $_ := unset $credentials "secret_access_key" -}}
+    {{- $_ := set $credentials "access_key_id_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CONNECTOR" "id" $.connectorID "credential" "ACCESS_KEY_ID")) -}}
+    {{- $_ := set $credentials "secret_access_key_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CONNECTOR" "id" $.connectorID "credential" "SECRET_ACCESS_KEY")) -}}
+  {{- end }}
   {{ $credentials | toYaml | nindent 2 }}
-{{- end -}}
+{{- end }}

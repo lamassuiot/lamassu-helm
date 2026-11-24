@@ -271,11 +271,10 @@ services:
 ```
 
 Prefer IAM workload identity (for example IRSA or EKS Pod Identity) over
-static credentials; in that case omit `credentialsSecret`. A KMS process can
-use one Secret-backed AWS credential set. Use workload identity when multiple
-CryptoEngines need different AWS identities. The Secret must exist before
-installing or upgrading the chart. Restart the KMS pod after rotating its
-contents.
+static credentials; in that case omit `credentialsSecret`. Each CryptoEngine
+can reference its own Kubernetes Secret, allowing different engines to use
+different AWS identities. The Secret must exist before installing or upgrading
+the chart. Restart the KMS pod after rotating its contents.
 
 AWS connector instances use the same pattern independently. Put
 `credentialsSecret` alongside the connector's `credentials` block and use
