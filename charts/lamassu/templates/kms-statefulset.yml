@@ -152,6 +152,20 @@ spec:
           env:
             {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
             {{- range $engine := $svc.cryptoEngines.engines }}
+            {{- with (dig "credentialsSecret" "name" "" $engine) }}
+            - name: {{ include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "ACCESS_KEY_ID") }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: {{ $engine.credentialsSecret.accessKeyIDKey | default "access_key_id" | quote }}
+            - name: {{ include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "SECRET_ACCESS_KEY") }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: {{ $engine.credentialsSecret.secretAccessKeyKey | default "secret_access_key" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $engine := $svc.cryptoEngines.engines }}
             {{- if eq $engine.type "pkcs11" }}
             {{- range $key, $value := (dig "module_extra_options" "env" dict $engine) }}
             - name: {{ $key }}

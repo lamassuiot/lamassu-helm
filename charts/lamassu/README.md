@@ -243,8 +243,62 @@ referenced Secret must exist before the migration hook starts.
 Kubernetes Secrets require appropriate RBAC and encryption-at-rest
 configuration; authorized namespace users can read them. Lamassu receives
 Secret values through environment variables, so restart affected pods after
-rotation. AWS connector credentials, KMS crypto-engine values, and VA S3
-settings remain ConfigMap-backed and should have appropriate access controls.
+rotation. AWS connector credentials and VA S3 settings remain ConfigMap-backed
+and should have appropriate access controls.
+
+KMS CryptoEngines that use AWS KMS or AWS Secrets Manager should use the AWS
+SDK default credential chain and keep `auth_method: default` in the ConfigMap.
+For static AWS credentials, reference an existing Kubernetes Secret through the
+CryptoEngine's `credentialsSecret`; the chart injects its keys as
+`secretKeyRef` environment variables into the KMS pod, and the backend maps
+those variables into the AWS SDK configuration without putting their values in
+the ConfigMap:
+
+```yaml
+services:
+  kms:
+    cryptoEngines:
+      defaultEngineID: aws-kms-1
+      engines:
+        - id: aws-kms-1
+          type: aws_kms
+          auth_method: default
+          region: eu-west-1
+          credentialsSecret:
+            name: lamassu-kms-aws
+            accessKeyIDKey: access_key_id
+            secretAccessKeyKey: secret_access_key
+```
+
+Prefer IAM workload identity (for example IRSA or EKS Pod Identity) over
+static credentials; in that case omit `credentialsSecret`. A KMS process can
+use one Secret-backed AWS credential set. Use workload identity when multiple
+CryptoEngines need different AWS identities. The Secret must exist before
+installing or upgrading the chart. Restart the KMS pod after rotating its
+contents.
+
+AWS connector instances use the same pattern independently. Put
+`credentialsSecret` alongside the connector's `credentials` block and use
+`auth_method: default`:
+
+```yaml
+services:
+  connectors:
+    aws-production:
+      type: awsiot
+      image: ghcr.io/lamassuiot/lamassu-aws-connector:dev-v4
+      credentials:
+        auth_method: default
+        region: eu-west-1
+      credentialsSecret:
+        name: lamassu-aws-connector
+        accessKeyIDKey: access_key_id
+        secretAccessKeyKey: secret_access_key
+```
+
+The connector Secret is injected only into that connector pod. Connectors
+using IAM roles or another default credential-chain provider can omit
+`credentialsSecret`.
 
 ### Fast-lane testing
 

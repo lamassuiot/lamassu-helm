@@ -137,6 +137,49 @@ jobs:
           grep -q 'name: LAMASSU_AMQP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
           grep -q 'name: LAMASSU_SMTP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
 
+          cat >/tmp/lamassu-aws-secret-values.yaml <<'EOF'
+          services:
+            kms:
+              cryptoEngines:
+                defaultEngineID: aws-kms-1
+                engines:
+                  - id: aws-kms-1
+                    type: aws_kms
+                    auth_method: default
+                    region: eu-west-1
+                    credentialsSecret:
+                      name: lamassu-kms-aws
+                      accessKeyIDKey: kms-access-key
+                      secretAccessKeyKey: kms-secret-key
+            connectors:
+              aws-production:
+                type: awsiot
+                image: ghcr.io/lamassuiot/lamassu-aws-connector:dev-v4
+                credentials:
+                  auth_method: default
+                  region: eu-west-1
+                credentialsSecret:
+                  name: lamassu-connector-aws
+                  accessKeyIDKey: connector-access-key
+                  secretAccessKeyKey: connector-secret-key
+          EOF
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-aws-secret-values.yaml \
+            >/tmp/lamassu-aws-secret-rendered.yaml
+
+          grep -A5 -F 'name: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'name: "lamassu-kms-aws"'
+          grep -A5 -F 'name: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'key: "kms-secret-key"'
+          grep -A5 -F 'name: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'name: "lamassu-connector-aws"'
+          grep -A5 -F 'name: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'key: "connector-secret-key"'
+          ! grep -q 'credentialsSecret' /tmp/lamassu-aws-secret-rendered.yaml
+          ! grep -q 'access-key-value\|secret-key-value' /tmp/lamassu-aws-secret-rendered.yaml
+
           helm template lamassu charts/lamassu \
             --namespace lamassu-test \
             --set services.authz.credentials.pki.database=pki \

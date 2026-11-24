@@ -346,6 +346,12 @@ services:
           metadata:
             prod-ready: "false"
           storage_directory: "/crypto/fs"
+          # Optional Secret reference for AWS credentials. Use with auth_method: default.
+          # Keys are injected into the KMS pod as AWS SDK environment variables.
+          credentialsSecret:
+            name: ""
+            accessKeyIDKey: "access_key_id"
+            secretAccessKeyKey: "secret_access_key"
   deviceManager:
     # -- Docker image for the Device Manager component
     image: ghcr.io/lamassuiot/lamassu-devmanager:dev-v4
@@ -477,7 +483,9 @@ services:
             - claim: "realm_access.roles"
               operator: "contains"
               value: "pki-admin"
-  # -- AWS connector instances keyed by stable connector ID.
+  # -- AWS connector instances keyed by stable connector ID. Each instance may
+  #    set credentialsSecret alongside credentials to source AWS SDK credentials
+  #    from a Kubernetes Secret.
   connectors: {}
 connectivityTest:
   # -- Image for the `helm test` connectivity-check hook. The public,

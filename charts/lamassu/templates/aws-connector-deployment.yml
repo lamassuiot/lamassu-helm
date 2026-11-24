@@ -46,6 +46,18 @@ spec:
           {{- end }}
           env:
             {{- include "lamassu.configCredentialEnv" (dict "root" $ "includePostgres" false) | nindent 12 }}
+            {{- with $svc.credentialsSecret }}
+            - name: {{ include "lamassu.awsCredentialEnvName" (dict "scope" "CONNECTOR" "id" $connectorID "credential" "ACCESS_KEY_ID") }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .accessKeyIDKey | default "access_key_id" | quote }}
+            - name: {{ include "lamassu.awsCredentialEnvName" (dict "scope" "CONNECTOR" "id" $connectorID "credential" "SECRET_ACCESS_KEY") }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .secretAccessKeyKey | default "secret_access_key" | quote }}
+            {{- end }}
           {{- with $svc.extraEnv }}
             {{- toYaml . | nindent 12 }}
           {{- end }}

@@ -19,5 +19,12 @@ data:
       log_level: "debug"
       default_id: {{ .Values.services.kms.cryptoEngines.defaultEngineID }}
       engines:
-        {{ .Values.services.kms.cryptoEngines.engines | toYaml | indent 4 | nindent 4 | trim  }}
+        {{ range $engine := .Values.services.kms.cryptoEngines.engines }}
+        {{- $engineConfig := deepCopy (omit $engine "credentialsSecret") -}}
+        {{- with (dig "credentialsSecret" "name" "" $engine) -}}
+        {{- $_ := set $engineConfig "access_key_id_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "ACCESS_KEY_ID")) -}}
+        {{- $_ := set $engineConfig "secret_access_key_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "SECRET_ACCESS_KEY")) -}}
+        {{- end -}}
+        {{ $engineConfig | toYaml | nindent 8 }}
+        {{ end }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}

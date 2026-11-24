@@ -161,3 +161,10 @@ Check if KMS has a filesystem crypto engine configured
   {{- end -}}
   {{- $hasFilesystem -}}
 {{- end -}}
+
+{{/* Stable, non-secret environment variable name for one AWS client. */}}
+{{- define "lamassu.awsCredentialEnvName" -}}
+{{- $scope := upper (regexReplaceAll "[^A-Za-z0-9]" .scope "_") -}}
+{{- $id := upper (regexReplaceAll "[^A-Za-z0-9]" .id "_") -}}
+{{- printf "LAMASSU_AWS_%s_%s_%s" $scope $id .credential -}}
+{{- end -}}
