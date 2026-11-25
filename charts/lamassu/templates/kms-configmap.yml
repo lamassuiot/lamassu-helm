@@ -28,7 +28,9 @@ data:
       {{- $engines := list -}}
       {{- range $engine := .Values.services.kms.cryptoEngines.engines }}
         {{- $engineConfig := deepCopy (omit $engine "credentialsSecret") -}}
-        {{- with (dig "credentialsSecret" "name" "" $engine) -}}
+        {{- if (dig "credentialsSecret" "name" "" $engine) -}}
+          {{- $_ := unset $engineConfig "access_key_id" -}}
+          {{- $_ := unset $engineConfig "secret_access_key" -}}
           {{- $_ := set $engineConfig "access_key_id_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "ACCESS_KEY_ID")) -}}
           {{- $_ := set $engineConfig "secret_access_key_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "SECRET_ACCESS_KEY")) -}}
         {{- end -}}

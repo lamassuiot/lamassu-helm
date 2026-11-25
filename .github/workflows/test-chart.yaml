@@ -306,6 +306,45 @@ jobs:
             echo "Database migration received unrelated AMQP or SMTP credentials"
             exit 1
           fi
+        
+      - name: Verify AWS credential env-name collisions are rejected
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/colliding-engines.yaml <<'EOF'
+          services:
+            kms:
+              cryptoEngines:
+                defaultEngineID: aws-kms-eu
+                engines:
+                  - id: aws-kms-eu
+                    type: aws_kms
+                    auth_method: default
+                    region: eu-west-1
+                    credentialsSecret:
+                      name: aws-kms-eu-secret
+                  - id: aws_kms.eu
+                    type: aws_kms
+                    auth_method: default
+                    region: eu-west-1
+                    credentialsSecret:
+                      name: aws-kms-eu-dot-secret
+          EOF
+
+          if helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/colliding-engines.yaml \
+            >/tmp/colliding-engines-output.yaml 2>&1; then
+            echo "ERROR: expected Helm rendering to fail"
+            exit 1
+          fi
+
+          if ! grep -q "produce the same environment variable name" /tmp/colliding-engines-output.yaml; then
+            echo "ERROR: Helm failed for an unexpected reason"
+            cat /tmp/colliding-engines-output.yaml
+            exit 1
+          fi
 
       - name: Verify CA-to-KMS migration ConfigMap sources
         if: steps.list-changed.outputs.changed == 'true'
