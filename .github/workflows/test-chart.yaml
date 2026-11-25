@@ -147,6 +147,8 @@ jobs:
                     type: aws_kms
                     auth_method: default
                     region: eu-west-1
+                    access_key_id: INLINE_KMS_ACCESS_KEY
+                    secret_access_key: INLINE_KMS_SECRET_KEY
                     credentialsSecret:
                       name: lamassu-kms-aws
                       accessKeyIDKey: kms-access-key
@@ -158,6 +160,8 @@ jobs:
                 credentials:
                   auth_method: default
                   region: eu-west-1
+                  access_key_id: INLINE_CONNECTOR_ACCESS_KEY
+                  secret_access_key: INLINE_CONNECTOR_SECRET_KEY
                 credentialsSecret:
                   name: lamassu-connector-aws
                   accessKeyIDKey: connector-access-key
@@ -169,6 +173,9 @@ jobs:
             -f /tmp/lamassu-aws-secret-values.yaml \
             >/tmp/lamassu-aws-secret-rendered.yaml
 
+          set -euo pipefail
+
+          # Secret references
           grep -A5 -F 'name: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml |
             grep -Fq 'name: "lamassu-kms-aws"'
           grep -A5 -F 'name: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml |
@@ -177,8 +184,21 @@ jobs:
             grep -Fq 'name: "lamassu-connector-aws"'
           grep -A5 -F 'name: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml |
             grep -Fq 'key: "connector-secret-key"'
+
+          # Secret configuration must not be rendered
           ! grep -q 'credentialsSecret' /tmp/lamassu-aws-secret-rendered.yaml
-          ! grep -q 'access-key-value\|secret-key-value' /tmp/lamassu-aws-secret-rendered.yaml
+
+          # KMS and connector env references must be generated
+          grep -q 'access_key_id_env: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml
+          grep -q 'secret_access_key_env: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml
+          grep -q 'access_key_id_env: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml
+          grep -q 'secret_access_key_env: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml
+
+          # Inline credentials must not be rendered
+          if grep -Eq 'INLINE_KMS_ACCESS_KEY|INLINE_KMS_SECRET_KEY|INLINE_CONNECTOR_ACCESS_KEY|INLINE_CONNECTOR_SECRET_KEY' /tmp/lamassu-aws-secret-rendered.yaml; then
+            echo "Static AWS credentials were rendered despite credentialsSecret being configured"
+            exit 1
+          fi
 
           helm template lamassu charts/lamassu \
             --namespace lamassu-test \
