@@ -9,6 +9,26 @@ spec:
     {{- include "lamassu.gatewayParentRef" (dict "root" $) | nindent 4 }}
   rules:
     - matches:
+      - method: GET
+        path:
+          type: PathPrefix
+          value: /api/devmanager/v1/devices/
+        headers:
+        - type: RegularExpression
+          name: Accept
+          value: "(?i).*text/event-stream.*"
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /v1/devices/
+      timeouts:
+        request: "0s"
+      backendRefs:
+        - name: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
+          port: {{ $svc.port }}
+    - matches:
       - path:
           type: PathPrefix
           value: /api/devmanager/
