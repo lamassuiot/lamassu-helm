@@ -97,6 +97,37 @@ jobs:
           helm template lamassu charts/lamassu --namespace lamassu-test \
             | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.29.0
 
+      - name: Verify Device Manager SSE rendering
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          verify_sse() {
+            local expected_enabled=$1 expected_rules=$2 rendered enabled rules
+            shift 2
+
+            rendered=$(helm template lamassu charts/lamassu --namespace lamassu-test \
+              --show-only templates/device-manager-configmap.yml \
+              --show-only templates/device-manager-gateway-httproute.yaml "$@")
+
+            enabled=$(yq -o=json -r=false \
+              'select(.kind == "ConfigMap") | .data.config | from_yaml | .sse_enabled' <<<"$rendered")
+            if [[ "$enabled" != "$expected_enabled" ]]; then
+              echo "Expected Device Manager sse_enabled: $expected_enabled, got $enabled"
+              return 1
+            fi
+
+            rules=$(yq -o=json -I=0 \
+              'select(.kind == "HTTPRoute") | .spec.rules | map([.matches[0].path.value, .timeouts.request])' <<<"$rendered")
+            if [[ "$rules" != "$expected_rules" ]]; then
+              echo "Expected gateway paths and timeouts with SSE $expected_enabled: $expected_rules, got $rules"
+              return 1
+            fi
+          }
+
+          verify_sse true '[["/api/devmanager/v1/devices/","11m"],["/api/devmanager/",null]]'
+          verify_sse false '[["/api/devmanager/",null]]' --set services.deviceManager.sseEnabled=false
+
       - name: Verify Secret-backed credentials
         if: steps.list-changed.outputs.changed == 'true'
         run: |
