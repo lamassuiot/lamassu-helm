@@ -256,7 +256,7 @@ services:
     # The rootless image listens on the chart-wide unprivileged service port.
     port: 8085
     terminal:
-      # -- Enable the experimental browser terminal and its Wisp network proxy (served at /wisp/). Requires auth.externalAuthorization.enabled: /wisp/ is routed through external authorization and only principals holding the "Terminal Network" http_rule (action terminal-network-connect) can open it.
+      # -- Enable the experimental browser terminal and its Wisp network proxy (served at /wisp/). Requires auth.externalAuthorization.enabled=true and auth.externalAuthorization.failOpen=false
       enabled: false
   va:
     # -- Docker image for the VA component. Replicas must stay at 1 while fileStore.type is "local" (ReadWriteOnce PVC).

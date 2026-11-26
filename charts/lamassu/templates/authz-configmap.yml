@@ -1,4 +1,5 @@
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "authz") | fromYaml -}}
+{{- $terminalEnabled := dig "enabled" false (.Values.services.ui.terminal | default dict) -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -59,12 +60,12 @@ data:
       pki: /etc/lamassuiot/authz/schemas/pki.json
       authz: /etc/lamassuiot/authz/schemas/authz.json
 
-    {{- if or .Values.services.wfx.enabled .Values.services.ui.terminal.enabled }}
+    {{- if or .Values.services.wfx.enabled $terminalEnabled }}
     http_schemas:
     {{- if .Values.services.wfx.enabled }}
     - /etc/lamassuiot/authz/schemas/http-wfx.json
     {{- end }}
-    {{- if .Values.services.ui.terminal.enabled }}
+    {{- if $terminalEnabled }}
     - /etc/lamassuiot/authz/schemas/http-terminal.json
     {{- end }}
     {{- end }}

@@ -1,6 +1,9 @@
-{{- if .Values.services.ui.terminal.enabled }}
+{{- if dig "enabled" false (.Values.services.ui.terminal | default dict) }}
 {{- if not .Values.auth.externalAuthorization.enabled }}
 {{- fail "services.ui.terminal.enabled requires auth.externalAuthorization.enabled: the Wisp network proxy at /wisp/ must not be exposed without authorization" }}
+{{- end }}
+{{- if .Values.auth.externalAuthorization.failOpen }}
+{{- fail "services.ui.terminal.enabled requires auth.externalAuthorization.failOpen=false: the Wisp network proxy must deny connections when authorization is unavailable" }}
 {{- end }}
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "ui") | fromYaml -}}
 # The browser terminal opens its network through the Wisp proxy bundled in the UI image. This route is
@@ -10,9 +13,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: {{ include "lamassu.componentName" (dict "root" $ "component" "ui-terminal") }}
-  labels:
-    {{- include "lamassu.labels" (dict "root" $ "component" "ui-terminal") | nindent 4 }}
-    auth: "external"
+  {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "ui-terminal" "extra" (dict "auth" "external")) | nindent 2 }}
 spec:
   parentRefs:
     {{- include "lamassu.gatewayParentRef" (dict "root" $) | nindent 4 }}

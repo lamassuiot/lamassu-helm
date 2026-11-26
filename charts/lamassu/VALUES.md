@@ -154,7 +154,7 @@ Kubernetes: `>=1.24.0-0`
 | services.kms.pkcs11Sidecar.volumes | list | `[]` | Extra pod volumes needed by the PKCS#11 sidecar |
 | services.ui.image | string | `"ghcr.io/lamassuiot/lamassu-ui:dev"` | Docker image for the UI component |
 | services.ui.port | int | `8085` |  |
-| services.ui.terminal.enabled | bool | `false` | Enable the experimental browser terminal and its Wisp network proxy (served at /wisp/). Requires auth.externalAuthorization.enabled: /wisp/ is routed through external authorization and only principals holding the "Terminal Network" http_rule (action terminal-network-connect) can open it. |
+| services.ui.terminal.enabled | bool | `false` | Enable the experimental browser terminal and its Wisp network proxy (served at /wisp/). Requires auth.externalAuthorization.enabled=true and auth.externalAuthorization.failOpen=false. Only principals holding the "Terminal Network" http_rule (action terminal-network-connect) can open /wisp/. |
 | services.va.autoscaling.maxReplicas | int | `3` |  |
 | services.va.fileStore.id | string | `"local-1"` | Unique identifier for this storage engine instance |
 | services.va.fileStore.local | object | `{"storageDirectory":"/data/crl"}` | Config for type=local. Maps to localfs.FilesystemEngineConfig (storage_directory) |

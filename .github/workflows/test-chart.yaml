@@ -198,10 +198,17 @@ jobs:
 
           # Off by default: nothing of the terminal is rendered.
           helm template lamassu charts/lamassu --namespace lamassu-test >/tmp/lamassu-terminal-off.yaml
-          if grep -Eq 'EXPERIMENTAL_WBTERM|http-terminal\.json|value: /wisp/' /tmp/lamassu-terminal-off.yaml; then
+          # Simulate --reuse-values from a release without the terminal map.
+          helm template lamassu charts/lamassu --namespace lamassu-test \
+            --set services.ui.terminal=null >/tmp/lamassu-terminal-legacy.yaml
+          if grep -Eq 'EXPERIMENTAL_WBTERM|http-terminal\.json|value: /wisp/' \
+            /tmp/lamassu-terminal-off.yaml /tmp/lamassu-terminal-legacy.yaml; then
             echo "The browser terminal rendered resources while disabled"
             exit 1
           fi
+
+          # Access logs must omit query strings that can contain a Wisp token.
+          grep -Fq '%REQ_WITHOUT_QUERY(X-ENVOY-ORIGINAL-PATH?:PATH)%' /tmp/lamassu-terminal-off.yaml
 
           # Enabled (with and without WFX): the /wisp/ route goes through external authorization,
           # the UI runs the terminal and authz loads the Terminal Network schema.
@@ -216,9 +223,12 @@ jobs:
             route=$(helm template lamassu charts/lamassu --namespace lamassu-test \
               --set services.ui.terminal.enabled=true \
               --set services.wfx.enabled=${wfx} \
+              --set commonAnnotations.team=platform \
+              --set commonLabels.auth=public \
               --show-only templates/ui-terminal-gateway-httproute.yaml)
             grep -q 'value: /wisp/' <<<"$route"
-            grep -q 'auth: "external"' <<<"$route"
+            grep -q '^    auth: external$' <<<"$route"
+            grep -q 'team: platform' <<<"$route"
             grep -q 'type: PathPrefix' <<<"$route"
             grep -q 'name: lamassu-ui$' <<<"$route"
 
@@ -240,6 +250,18 @@ jobs:
             exit 1
           fi
           grep -q 'services.ui.terminal.enabled requires auth.externalAuthorization.enabled' /tmp/lamassu-terminal-noauth.log
+
+          if helm template lamassu charts/lamassu --namespace lamassu-test \
+            --set services.ui.terminal.enabled=true \
+            --set auth.externalAuthorization.failOpen=true >/tmp/lamassu-terminal-failopen.log 2>&1; then
+            echo "The browser terminal was accepted with fail-open authorization"
+            exit 1
+          fi
+          grep -q 'services.ui.terminal.enabled requires auth.externalAuthorization.failOpen=false' /tmp/lamassu-terminal-failopen.log
+          helm template lamassu charts/lamassu --namespace lamassu-test \
+            --set auth.externalAuthorization.failOpen=true \
+            --show-only templates/envoy-external-auth-securitypolicy.yml >/tmp/lamassu-terminal-off-failopen.yaml
+          grep -q 'failOpen: true' /tmp/lamassu-terminal-off-failopen.yaml
 
       - name: Verify deprecated CA crypto engines are rejected
         if: steps.list-changed.outputs.changed == 'true'
