@@ -178,7 +178,22 @@
     "services": {
       "type": "object",
       "properties": {
-        "ui": { "$ref": "#/definitions/service" },
+        "ui": {
+          "allOf": [
+            { "$ref": "#/definitions/service" },
+            {
+              "properties": {
+                "terminal": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          ]
+        },
         "va": { "$ref": "#/definitions/service" },
         "ca": {
           "allOf": [

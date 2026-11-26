@@ -321,11 +321,11 @@ helm upgrade lamassu charts/lamassu \
   -f lamassu-dev-values.yaml
 ```
 
-For external authorization, confirm the `SecurityPolicy` contains the v1.8.0 `pathOverride` field:
+For external authorization, confirm the `SecurityPolicy` uses the configured path prefix (by default `/v1/ext_authz/check`).
 
 ```bash
-kubectl get securitypolicy external-authz -n lamassu-dev \
-  -o jsonpath='{.spec.extAuth.http.pathOverride}{"\n"}'
+kubectl get securitypolicy lamassu-external-authz -n lamassu-dev \
+  -o jsonpath='{.spec.extAuth.http.path}{"\n"}'
 ```
 
 ## Development

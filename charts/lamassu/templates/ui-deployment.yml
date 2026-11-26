@@ -59,6 +59,10 @@ spec:
               value: "[{{- range $index, $instanceID := keys .Values.services.connectors | sortAlpha -}}{{- if $index }}, {{ end }}\"{{ $instanceID }}\"{{- end }}]"
             - name: UI_FOOTER_ENABLED
               value: "false"
+            {{- if dig "enabled" false (.Values.services.ui.terminal | default dict) }}
+            - name: EXPERIMENTAL_WBTERM
+              value: "true"
+            {{- end }}
             {{- with $svc.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
