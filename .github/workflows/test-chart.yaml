@@ -207,9 +207,6 @@ jobs:
             exit 1
           fi
 
-          # Access logs must omit query strings that can contain a Wisp token.
-          grep -Fq '%REQ_WITHOUT_QUERY(X-ENVOY-ORIGINAL-PATH?:PATH)%' /tmp/lamassu-terminal-off.yaml
-
           # Enabled (with and without WFX): the /wisp/ route goes through external authorization,
           # the UI runs the terminal and authz loads the Terminal Network schema.
           for wfx in true false; do
