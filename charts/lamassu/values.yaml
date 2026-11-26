@@ -352,6 +352,11 @@ services:
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4
+    crlCache:
+      # -- Maximum estimated CRL cache size in MiB. 0 uses the service default (256 MiB).
+      maxSizeMB: 0
+      # -- Maximum CRL cache lifetime as a Go duration. 0s uses the service default (1h); CRLs also expire at nextUpdate.
+      maxTTL: "0s"
     podSecurityContext:
       # -- Filesystem group that lets the cert-bundle init container and DMS container share generated certificates.
       fsGroup: 65532
