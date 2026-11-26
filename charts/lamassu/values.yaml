@@ -342,7 +342,8 @@ services:
       # -- Crypto engine configurations. For PKCS#11 engines, the PIN can be
       #    provided through a Kubernetes Secret using `pinSecret` instead of
       #    the inline `pin` field. The Secret must exist in the release namespace.
-      #    Requires KMS image version >= X.Y.Z, which adds support for `pin_env`.
+      #    Requires KMS image version >= VERSION, which adds support for `pin_env`.
+      #    Example:
       #    Example:
       #      - id: "pkcs11-1"
       #        type: "pkcs11"
