@@ -507,6 +507,11 @@ jobs:
           kubectl create secret generic kms-pkcs11-sidecar-ssh-key \
             --from-file=.key="$key_dir/ssh-key" \
             -n lamassu-test
+
+          kubectl create secret generic hsm-credentials \
+            --from-literal=user-pin=1234 \
+            -n lamassu-test
+
           helm install hsm charts/softhsm -n lamassu-test \
             --set-string image="ghcr.io/lamassuiot/softhsm:ci-local" \
             --set-string global.imagePullPolicy=IfNotPresent \

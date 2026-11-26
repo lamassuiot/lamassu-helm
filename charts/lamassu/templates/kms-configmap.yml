@@ -2,7 +2,7 @@
 {{- $engines := deepCopy $svc.cryptoEngines.engines -}}
 {{- range $engine := $engines -}}
   {{- if and (eq $engine.type "pkcs11") $engine.pinSecret -}}
-    {{- $pinEnvName := printf "LAMASSU_PKCS11_PIN_%s" (regexReplaceAll "[^A-Z0-9_]" ($engine.id | upper) "_") -}}
+    {{- $pinEnvName := include "lamassu.pkcs11PinEnvName" (dict "engineID" $engine.id) -}}
     {{- $_ := set $engine "pin_env" $pinEnvName -}}
     {{- $_ := unset $engine "pinSecret" -}}
   {{- end -}}
