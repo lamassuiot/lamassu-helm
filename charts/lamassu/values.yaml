@@ -344,7 +344,6 @@ services:
       #    the inline `pin` field. The Secret must exist in the release namespace.
       #    Requires KMS image version >= VERSION, which adds support for `pin_env`.
       #    Example:
-      #    Example:
       #      - id: "pkcs11-1"
       #        type: "pkcs11"
       #        token: "lamassuHSM"
