@@ -136,6 +136,8 @@ Kubernetes: `>=1.24.0-0`
 | services.connectors | object | `{}` | AWS connector instances keyed by stable connector ID. |
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:dev-v4"` | Docker image for the Device Manager component |
 | services.deviceManager.sseEnabled | bool | `true` | Enable Device Manager SSE streams and their dedicated gateway rule. |
+| services.dmsManager.crlCache.maxSizeMB | int | `0` | Maximum estimated CRL cache size in MiB. 0 uses the service default (256 MiB). |
+| services.dmsManager.crlCache.maxTTL | string | `"0s"` | Maximum CRL cache lifetime as a Go duration. 0s uses the service default (1h); CRLs also expire at nextUpdate. |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4"` | Docker image for the DMS Manager component |
 | services.dmsManager.podSecurityContext.fsGroup | int | `65532` | Filesystem group that lets the cert-bundle init container and DMS container share generated certificates. |
 | services.dmsManager.tlsInitContainer.image | string | `"busybox:1.37"` | Image for the container that builds the downstream CA bundle. |

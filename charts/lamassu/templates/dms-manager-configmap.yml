@@ -28,4 +28,7 @@ data:
 
     {{- include "lamassu.config.authzClient" $ | nindent 4 }}
     downstream_cert_file: /shared/root.crt
+    crl_cache:
+      max_size_mb: {{ $svc.crlCache.maxSizeMB }}
+      max_ttl: {{ $svc.crlCache.maxTTL | quote }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}
