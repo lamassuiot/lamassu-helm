@@ -112,7 +112,9 @@ services:
         - id: pkcs11-1
           type: pkcs11
           token: "lamassuHSM"
-          pin: "1234"
+          pinSecret:
+            secretName: "hsm-credentials"
+            key: "user-pin"
           module_path: "/run/p11-kit-modules/p11-kit-client.so"
           module_extra_options:
             env:

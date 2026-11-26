@@ -316,6 +316,42 @@ jobs:
           expected_config_map_sources=$'lamassu-kms-config|true\nkms-config|true'
           test "$config_map_sources" = "$expected_config_map_sources"
           grep -q '"helm.sh/hook-weight": "-10"' <<<"$job"
+      
+      - name: Verify PKCS11 HSM PIN Secret references
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f charts/lamassu/ci/pkcs11-incluster-hsm-values.yaml \
+            >/tmp/lamassu-pkcs11-secret.yaml
+
+          # The KMS container must reference the Secret, not contain its value.
+          grep -Fq 'name: "hsm-credentials"' /tmp/lamassu-pkcs11-secret.yaml
+          grep -Fq 'key: "user-pin"' /tmp/lamassu-pkcs11-secret.yaml
+          grep -Fq 'secretKeyRef:' /tmp/lamassu-pkcs11-secret.yaml
+          # The KMS container must use the generated environment variable.
+          grep -Fq 'name: "LAMASSU_PKCS11_PIN_PKCS11_1"' \
+            /tmp/lamassu-pkcs11-secret.yaml
+
+          # The KMS ConfigMap must tell the backend which environment variable to read.
+          grep -Fq 'pin_env: LAMASSU_PKCS11_PIN_PKCS11_1' \
+            /tmp/lamassu-pkcs11-secret.yaml
+
+          # The internal pinSecret chart value must not leak into the ConfigMap.
+          config_map=$(awk '
+            /^kind: ConfigMap$/ { in_cm=1 }
+            in_cm && /^  name: lamassu-kms-config$/ { found=1 }
+            found { print }
+            found && /^---$/ { exit }
+          ' /tmp/lamassu-pkcs11-secret.yaml)
+
+          test -n "$config_map"
+          if grep -Eq 'pinSecret|hsm-credentials|user-pin' <<<"$config_map"; then
+            echo "PKCS11 Secret reference leaked into the KMS ConfigMap"
+            exit 1
+          fi
 
       - name: Verify TLS provider-specific resources
         if: steps.list-changed.outputs.changed == 'true'

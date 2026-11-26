@@ -339,6 +339,17 @@ services:
     cryptoEngines:
       # -- Default engine ID to be used for the KMS component
       defaultEngineID: "filesystem-1"
+      # -- Crypto engine configurations. For PKCS#11 engines, the PIN can be
+      #    provided through a Kubernetes Secret using `pinSecret` instead of
+      #    the inline `pin` field. The Secret must exist in the release namespace.
+      #    Example:
+      #      - id: "pkcs11-1"
+      #        type: "pkcs11"
+      #        token: "lamassuHSM"
+      #        module_path: "/path/to/pkcs11-module.so"
+      #        pinSecret:
+      #          secretName: "hsm-credentials"
+      #          key: "user-pin"
       engines:
         - id: "filesystem-1"
           # filesystem | pkcs11 | hashicorp_vault | aws_kms | aws_secrets_manager

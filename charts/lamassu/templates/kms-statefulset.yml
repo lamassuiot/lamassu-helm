@@ -151,16 +151,23 @@ spec:
           {{- end }}
           env:
             {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
+
             {{- range $engine := $svc.cryptoEngines.engines }}
+            {{- if and (eq $engine.type "pkcs11") $engine.pinSecret }}
+            {{- $pinEnvName := printf "LAMASSU_PKCS11_PIN_%s" (regexReplaceAll "[^A-Z0-9_]" ($engine.id | upper) "_") }}
+            - name: {{ $pinEnvName | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $engine.pinSecret.secretName | quote }}
+                  key: {{ $engine.pinSecret.key | quote }}
+            {{- end }}
+
             {{- if eq $engine.type "pkcs11" }}
             {{- range $key, $value := (dig "module_extra_options" "env" dict $engine) }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
             {{- end }}
-            {{- end }}
-            {{- with $svc.extraEnv }}
-            {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- include "lamassu.httpProbe" (dict "name" "livenessProbe" "probe" $svc.livenessProbe "port" $svc.port) | nindent 10 }}
           {{- include "lamassu.httpProbe" (dict "name" "readinessProbe" "probe" $svc.readinessProbe "port" $svc.port) | nindent 10 }}

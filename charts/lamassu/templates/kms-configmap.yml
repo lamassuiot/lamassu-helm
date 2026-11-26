@@ -1,4 +1,12 @@
 {{- $svc := include "lamassu.svc.merged" (dict "root" $ "svcKey" "kms") | fromYaml -}}
+{{- $engines := deepCopy $svc.cryptoEngines.engines -}}
+{{- range $engine := $engines -}}
+  {{- if and (eq $engine.type "pkcs11") $engine.pinSecret -}}
+    {{- $pinEnvName := printf "LAMASSU_PKCS11_PIN_%s" (regexReplaceAll "[^A-Z0-9_]" ($engine.id | upper) "_") -}}
+    {{- $_ := set $engine "pin_env" $pinEnvName -}}
+    {{- $_ := unset $engine "pinSecret" -}}
+  {{- end -}}
+{{- end -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -19,5 +27,5 @@ data:
       log_level: "debug"
       default_id: {{ .Values.services.kms.cryptoEngines.defaultEngineID }}
       engines:
-        {{ .Values.services.kms.cryptoEngines.engines | toYaml | indent 4 | nindent 4 | trim  }}
+        {{- $engines | toYaml | nindent 8 }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}

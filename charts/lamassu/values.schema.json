@@ -196,7 +196,8 @@
             {
               "type": "object",
               "properties": {
-                "pkcs11Modules": { "$ref": "#/definitions/pkcs11Modules" }
+                "pkcs11Modules": { "$ref": "#/definitions/pkcs11Modules" },
+                "cryptoEngines": { "$ref": "#/definitions/cryptoEngines" }
               }
             }
           ]
@@ -483,6 +484,79 @@
         },
         "additionalProperties": false
       }
+    },
+    "pinSecret": {
+      "type": "object",
+      "required": ["secretName", "key"],
+      "properties": {
+        "secretName": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cryptoEngines": {
+      "type": "object",
+      "required": ["defaultEngineID", "engines"],
+      "properties": {
+        "defaultEngineID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "engines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pin": {
+                "type": "string"
+              },
+              "pinSecret": {
+                "$ref": "#/definitions/pinSecret"
+              }
+            },
+            "not": {
+              "required": ["pin", "pinSecret"]
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": ["type"],
+                  "properties": {
+                    "type": {
+                      "const": "pkcs11"
+                    }
+                  }
+                },
+                "then": {},
+                "else": {
+                  "not": {
+                    "required": ["pinSecret"]
+                  }
+                }
+              }
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
     },
     "capabilities": {
       "type": "object",
