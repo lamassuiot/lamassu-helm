@@ -8,6 +8,31 @@ spec:
   parentRefs:
     {{- include "lamassu.gatewayParentRef" (dict "root" $) | nindent 4 }}
   rules:
+    {{- if $svc.sseEnabled }}
+    {{- /* Give device SSE streams enough time to reach the backend's lifetime limit
+    (10 minutes plus up to 10% jitter). The 11-minute timeout also caps requests
+    that match the rule by sending the client-controlled Accept header. */}}
+    - matches:
+      - method: GET
+        path:
+          type: PathPrefix
+          value: /api/devmanager/v1/devices/
+        headers:
+        - type: RegularExpression
+          name: Accept
+          value: "(?i).*text/event-stream.*"
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /v1/devices/
+      timeouts:
+        request: "11m"
+      backendRefs:
+        - name: {{ include "lamassu.componentName" (dict "root" $ "component" "device-manager") }}
+          port: {{ $svc.port }}
+    {{- end }}
     - matches:
       - path:
           type: PathPrefix

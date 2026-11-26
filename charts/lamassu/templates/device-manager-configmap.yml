@@ -6,7 +6,7 @@ metadata:
   {{- include "lamassu.resourceMetadata" (dict "root" $ "component" "device-manager") | nindent 2 }}
 data:
   config: |
-    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false "port" $svc.port "sse" true) | nindent 4 }}
+    {{- include "lamassu.config.header" (dict "logsLevel" "debug" "healthCheck" false "port" $svc.port "sse" $svc.sseEnabled) | nindent 4 }}
 
     {{- include "lamassu.config.eventbus" (dict "root" $ "key" "subscriber_event_bus") | nindent 4 }}
 
