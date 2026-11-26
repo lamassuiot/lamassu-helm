@@ -10,7 +10,7 @@ Common server/openapi header. Context dict:
   logsLevel    top-level `logs.level` value
   healthCheck  server.health_check value; key is omitted entirely if unset
   port         service listen port
-  sse          set true to emit `sse_enabled: true` (device-manager only)
+  sse          `sse_enabled` value; key is omitted entirely if unset (device-manager only)
 */}}
 {{- define "lamassu.config.header" -}}
 logs:
@@ -24,9 +24,9 @@ server:
   listen_address: "0.0.0.0"
   port: {{ .port }}
   protocol: "http" #http | https
-{{- if .sse }}
+{{- if hasKey . "sse" }}
 
-sse_enabled: true
+sse_enabled: {{ .sse | default false }}
 {{- end }}
 
 openapi:

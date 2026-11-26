@@ -135,6 +135,7 @@ Kubernetes: `>=1.24.0-0`
 | services.ca.monitoring.frequency | string | `"* * * * *"` | Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term |
 | services.connectors | object | `{}` | AWS connector instances keyed by stable connector ID. |
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:dev-v4"` | Docker image for the Device Manager component |
+| services.deviceManager.sseEnabled | bool | `true` | Enable Device Manager SSE streams and their dedicated gateway rule. |
 | services.dmsManager.image | string | `"ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4"` | Docker image for the DMS Manager component |
 | services.dmsManager.podSecurityContext.fsGroup | int | `65532` | Filesystem group that lets the cert-bundle init container and DMS container share generated certificates. |
 | services.dmsManager.tlsInitContainer.image | string | `"busybox:1.37"` | Image for the container that builds the downstream CA bundle. |

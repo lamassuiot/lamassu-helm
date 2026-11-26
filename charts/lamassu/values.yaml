@@ -349,6 +349,8 @@ services:
   deviceManager:
     # -- Docker image for the Device Manager component
     image: ghcr.io/lamassuiot/lamassu-devmanager:dev-v4
+    # -- Enable Device Manager SSE streams and their dedicated gateway rule.
+    sseEnabled: true
   dmsManager:
     # -- Docker image for the DMS Manager component
     image: ghcr.io/lamassuiot/lamassu-dmsmanager:dev-v4

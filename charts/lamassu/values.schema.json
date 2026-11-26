@@ -201,7 +201,16 @@
             }
           ]
         },
-        "deviceManager": { "$ref": "#/definitions/service" },
+        "deviceManager": {
+          "allOf": [
+            { "$ref": "#/definitions/service" },
+            {
+              "properties": {
+                "sseEnabled": { "type": "boolean" }
+              }
+            }
+          ]
+        },
         "dmsManager": {
           "allOf": [
             { "$ref": "#/definitions/service" },
