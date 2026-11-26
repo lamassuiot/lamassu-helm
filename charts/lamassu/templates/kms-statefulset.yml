@@ -151,7 +151,22 @@ spec:
           {{- end }}
           env:
             {{- include "lamassu.configCredentialEnv" $ | nindent 12 }}
+            {{- $pinEnvNames := dict }}
             {{- range $engine := $svc.cryptoEngines.engines }}
+            {{- if and (eq $engine.type "pkcs11") $engine.pinSecret }}
+            {{- $pinEnvName := include "lamassu.pkcs11PinEnvName" (dict "engineID" $engine.id) }}
+            {{- if hasKey $pinEnvNames $pinEnvName }}
+              {{- fail (printf "PKCS11 engines '%s' and '%s' generate the same PIN environment variable name '%s'. Please use distinct engine IDs." (get $pinEnvNames $pinEnvName) $engine.id $pinEnvName) }}
+            {{- end }}
+            {{- $_ := set $pinEnvNames $pinEnvName $engine.id }}
+
+            - name: {{ $pinEnvName | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $engine.pinSecret.secretName | quote }}
+                  key: {{ $engine.pinSecret.key | quote }}
+            {{- end }}
+
             {{- if eq $engine.type "pkcs11" }}
             {{- range $key, $value := (dig "module_extra_options" "env" dict $engine) }}
             - name: {{ $key }}

@@ -161,3 +161,10 @@ Check if KMS has a filesystem crypto engine configured
   {{- end -}}
   {{- $hasFilesystem -}}
 {{- end -}}
+
+{{/*
+Generate the environment variable name for a PKCS#11 engine PIN.
+*/}}
+{{- define "lamassu.pkcs11PinEnvName" -}}
+{{- printf "LAMASSU_PKCS11_PIN_%s" (regexReplaceAll "[^A-Z0-9_]" (.engineID | upper) "_") -}}
+{{- end -}}
