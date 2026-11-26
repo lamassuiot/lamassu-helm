@@ -172,6 +172,69 @@ jobs:
           grep -q 'name: LAMASSU_AMQP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
           grep -q 'name: LAMASSU_SMTP_PASSWORD' /tmp/lamassu-secret-rendered.yaml
 
+          cat >/tmp/lamassu-aws-secret-values.yaml <<'EOF'
+          services:
+            kms:
+              cryptoEngines:
+                defaultEngineID: aws-kms-1
+                engines:
+                  - id: aws-kms-1
+                    type: aws_kms
+                    auth_method: default
+                    region: eu-west-1
+                    access_key_id: INLINE_KMS_ACCESS_KEY
+                    secret_access_key: INLINE_KMS_SECRET_KEY
+                    credentialsSecret:
+                      name: lamassu-kms-aws
+                      accessKeyIDKey: kms-access-key
+                      secretAccessKeyKey: kms-secret-key
+            connectors:
+              aws-production:
+                type: awsiot
+                image: ghcr.io/lamassuiot/lamassu-aws-connector:dev-v4
+                credentials:
+                  auth_method: default
+                  region: eu-west-1
+                  access_key_id: INLINE_CONNECTOR_ACCESS_KEY
+                  secret_access_key: INLINE_CONNECTOR_SECRET_KEY
+                credentialsSecret:
+                  name: lamassu-connector-aws
+                  accessKeyIDKey: connector-access-key
+                  secretAccessKeyKey: connector-secret-key
+          EOF
+
+          helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/lamassu-aws-secret-values.yaml \
+            >/tmp/lamassu-aws-secret-rendered.yaml
+
+          set -euo pipefail
+
+          # Secret references
+          grep -A5 -F 'name: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'name: "lamassu-kms-aws"'
+          grep -A5 -F 'name: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'key: "kms-secret-key"'
+          grep -A5 -F 'name: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'name: "lamassu-connector-aws"'
+          grep -A5 -F 'name: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml |
+            grep -Fq 'key: "connector-secret-key"'
+
+          # Secret configuration must not be rendered
+          ! grep -q 'credentialsSecret' /tmp/lamassu-aws-secret-rendered.yaml
+
+          # KMS and connector env references must be generated
+          grep -q 'access_key_id_env: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml
+          grep -q 'secret_access_key_env: LAMASSU_AWS_CRYPTO_ENGINE_AWS_KMS_1_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml
+          grep -q 'access_key_id_env: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_ACCESS_KEY_ID' /tmp/lamassu-aws-secret-rendered.yaml
+          grep -q 'secret_access_key_env: LAMASSU_AWS_CONNECTOR_AWS_PRODUCTION_SECRET_ACCESS_KEY' /tmp/lamassu-aws-secret-rendered.yaml
+
+          # Inline credentials must not be rendered
+          if grep -Eq 'INLINE_KMS_ACCESS_KEY|INLINE_KMS_SECRET_KEY|INLINE_CONNECTOR_ACCESS_KEY|INLINE_CONNECTOR_SECRET_KEY' /tmp/lamassu-aws-secret-rendered.yaml; then
+            echo "Static AWS credentials were rendered despite credentialsSecret being configured"
+            exit 1
+          fi
+
           helm template lamassu charts/lamassu \
             --namespace lamassu-test \
             --set services.authz.credentials.pki.database=pki \
@@ -296,6 +359,45 @@ jobs:
           ' /tmp/lamassu-secret-rendered.yaml)
           if grep -Eq '^[[:space:]]*- name: LAMASSU_(AMQP|SMTP)_(USERNAME|PASSWORD)$' <<<"$migration_job"; then
             echo "Database migration received unrelated AMQP or SMTP credentials"
+            exit 1
+          fi
+        
+      - name: Verify AWS credential env-name collisions are rejected
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/colliding-engines.yaml <<'EOF'
+          services:
+            kms:
+              cryptoEngines:
+                defaultEngineID: aws-kms-eu
+                engines:
+                  - id: aws-kms-eu
+                    type: aws_kms
+                    auth_method: default
+                    region: eu-west-1
+                    credentialsSecret:
+                      name: aws-kms-eu-secret
+                  - id: aws_kms.eu
+                    type: aws_kms
+                    auth_method: default
+                    region: eu-west-1
+                    credentialsSecret:
+                      name: aws-kms-eu-dot-secret
+          EOF
+
+          if helm template lamassu charts/lamassu \
+            --namespace lamassu-test \
+            -f /tmp/colliding-engines.yaml \
+            >/tmp/colliding-engines-output.yaml 2>&1; then
+            echo "ERROR: expected Helm rendering to fail"
+            exit 1
+          fi
+
+          if ! grep -q "produce the same environment variable name" /tmp/colliding-engines-output.yaml; then
+            echo "ERROR: Helm failed for an unexpected reason"
+            cat /tmp/colliding-engines-output.yaml
             exit 1
           fi
 

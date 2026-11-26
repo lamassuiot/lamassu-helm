@@ -18,6 +18,24 @@ data:
       migrate_keys_format: false
       log_level: "debug"
       default_id: {{ .Values.services.kms.cryptoEngines.defaultEngineID }}
+      {{- $engineIDs := list -}}
+      {{- range .Values.services.kms.cryptoEngines.engines -}}
+        {{- if (dig "credentialsSecret" "name" "" .) -}}
+          {{- $engineIDs = append $engineIDs .id -}}
+        {{- end -}}
+      {{- end -}}
+      {{- include "lamassu.validateAwsCredentialEnvIDs" (dict "scope" "CRYPTO_ENGINE" "ids" $engineIDs) -}}
+      {{- $engines := list -}}
+      {{- range $engine := .Values.services.kms.cryptoEngines.engines }}
+        {{- $engineConfig := deepCopy (omit $engine "credentialsSecret") -}}
+        {{- if (dig "credentialsSecret" "name" "" $engine) -}}
+          {{- $_ := unset $engineConfig "access_key_id" -}}
+          {{- $_ := unset $engineConfig "secret_access_key" -}}
+          {{- $_ := set $engineConfig "access_key_id_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "ACCESS_KEY_ID")) -}}
+          {{- $_ := set $engineConfig "secret_access_key_env" (include "lamassu.awsCredentialEnvName" (dict "scope" "CRYPTO_ENGINE" "id" $engine.id "credential" "SECRET_ACCESS_KEY")) -}}
+        {{- end -}}
+        {{- $engines = append $engines $engineConfig -}}
+      {{- end }}
       engines:
-        {{ .Values.services.kms.cryptoEngines.engines | toYaml | indent 4 | nindent 4 | trim  }}
+        {{- $engines | toYaml | nindent 8 }}
     {{- include "lamassu.config.otel" $ | nindent 4 }}

@@ -133,7 +133,7 @@ Kubernetes: `>=1.24.0-0`
 | services.ca.domains | list | `["dev.lamassu.io"]` | Domain to be used while signing/generating new CAs and certificates |
 | services.ca.image | string | `"ghcr.io/lamassuiot/lamassu-ca:dev-v4"` | Docker image for the CA component |
 | services.ca.monitoring.frequency | string | `"* * * * *"` | Frequency to check the CA's health status uses CRON syntax. Can also be specified at a "second" level by adding one extra term |
-| services.connectors | object | `{}` | AWS connector instances keyed by stable connector ID. |
+| services.connectors | object | `{}` | AWS connector instances keyed by stable connector ID. Each instance may    set credentialsSecret alongside credentials to source AWS SDK credentials    from a Kubernetes Secret. |
 | services.deviceManager.image | string | `"ghcr.io/lamassuiot/lamassu-devmanager:dev-v4"` | Docker image for the Device Manager component |
 | services.deviceManager.sseEnabled | bool | `true` | Enable Device Manager SSE streams and their dedicated gateway rule. |
 | services.dmsManager.crlCache.maxSizeMB | int | `0` | Maximum estimated CRL cache size in MiB. 0 uses the service default (256 MiB). |
@@ -145,7 +145,7 @@ Kubernetes: `>=1.24.0-0`
 | services.kms.args | list | `[]` | Optional arguments override for the KMS container |
 | services.kms.autoscaling.maxReplicas | int | `3` |  |
 | services.kms.command | list | `[]` | Optional command override for the KMS container |
-| services.kms.cryptoEngines | object | `{"defaultEngineID":"filesystem-1","engines":[{"id":"filesystem-1","metadata":{"prod-ready":"false"},"storage_directory":"/crypto/fs","type":"filesystem"}]}` | `cryptoEngines` must live under `services.kms`; `services.ca.cryptoEngines` is rejected by the schema |
+| services.kms.cryptoEngines | object | `{"defaultEngineID":"filesystem-1","engines":[{"credentialsSecret":{"accessKeyIDKey":"access_key_id","name":"","secretAccessKeyKey":"secret_access_key"},"id":"filesystem-1","metadata":{"prod-ready":"false"},"storage_directory":"/crypto/fs","type":"filesystem"}]}` | `cryptoEngines` must live under `services.kms`; `services.ca.cryptoEngines` is rejected by the schema |
 | services.kms.cryptoEngines.defaultEngineID | string | `"filesystem-1"` | Default engine ID to be used for the KMS component |
 | services.kms.image | string | `"ghcr.io/lamassuiot/lamassu-kms:dev-v4"` | Docker image for the KMS component. Replicas must stay at 1 while the filesystem crypto engine is configured (ReadWriteOnce PVC). |
 | services.kms.pkcs11Modules | list | `[]` | Optional PKCS#11 modules to inject into KMS at runtime. Each entry runs a    short-lived init container that stages a module and optional config in a    shared volume mounted read-only into KMS. Fields: name (unique), image,    imagePullPolicy, securityContext, command, args, env, and mountPath. |
